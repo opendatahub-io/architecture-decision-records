@@ -60,10 +60,22 @@ The Data Science Pipelines stack requires access to object storage (default is M
 
 ## Stakeholder Impacts
 
+| Group                         | Key Contact      | Date       | Impacted? |
+| ----------------------------- | ---------------  | ---------- | --------- |
+| Open Data Hub UI Console team | Andrew Ballantyne| 2023-02-20 | ? |
+
 
 ## References
 
+* https://github.com/opendatahub-io/data-science-pipelines
+* https://www.kubeflow.org/docs/components/pipelines/v1/overview/multi-user/
+* https://www.kubeflow.org/docs/components/pipelines/
+
 ## Reviews
 
-## Accept / Reject
+| Reviewed by                   | Date       | Notes |
+| ----------------------------- | ---------  | ------|
+| Anish Asthana                 | 2023-02-13 | lgtm  |
+| Humai Khan                    | 2023-02-10 | lgtm  |
 
+## Accept / Reject
