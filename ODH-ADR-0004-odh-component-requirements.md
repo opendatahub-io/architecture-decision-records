@@ -17,11 +17,11 @@ This decision document is proposing requirements for any components to be includ
 
 ## Why
 
-For any application or project to be considered as an component at the ODH Core (Tier 0) or Tier 1 level, we need to ensure that it has two or more opendatahub-io community members listed as maintainers that are committing to
-* Full support for current and feature releases of the component
+For any application or project to be considered as a component at the ODH Core (Tier 0) or Tier 1 level, we need to ensure that it has two or more opendatahub-io community members listed as maintainers that are committing to
+* Full support for current and future releases of each component
 * Timely upgrades to to keep the component up to date with the latest releases
 * Full end to end testsuite to verify the latest functionality provided with each release
-* Latest security updates for all dependencies to ensure that 
+* Latest security updates for all dependencies to ensure that any software packages in use have been scanned for known vulnerabilties
 
 We need to define some technical standards to ensure that each of the requirements above are met for every component
 
@@ -29,7 +29,7 @@ We need to define some technical standards to ensure that each of the requiremen
 
 Provide technical guidance for how to achieve all of the requirements of an ODH Core or Tier 1 component by specifying
 * Designated component maintainers
-* Standards for users to report bug, request features and track updates
+* Standards for users to report bugs, request features and track updates
 * Define how releases are made available to the ODH community and advertised for release
 * Testing requirements for each component and how they should be made available
 * Implementation for the latest security and vulnerability scanning of dependencies
@@ -56,9 +56,9 @@ In a future ADR, we will set a standard for the global labels that all github re
 
 #### Component Release Requirements
 
-All components must provide periodic stable release that will be made available as part of an ODH release.  The recommendation is that each component uses some form of [Semantic Versioning](https://semver.org/) for the release numbering scheme to ensure that each release version will align to a specific feature set.  This will allow any external components to verify integration functionality against a specific version to ensure compatibility.  Component maintainers are responsible for ensuring that major feature updates are versioned appropriately using git tags (or release branches) so that critical fixes can be applying without forcing users to accept major changes to just to resolve minor issues.
+All components must provide periodic stable release that will be made available as part of an ODH release.  The recommendation is that each component uses some form of [Semantic Versioning](https://semver.org/) for the release numbering scheme to ensure that each release version will align to a specific feature set.  This will allow any external components to verify integration functionality against a specific version to ensure compatibility.  Component maintainers are responsible for ensuring that major feature updates are versioned appropriately using git tags (or release branches) so that critical fixes can be applied without forcing users to accept major changes to just to resolve minor issues.
 
-Each release should be publicized as a github [release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) to with a highlevel summary of major changes in the release and a link to [changelog](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes) to show updates to the code base since the previous release
+Each release should be publicized as a github [release](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository) with a highlevel summary of major changes in the release and a link to [changelog](https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes) to show updates to the code base since the previous release
 
 All component releases must provide up to date documentation that
 1. Guides users through an end to end workflow of the component that will be published on [opendatahub.io](https://opendatahub.io)
@@ -66,7 +66,7 @@ All component releases must provide up to date documentation that
 
 #### Testing Requirements
 
-Each component is responsible for supporting an automated test suite that can verify that the application is working as intended with every update.  This testsuite should include unit tests to verify code functionality AND functional tests to verify that the running application or service is working as correctly when deployed to a live environment.  The full scope of the testsuite should be updated with each release to ensure that the component is working when included as part of an Open Data Hub deployment
+Each component is responsible for supporting an automated test suite that can verify that the application is working as intended with every update.  This testsuite should include unit tests to verify code functionality AND functional tests to verify that the running application or service is working correctly when deployed to a live environment.  The full scope of the testsuite should be updated with each release to ensure that the component is working when included as part of an Open Data Hub deployment
 
 Automated CI/CD testing is required to verify that any updates to the code base are up to the component standards AND do not introduce changes that would break a working deployment. The CI/CD implementation will be solely managed by the individual component maintainers with the expectation that it is executed: 
 * When a Pull Request is submitted for review
