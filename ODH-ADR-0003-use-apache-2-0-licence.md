@@ -31,7 +31,7 @@ We did an inventory of the licenses in use in the ODH-included projects and also
 | Kubeflow | permissive, Apache 2.0 |
 | KFP-Tekton | permissive, Apache 2.0 |
 | Tekton | permissive, Apache 2.0 |
-| Codeflare | permissive, Apache 2.0 |
+| CodeFlare | permissive, Apache 2.0 |
 | Ray | permissive, Apache 2.0 |
 | Elyra | permissive, Apache 2.0 |
 | Modelmesh | permissive, Apache 2.0 |
