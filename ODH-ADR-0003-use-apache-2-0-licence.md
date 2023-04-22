@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 11-April-2023
 | Scope          | Open Data Hub default licence |
-| Status         | Draft |
+| Status         | Accepted |
 | Authors        | [Greg Sheremeta](@gregsheremeta) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
@@ -83,10 +83,7 @@ If there have been any non-trivial contributions to Open Data Hub that were made
 
 ## Stakeholder Impacts
 
-| Group                         | Key Contacts     | Date       | Impacted? |
-| ----------------------------- | ---------------- | ---------- | --------- |
-| group or team name            | key contact name | date       | ? |
-
+n/a
 
 ## References
 
@@ -96,4 +93,4 @@ If there have been any non-trivial contributions to Open Data Hub that were made
 
 | Reviewed by                   | Date       | Notes |
 | ----------------------------- | ---------  | ------|
-| name                          | date       | ? |
+| Open Data Hub Community       | 2023-04-22 |  Accepted |
