@@ -68,3 +68,4 @@ Modelmesh is designed by default to be able to refer all models within a model s
 | Andrew Ballantyne             | date       | ?     |
 | Taneem Ibrahim                | date       | ?     |
 | Chris Chase                   | date       | ?     | 
+| Daniele Zonca                 | date       | ?     | 
