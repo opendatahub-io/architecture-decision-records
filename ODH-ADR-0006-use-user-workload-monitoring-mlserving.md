@@ -47,5 +47,5 @@ Approval on this ADR is counted as a sign-off
 | ----------------------------- | ---------------- | 
 | Model Serving            | Daniele Zonca | 
 | ODH Dashboard | Andrew Ballantyne | 
-| RHODS | Edgar Tirelli | 
+| RHODS | Edson Tirelli | 
 | QE | Jorge Garcia Oncins |  
