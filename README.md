@@ -12,7 +12,7 @@ An ADR is not a technical design, a team-level internal procedure, or a roadmap.
 
 We will keep each ADR in a short text file in Markdown format.
 
-We will keep ADRs in this repository, https://github.com/opendatahub-io/adr.
+We will keep ADRs in this repository, https://github.com/opendatahub-io/architecture-decision-records .
 
 ADRs will be numbered sequentially and monotonically. Numbers will not be reused.
 
