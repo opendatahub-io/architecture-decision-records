@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | Sep 5th, 2023 |
 | Scope          | Open Data Hub Operator |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | [Edson Tirelli](@etirelli), [Vaishnavi Hire](@VaishnaviHire) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
