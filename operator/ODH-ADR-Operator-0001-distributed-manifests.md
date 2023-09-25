@@ -43,7 +43,7 @@ To achieve this transition, a multi-step approach is proposed:
 | Component               | Default Git Repo                                | Default Git branch/tag| Transition finished ? |
 | ----------------------- | ----------------------------------------------- |-----------------      | -----------  |
 | Platform                | opendatahub-io/opendatahub-operator             | main                  | Yes |
-| Dashboard               | opendatahub-io/odh-dashboard                    | main                  | Yes |
+| Dashboard               | opendatahub-io/odh-dashboard                    | incubation            | Yes |
 | Data Science Pipelines  | opendatahub-io/data-science-pipelines-operator  | main                  | Yes |
 | Kserve                  | opendatahub-io/kserve                           | release-v0.11         | No  |
 | Modelmesh               | opendatahub-io/modelmesh-serving                | -                     | No  |
