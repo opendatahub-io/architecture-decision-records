@@ -49,7 +49,7 @@ The sidecar approach, having Caikit and TGIS colocated in a pod allows for a nar
 | Group                             | Key Contacts                  | Date | Impacted? |
 | ----------------------------------- | ------------------------------- | ------ | ----------- |
 | RedHat Model Serving Team         | Sean Pryor, JooHo Lee         |      | Yes       |
-| RedHat Distributed Workloads Team | Anish Asthana                 |      | Yes       |
+| RedHat Distributed Workloads Team | Anish Asthana, Antonin Stefanutti                 |      | Yes       |
 | IBM Caikit Team                   | Gabe Goodhart, Gaurav Kumbhat |      | Yes       |
 | IBM TGIS Team                     | Nick Hill                     |      | No        |
 
