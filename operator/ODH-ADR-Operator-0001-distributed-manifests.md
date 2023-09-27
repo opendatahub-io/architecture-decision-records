@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2023-08-28 |
 | Scope          | |
-| Status         | Draft |
+| Status         | Approved   |
 | Authors        | [Wen Zhou](@zdtsw) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
