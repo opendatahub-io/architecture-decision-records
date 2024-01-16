@@ -14,30 +14,29 @@
 
 ## What
 
-In order to leverage [Authorino](https://github.com/Kuadrant/authorino) as [external authorization provider in Service Mesh](https://istio.io/latest/docs/tasks/security/authorization/authz-custom/) there is a need to install Authorino's [Operator](https://github.com/kuadrant/authorino-operator) which will be responsible for managing authorization service (Authorino instance). Instead of using OLM and OperatorHub we can embedded this process into OpenDataHub operator.
+To integrate [Authorino](https://github.com/Kuadrant/authorino) as an [external authorization provider in Service Mesh](https://istio.io/latest/docs/tasks/security/authorization/authz-custom/), it is necessary to install its [Operator](https://github.com/kuadrant/authorino-operator). This operator manages the Authorino instance, providing authorization services. Instead of deploying it via OLM and OperatorHub, embedding this process within the OpenDataHub operator is proposed.
 
 ## Why
 
-To simplify installation process of Authorino. Adding yet another manual installation step can be problematic for a few reasons:
+The goal is to streamline the installation of Authorino for the following reasons:
 
-  * there needs to be another pre-requisite check which can lead to OpenDataHub Operator reconcile failures 
-    * user might not be aware of the need for this component and surprised by seeing an error when they simply try to configure DSCI/DSC
-  * asking a user to install a component which is for interal use is uncessary and confusing
-  * it allows us to handle productized images seamlessly
+  * Avoiding additional pre-requisite checks that could lead to OpenDataHub Operator reconcile failures.
+  * Reducing user confusion by eliminating the need to manually install a component primarily for internal use.
+  * Facilitating seamless management of productized images.
 
 ## Goals
 
-* Simplify installation and configuration process of Service Mesh pre-requisites.
+* Enhance the user experience by simplifying the installation and configuration of Service Mesh pre-requisites.
 
 ## Non-Goals
 
-* Changing distribution, artifacts and installation process for the upstream Kuadrant/Authorino operator.
+* Altering the distribution, artifacts, or installation processes for the upstream Kuadrant/Authorino operator.
 
 ## How
 
-  * Part of OpenDataHub deployment automation process
-     * bundling tagged manifests in the OpenDataHub Operator image (e.g. [`https://github.com/Kuadrant/authorino-operator/tree/v0.10.0/config`](https://github.com/Kuadrant/authorino-operator/tree/v0.10.0/config))
-     * applying them as part of DSCI setup
+  * Embedding Authorino Controller deployment within the OpenDataHub deployment automation.
+     * Incorporating specific tagged manifests from the Authorino Operator repository (e.g., [`v0.10.0/config`](https://github.com/Kuadrant/authorino-operator/tree/v0.10.0/config)) into the OpenDataHub Operator image. Bundling mechanism is already [in place](https://github.com/opendatahub-io/opendatahub-operator/blob/incubation/get_all_manifests.sh) and in use by other controllers/operators.
+     * Automatically applying these manifests during the DSCI setup process.
 
 ## Open Questions
 
@@ -46,10 +45,9 @@ To simplify installation process of Authorino. Adding yet another manual install
 
 ## Alternatives
 
-1. Use OLM for Authorino
-    1. This adds yet another installation step for the cluster admin, as they need to manage subscription through Operator Hub.
-    2. Automatic updates of the operator installed through OLM may result in incompatible versions and issues we have not anticipated when testing.
-
+1. Deploying Authorino via OLM:
+    1. This method imposes an additional step for cluster admins, who would need to manage subscriptions through the Operator Hub.
+    2. There is a risk of automatic updates through OLM introducing incompatible versions or unforeseen issues.
 
 ## Stakeholder Impacts
 
@@ -61,7 +59,7 @@ To simplify installation process of Authorino. Adding yet another manual install
 
 ## References
 
-* Similar approach has been taken by the [CodeFlare Operator](https://github.com/opendatahub-io/architecture-decision-records/blob/main/distributed-workloads/ODH-ADR-DW-0001-determine-codeflare-deployment-strategy.md).
+* A similar approach was adopted by the [CodeFlare Operator](https://github.com/opendatahub-io/architecture-decision-records/blob/main/distributed-workloads/ODH-ADR-DW-0001-determine-codeflare-deployment-strategy.md).
 
 ## Reviews
 
