@@ -1,6 +1,5 @@
 # Automate Authorino Operator Deployment in OpenDataHub Operator
 
-
 |                |            |
 | -------------- | ---------- |
 | Date           | January 16, 2024 |
@@ -8,9 +7,9 @@
 | Status         | Draft |
 | Authors        | [Bartosz Majsak](@bartoszmajsak) |
 | Supersedes     | N/A |
-| Superseded by: | N/A |
-| Tickets        | https://issues.redhat.com/browse/RHOAIENG-514 |
-| Other docs:    | none |
+| Superseded by  | N/A |
+| Tickets        | [RHOAIENG-514](https://issues.redhat.com/browse/RHOAIENG-514) |
+| Other docs     | None |
 
 ## What
 
@@ -51,11 +50,9 @@ The goal is to streamline the installation of Authorino for the following reason
 
 ## Stakeholder Impacts
 
-
 | Group                 | Key Contacts   | Date           | Impacted? |
 | --------------------- | -------------- | -------------- | --------- |
 | ODH Operator          | Vaishnavi Hire | Jan 16, 2024   | Yes       |
-
 
 ## References
 
@@ -65,4 +62,4 @@ The goal is to streamline the installation of Authorino for the following reason
 
 | Reviewed by                   | Date       | Notes |
 | ----------------------------- | ---------  | ------|
-| name                          | date       | ? |
+| [Reviewer Name]               | [Date]     | [Notes] |
