@@ -25,7 +25,7 @@ The goal is to streamline the installation of Authorino for the following reason
 
 ## Goals
 
-* Enhance the user experience by simplifying the installation and configuration of Service Mesh pre-requisites.
+* Improve the user experience by simplifying the installation and configuration of Service Mesh pre-requisites.
 
 ## Non-Goals
 
