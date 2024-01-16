@@ -39,8 +39,10 @@ The goal is to streamline the installation of Authorino for the following reason
 
 ## Open Questions
 
-* Do we consider a case when Authorino Operator is pre-installed by the user, so `managementState: Unmanaged`? How do we want to handle this?
-* How should productized images be handled? Through `relatedImages` mechanism in CSV?
+* How to manage cases where the Authorino Operator is pre-installed by the user?
+  * Should `managementState: Unmanaged` be exposed for Authorino (sub)component?
+  * As this is integral part of Service Mesh setup, does `managementState: Unmanaged` set on this level implies the same for Authorino deployment?
+* What strategy should be employed for handling productized images? Is the `relatedImages` mechanism in CSV suitable?
 
 ## Alternatives
 
