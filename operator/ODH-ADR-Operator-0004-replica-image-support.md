@@ -113,6 +113,7 @@ N/A
 
 ## Reviews
 
-| Reviewed by                   | Date       | Notes |
-| ----------------------------- | ---------  | ------|
-| name                          | date       | ? |
+| Reviewed by                   | Date          | Notes |
+| ----------------------------- | ---------     | ------|
+| Edson Tirelli                 | Jan 11, 2024  | ?     |
+| Andrew Ballantyne             | Jan 10, 2024  | ?     |
