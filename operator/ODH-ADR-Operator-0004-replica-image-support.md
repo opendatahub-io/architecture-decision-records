@@ -17,7 +17,7 @@ This document explains about upgrading the DSC CRD to support customizing the re
 
 ## Why
 
-Current operator design does not support changing the replica count, images are hard-coded in the manifests and the is no way to set the resource limits/requests. A lot of teams and users have started requesting for providing support of manipulating these fields.
+Current operator design does not support changing the replica count, images are hard-coded in the manifests and there is no way to set the resource limits/requests. A lot of teams and users have started requesting for providing support of manipulating these fields.
 NOTE: The image update is targeted for dev purposes and will not be available in a supported configuration. 
 
 ## Goals
@@ -33,7 +33,21 @@ NOTE: The image update is targeted for dev purposes and will not be available in
         kfNotebookController:
             replicas: 1
   ```
-* For each component(eg. codeflare, ray, kserve etc) provide an image(s) field in the *devFlags* through which we can pass-in a custom image(s) to be used by the controller.
+* For each component(eg. codeflare, ray, kserve etc) provide an image(s) field in the *devFlags* through which we can pass-in a custom image(s) to be used by the controller. Example yaml is given below:
+  ```yaml
+    spec:
+  components:
+     workbenches:
+        managementState: Managed
+        notebookController:
+            replicas: 1
+        kfNotebookController:
+            replicas: 1
+        devFlags:
+          images:
+            odh-notebook-controller-image: quay.io/opendatahub/odh-notebook-controller:latest
+            kf-notebook-controller-image: quay.io/opendatahub/kubeflow-notebook-controller:latest
+  ```
 * Control the resource limits and requests for individual components for more fine grained control. An example yaml is given below:
   ```yaml
     spec:
