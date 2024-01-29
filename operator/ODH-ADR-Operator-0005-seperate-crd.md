@@ -35,7 +35,7 @@ Replicas field in Dashboard component makes complete sense but if user defines r
 
 ## Non-Goals
 
-- Retroactively update existing DataScienceCluster immediately. This will be a gradual process.
+- Defining the configuration/parameters of each component 
 - Define application/runtime specific configuration.
 
 ## How
