@@ -64,21 +64,21 @@ kind: ModelServingConfiguration
 metadata:
  name: default
 spec:
- odh-model-controller:
- replica: 1
- image: quay.io/vajain/odh-model-controller:2.0
- manifests:
- contextDir: config
- sourcePath: ''
- uri: 'https://github.com/opendatahub-io/odh-model-controller/tarball/main'
- kserve:
- replica: 2
- managementState: Managed
- memoryLimit: 1Gi,
- cpuRequest: 100m,
- cpuLimit: 1
- modelmesh:
- managementState: Managed 
+	odh-model-controller:
+		replica: 1
+		image: quay.io/vajain/odh-model-controller:2.0
+		manifests:
+			contextDir: config
+			sourcePath: ''
+			uri: 'https://github.com/opendatahub-io/odh-model-controller/tarball/main'
+	kserve:
+		replica: 2
+		managementState: Managed
+		memoryLimit: 1Gi,
+		cpuRequest: 100m,
+		cpuLimit: 1
+	modelmesh:
+		managementState: Managed 
 ```
 Every component would have its own CRD and reconciler.
 
