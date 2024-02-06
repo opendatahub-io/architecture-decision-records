@@ -8,7 +8,7 @@
 | Authors        | [Ajay Jaganathan](@AjayJagan), [Yauheni Kaliuta](@ykaliuta) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [Tracker issue](https://github.com/opendatahub-io/opendatahub-operator/issues/441)|
+| Tickets        | [Tracker issue1](https://issues.redhat.com/browse/RHOAIENG-277)|
 | Other docs:    | none |
 
 ## What
@@ -28,9 +28,9 @@ NOTE: The image update is targeted for dev purposes and will not be available in
   components:
      workbenches:
         managementState: Managed
-        notebookController:
+        notebook-controller-deployment:
             replicas: 1
-        kfNotebookController:
+        odh-notebook-controller-manager:
             replicas: 1
   ```
 * For each component(eg. codeflare, ray, kserve etc) provide an image(s) field in the *devFlags* through which we can pass-in a custom image(s) to be used by the controller. Example yaml is given below:
@@ -39,9 +39,9 @@ NOTE: The image update is targeted for dev purposes and will not be available in
   components:
      workbenches:
         managementState: Managed
-        notebookController:
+        notebook-controller-deployment:
             replicas: 1
-        kfNotebookController:
+        odh-notebook-controller-manager:
             replicas: 1
         devFlags:
           images:
@@ -63,6 +63,7 @@ NOTE: The image update is targeted for dev purposes and will not be available in
             cpu: 200m
             memory: 256Mi
   ```  
+NOTE: The subcomponent names have to match exactly with the deployment names.
 
 ## Non-Goals
 
@@ -74,13 +75,13 @@ NOTE: The image update is targeted for dev purposes and will not be available in
   components:
     dashboard:
       managementState: Managed
-      dashboard:
+      odh-dashboard:
         autoscale:
           hpa:
             minReplicas: 1
             maxReplicas: 10
   ```   
-  
+  NOTE: HPA implementation is not a goal of this change.
 ## How
 
 The idea is to create a custom plugin for the kustomize where we use JSON patch to patch these updated values and then deploy the manifests.
