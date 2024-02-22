@@ -1,4 +1,4 @@
-# RHODS Architecture
+# RHOAI Architecture
 
 ## Architecture Overview
 [Architecture Overview](arch-overview.md)
