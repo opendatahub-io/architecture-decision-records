@@ -5,7 +5,3 @@
 
 ## Component Architecture Details
 [Components](components)
-
-## Guidelines
-[ADR Template](guidelines%2FRHODS-ADR-0000-template.md)
-
