@@ -151,7 +151,7 @@ Operators > OperatorHub page.
 
 ### Diagram
 
-![](images%2FRHOAI%20Architecture%20-%201.27.png)
+![](images%2FRHODS%20Architecture%20-%201.27.png)
 
 For comparison, in RHOAI' upstream OpenDataHub, the namespaces are
 
@@ -161,7 +161,7 @@ For comparison, in RHOAI' upstream OpenDataHub, the namespaces are
 
 ### Network
 
-![](images%2FRHOAI%20Architecture%20-%20Network%20Diagram.png)
+![](images%2FRHODS%20Architecture%20-%20Network%20Diagram.png)
 
 
 ### Storage and Data
