@@ -13,7 +13,8 @@
 
 ## What
 
-This document proposes the integration of [RayTune](https://docs.ray.io/en/latest/tune/index.html) Hyper Parameter Optimization (HPO) Library as the primary choice for HPO for OpenShift AI.
+This document proposes the integration of [RayTune](https://docs.ray.io/en/latest/tune/index.html) Hyper Parameter Optimization (HPO) Library as the primary choice for HPO for OpenShift AI. Katib was an alternative that was explored and it appears that it needs more work before it can be integrated into OpenShift AI at this time. Katib integration will be covered by a separate ADR.
+
 
 ## Why
 
@@ -74,11 +75,11 @@ RayTune and Katib were evaluated for this proposal
 1. Katib has better trial separation, it spawns a pod for every trial. Also Katib introduces a sidecar container for metrics collection for each pod.
 1. Katib requires container images to be created that follow the Katib spec. Parameters from the trial runs can be parsed in one of three supported formats, viz, 1. Stdout, 2. prometheus, 3. file based. This also means that the users need to be Kubernetes / container savvy.
 
-| Framework | Job                 | Workers |   CPU   | Memory | Time Taken | Comments |
-|           |                     |         | (Cores) |  (GiB) |   (mins)   |          |
-|           |                     |    1    |    3    |  10.8  |     21     |          |
-| RayTune   | Distributed Pytorch |    2    |  3.93   |  13.8  |     13     |          |
-|           |                     |    4    |  4.82   |  18.8  |     12     |          |
+The table below captures resource usage for RayTune while running a typical Distributed PyTorch job
+| Workers |   CPU (Cores)   | Memory (GiB) | Time Taken (mins) | Comments |
+|    1    |    3    |  10.8  |     21     |          |
+|    2    |  3.93   |  13.8  |     13     |          |
+|    4    |  4.82   |  18.8  |     12     |          |
 
 
 ## Security and Privacy Considerations
