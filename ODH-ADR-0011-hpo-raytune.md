@@ -76,10 +76,11 @@ RayTune and Katib were evaluated for this proposal
 1. Katib requires container images to be created that follow the Katib spec. Parameters from the trial runs can be parsed in one of three supported formats, viz, 1. Stdout, 2. prometheus, 3. file based. This also means that the users need to be Kubernetes / container savvy.
 
 The table below captures resource usage for RayTune while running a typical Distributed PyTorch job
-| Workers |   CPU (Cores)   | Memory (GiB) | Time Taken (mins) | Comments |
-|    1    |    3    |  10.8  |     21     |          |
-|    2    |  3.93   |  13.8  |     13     |          |
-|    4    |  4.82   |  18.8  |     12     |          |
+| Workers | CPU (Cores) | Memory (GiB) | Time Taken (mins) | Comments |
+| ------- | ----------- | ------------ | ----------------- | -------- |
+| 1       | 3           | 10.8         | 21                |          |
+| 2       | 3.93        | 13.8         | 13                |          |
+| 4       | 4.82        | 18.8         | 12                |          |
 
 
 ## Security and Privacy Considerations
