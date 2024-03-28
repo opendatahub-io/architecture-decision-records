@@ -27,18 +27,20 @@ The model registry is a backing store for various stages of MLOps that can log u
 
 Google community project [ML-Metadata](https://github.com/google/ml-metadata) is used as the core component to build the Model Registry. ML-Metadata provides a very extensible schema that is generic, similar to a key-value store, but also allows for the creation of logical schemas that can be queried as if they were physical schemas. Those can be manipulated using their bindings in the Python library. We use this model to extend and provide metadata storage services for model serving, also known as Model Registry.
 
-The model registry will use the ml-metadata project’s C++ server as it is given to handle the storing of the metadata while domain-specific Model Registry features will be added as extensions (aka microservices). As part of this extension, we will develop Python/Go extensions to support the Model Registry and will also develop an OpenAPI interface to expose the Model Registry API to the clients. 
+The model registry uses the ml-metadata project’s C++ server as-is to handle the storing of the metadata, while domain-specific Model Registry features are added as extensions (aka microservices). As part of these extensions, Model Registry provides:
+- Python/Go extensions to support the Model Registry interaction
+- an OpenAPI interface to expose the Model Registry API to the clients
 
 ![Model Registry Connections](./model-registry-connections.png)
 
-Enforcing of RBAC policies will be handled at the OpenAPI API layer using service accounts with Authorino, which is currently not supported by ml-metadata (more details about ODH Auth strategy ODH OSSM Design).
+Enforcing of RBAC policies can be handled at the REST API layer using service accounts with Authorino, which is currently not supported by ml-metadata (more details about ODH Auth strategy ODH OSSM Design).
 
 ## Components
 - *[MLMD C++ Server](https://github.com/google/ml-metadata)*
   - This is the metadata server from Google's ml-metadata project.  This component is hosted to communicate with a backend relational database that stores the actual metadata about the models. This server exposes a “gRPC” interface for its clients to communicate with. This server provides a very flexible schema model, where using this model one can define logical data models to fit the needs of different MLOps operations, for example, metadata during the training and experimentation, metadata about metrics or model versioning, etc. 
   
 - *[OpenAPI/REST Server](https://github.com/kubeflow/model-registry)*
-  - This component exposes a higher-level REST API of the Model Registry. In contrast, the MLMD server exposes a lower level generic API over gRPC, whereas this REST server exposes a higher level API that is much closer to the domain model of Model Registry, like
+  - This component exposes a higher-level REST API of the Model Registry. In contrast, the MLMD server exposes a lower level generic API over gRPC, whereas this REST server exposes a higher level API that is much closer to the domain model of Model Registry, like:
     - Register a Model
     - Version a Model
     - Get a catalog of models
@@ -52,7 +54,7 @@ Enforcing of RBAC policies will be handled at the OpenAPI API layer using servic
 - *[CLI (Python client, SDK)](https://github.com/kubeflow/model-registry/tree/main/clients/python)*
   - CLI is also called MR Python client/SDK, a command line tool for interacting with Model Registry. This tool can be used by a user to execute operations such as retrieving the registered models, get model’s deployment status, model’s version etc. 
   
-  - The model registry intends to provide these logical mappings  
+  - The model registry provides logical mappings from the high level [logical model](https://github.com/kubeflow/model-registry/blob/main/docs/logical_model.md) available through the OpenAPI/REST Server, to the underlying ml-metadata entities.
 
 ## Integration with Model Serving Components
 
@@ -62,12 +64,12 @@ Enforcing of RBAC policies will be handled at the OpenAPI API layer using servic
 - https://github.com/opendatahub-io/odh-model-controller/pull/135
 -->
 
-Once a model has been registered as a RegisteredModel resource, versions of the model and its ModelArtifacts will be created and associated with the RegisteredModel.
+In a typical ML workflow, a ML model is registered on the Model Registry as a `RegisteredModel` logical entity, along with its versions and its associated `ModelArtifacts` resources.
 
-Model serving controller will advertise itself in the model registry by creating a `ServingEnvironment` entity. 
+Then, Model serving controller advertises itself to the Model Registry, by creating a `ServingEnvironment` entity.
 
-The Model Controller reconciler will monitor `InferenceService` CRs having pre-defined `labels`, based on those `labels` will sync the model registry by keeping track of every deployment that occurred in the cluster.
-Then will update the `InferenceService` CR by linking it to the model registry record using a specific `label`.
+Then, the Model Controller reconciler monitors `InferenceService` CRs having pre-defined `labels`, and based on those `labels` it syncs the model registry by keeping track of every deployment that occurred in the cluster.
+Then, the Model Controller reconciler updates the `InferenceService` CR by linking it to the Model Registry logical entity using a specific `label`.
 
 ```mermaid
 sequenceDiagram
@@ -91,6 +93,6 @@ sequenceDiagram
     end
 ```
 
-This way, the Model Controller will sync those occurrence into the Model Registry to keep track of every deployment that occurred in the cluster for indexed models.
+In this way, the Model Controller reconciler syncs those occurrence into the Model Registry to keep track of every deployment that occurred in the cluster for indexed models.
 
 <!-- to be continued once finalized "Model Registry Tenancy Proposal" -->
