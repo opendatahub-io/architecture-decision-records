@@ -21,9 +21,7 @@ The model registry is a backing store for various stages of MLOps that can log u
 - Associate metadata from training, experimentation, studies and their metrics, with a model
 - Build a catalog of models and manage model versions for deployment
 - Management of model for multiple deployment environments
-- Build an open-source solution with vibrant community (Kubeflow)
 - Build a Kube Native solution
-- Avoid reinvention unless it is mandatory
 
 ## Architecture
 
