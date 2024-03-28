@@ -18,7 +18,7 @@ A model registry plays a pivotal role in the lifecycle of AI/ML models, serving 
 The model registry is a backing store for various stages of MLOps that can log user flow of a model development and deployment. The model registry meets a data scientist's need to be able to visualize a model’s lineage and trace back the training executions, parameters, metrics, etc. It also help deployment engineers visualize model pipeline events, actions, progress through deployment stages, etc. 
 
 ## Goals 
-- Associate metadata from as training, experimentation, studies and their metrics, with a model
+- Associate metadata from training, experimentation, studies and their metrics, with a model
 - Build a catalog of models and manage model versions for deployment
 - Management of model to different deployment environments
 - Build an open-source solution with vibrant community (Kubeflow)
