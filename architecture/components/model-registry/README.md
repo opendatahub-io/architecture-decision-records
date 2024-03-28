@@ -25,7 +25,7 @@ The model registry is a backing store for various stages of MLOps that can log u
 
 ## Architecture
 
-Google community project [ML-Metadata](https://github.com/google/ml-metadata) will be used as the core component to build the Model Registry. ML-Metadata provides a very extensible schema that is generic, similar to a key-value store, but also allows for the creation of logical schemas that can be queried as if they were physical schemas. Those can be manipulated using their bindings in the Python library. We intend to use this model to extend and provide metadata storage services for model serving, also known as Model Registry.
+Google community project [ML-Metadata](https://github.com/google/ml-metadata) is used as the core component to build the Model Registry. ML-Metadata provides a very extensible schema that is generic, similar to a key-value store, but also allows for the creation of logical schemas that can be queried as if they were physical schemas. Those can be manipulated using their bindings in the Python library. We use this model to extend and provide metadata storage services for model serving, also known as Model Registry.
 
 The model registry will use the ml-metadata project’s C++ server as it is given to handle the storing of the metadata while domain-specific Model Registry features will be added as extensions (aka microservices). As part of this extension, we will develop Python/Go extensions to support the Model Registry and will also develop an OpenAPI interface to expose the Model Registry API to the clients. 
 
