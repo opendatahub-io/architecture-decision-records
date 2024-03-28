@@ -15,7 +15,7 @@ A model registry plays a pivotal role in the lifecycle of AI/ML models, serving 
 > [!NOTE]  
 > The Model Registry is a passive repository for metadata and is not meant to be a Control Plane. It does not perform any orchestration or expose APIs to perform actions on underlying OpenShift AI components. 
 
-We envision this to be more of a backing store for various stages of MLOps that can log user flow of a model development and deployment. The model registry will meet a data scientist's need to be able to visualize a model’s lineage and trace back the training executions, parameters, metrics, etc. It will also help deployment engineers visualize model pipeline events, actions, progress through deployment stages, etc. 
+The model registry is a backing store for various stages of MLOps that can log user flow of a model development and deployment. The model registry meets a data scientist's need to be able to visualize a model’s lineage and trace back the training executions, parameters, metrics, etc. It also help deployment engineers visualize model pipeline events, actions, progress through deployment stages, etc. 
 
 ## Goals 
 - Associate metadata from as training, experimentation, studies and their metrics, with a model
