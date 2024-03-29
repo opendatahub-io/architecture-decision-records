@@ -1,0 +1,312 @@
+<mxfile host="Electron" modified="2024-03-29T10:19:04.457Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.1.0 Chrome/120.0.6099.109 Electron/28.1.0 Safari/537.36" etag="KlLBQShuZnj9bUzli6He" version="24.1.0" type="device">
+  <diagram name="Page-1" id="TBOrmTDBRRFpcllvcab3">
+    <mxGraphModel dx="1670" dy="1746" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="fb6xcwAU1RgiGCcfM_bd-2" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;align=left;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="236" y="-360" width="464" height="1140" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-3" value="" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="440" y="306" width="96" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontFamily=Red Hat Text;" edge="1" parent="1" source="iGqxb12ESHEbYBHhIh4f-1" target="wKwqxUoDFulItXsNiEHh-13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="626" y="350" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-36" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;startArrow=classic;startFill=1;dashed=1;fontFamily=Red Hat Text;" edge="1" parent="1" source="iGqxb12ESHEbYBHhIh4f-1" target="wKwqxUoDFulItXsNiEHh-34">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-1" value="Service" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="453" y="338" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-2" value="OAuth" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;fontStyle=2" parent="1" vertex="1">
+          <mxGeometry x="453" y="378" width="70" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-4" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=pod;kubernetesLabel=1;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="417" y="283" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-2" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;align=left;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="-360" y="260" width="400" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-3" value="redhat-ods-applications" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Red Hat Text;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="-321" y="230" width="180" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fillColor=#60a917;strokeColor=#009900;strokeWidth=2;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-4" target="wKwqxUoDFulItXsNiEHh-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-12" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="wKwqxUoDFulItXsNiEHh-9">
+          <mxGeometry x="-0.3427" y="1" relative="1" as="geometry">
+            <mxPoint x="43" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-15" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#009900;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-4" target="wKwqxUoDFulItXsNiEHh-13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="-20" y="280" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.005;entryY=0.594;entryDx=0;entryDy=0;strokeWidth=2;fillColor=#e51400;strokeColor=#B20000;entryPerimeter=0;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-4" target="wKwqxUoDFulItXsNiEHh-18">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="-20" y="500" />
+              <mxPoint x="296" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#009900;strokeWidth=2;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-4" target="wKwqxUoDFulItXsNiEHh-27">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="-80" y="692" />
+              <mxPoint x="438" y="692" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-61" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;startArrow=classic;startFill=1;strokeWidth=2;strokeColor=#009900;exitX=0.075;exitY=1.076;exitDx=0;exitDy=0;exitPerimeter=0;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-4" target="wKwqxUoDFulItXsNiEHh-60">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-193" y="395" as="sourcePoint" />
+            <Array as="points">
+              <mxPoint x="-240" y="573" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-4" value="&lt;i&gt;trustyai-service-operator-controller-manager&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="-260" y="335" width="266" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-5" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=pod;kubernetesLabel=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="-280" y="307" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-6" target="iGqxb12ESHEbYBHhIh4f-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-6" value="&lt;i&gt;Deployment&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="295" y="325.5" width="100" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-7" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;kubernetesLabel=1;prIcon=deploy;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="275" y="302.5" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-17" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="145" y="277" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-18" value="&lt;i&gt;TrustyAIService&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="295" y="452" width="100" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-19" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=ns;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="-380" y="235" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-20" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;kubernetesLabel=1;prIcon=crd;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="271" y="429" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;startArrow=classic;startFill=1;dashed=1;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-23" target="iGqxb12ESHEbYBHhIh4f-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;dashed=1;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-23" target="wKwqxUoDFulItXsNiEHh-27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-23" value="&lt;i&gt;External&lt;/i&gt;&lt;div&gt;&lt;i&gt;Service&lt;/i&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="438" y="530" width="100" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-9" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=svc;kubernetesLabel=1;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="417" y="505" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;dashed=1;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-27" target="wKwqxUoDFulItXsNiEHh-29">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-27" value="&lt;i&gt;Route&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="438" y="663" width="100" height="57" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-15" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;kubernetesLabel=1;prIcon=ing;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="417" y="633" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-29" value="&lt;i&gt;User&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="438" y="830" width="100" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-17" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=user;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="422" y="800" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-33" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="145" y="692" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-13" value="&lt;i&gt;PVC&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="586" y="249" width="79" height="62" as="geometry" />
+        </mxCell>
+        <mxCell id="iGqxb12ESHEbYBHhIh4f-5" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=pvc;container=0;backgroundOutline=0;kubernetesLabel=1;fontFamily=Red Hat Text;" parent="1" vertex="1">
+          <mxGeometry x="562" y="218" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-34" value="&lt;i&gt;Internal&lt;/i&gt;&lt;div&gt;&lt;i&gt;Service&lt;/i&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="438" y="173" width="100" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-35" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=svc;kubernetesLabel=1;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="413" y="148" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-37" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=classic;startFill=1;strokeWidth=2;strokeColor=#B20000;fontFamily=Red Hat Text;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.672;entryY=-0.006;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-84" target="wKwqxUoDFulItXsNiEHh-4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="271" y="-140.030303030303" as="sourcePoint" />
+            <mxPoint x="-80" y="330" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="-81" y="-71" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-46" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;entryX=0.75;entryY=0;entryDx=0;entryDy=0;strokeColor=#B20000;startArrow=classic;startFill=1;fontFamily=Red Hat Text;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-41">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-60.5" y="336" as="targetPoint" />
+            <mxPoint x="269.99999999999955" y="-18.94117647058829" as="sourcePoint" />
+            <Array as="points">
+              <mxPoint x="-61" y="60" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-49" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;startArrow=classic;startFill=1;fontFamily=Red Hat Text;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-41" target="wKwqxUoDFulItXsNiEHh-34">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="490" y="60" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-50" value="Payload processor" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="wKwqxUoDFulItXsNiEHh-49">
+          <mxGeometry x="0.0538" y="-1" relative="1" as="geometry">
+            <mxPoint x="-29" y="23" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-51" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.75;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;dashed=1;fontFamily=Red Hat Text;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-84" target="wKwqxUoDFulItXsNiEHh-34">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="451" y="-140.030303030303" as="sourcePoint" />
+            <Array as="points">
+              <mxPoint x="510" y="-70" />
+              <mxPoint x="516" y="-70" />
+              <mxPoint x="516" y="173" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-52" value="InferenceLogger" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="wKwqxUoDFulItXsNiEHh-51">
+          <mxGeometry x="-0.0355" y="1" relative="1" as="geometry">
+            <mxPoint x="22" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-53" value="project" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Red Hat Text;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="275" y="-390" width="180" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-54" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;prIcon=ns;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="210" y="-390" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-58" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=classic;startFill=1;strokeWidth=2;strokeColor=#009900;entryX=0.75;entryY=1;entryDx=0;entryDy=0;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-23" target="wKwqxUoDFulItXsNiEHh-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-59" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="145.00000000000006" y="569" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-60" value="ServiceMonitor" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="-207" y="553" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-62" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="-239.99999999999994" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-64" value="ServiceMonitor" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="270" y="-210" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-65" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;startArrow=classic;startFill=1;strokeWidth=2;strokeColor=#009900;fontFamily=Red Hat Text;entryX=0.562;entryY=0.011;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-64" target="wKwqxUoDFulItXsNiEHh-4">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="-111" y="330" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-66" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="144.00000000000006" y="-191" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-67" value="TrustyAI config" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="-208" y="490" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-69" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;kubernetesLabel=1;prIcon=cm;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="-233" y="460" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-70" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.402;entryY=0.998;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=classic;startFill=1;strokeColor=#B20000;strokeWidth=2;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-67" target="wKwqxUoDFulItXsNiEHh-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-71" value="&lt;font style=&quot;font-size: 13px;&quot; color=&quot;#b20000&quot;&gt;&lt;b&gt;watch&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="wKwqxUoDFulItXsNiEHh-70">
+          <mxGeometry x="0.1087" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-72" value="Global CA&lt;div&gt;bundle&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;fontStyle=2" vertex="1" parent="1">
+          <mxGeometry x="270" y="-282" width="110" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-73" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;kubernetesLabel=1;prIcon=cm;fontFamily=Red Hat Text;" vertex="1" parent="1">
+          <mxGeometry x="245" y="-312" width="50" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-74" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.455;entryY=-0.009;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=classic;startFill=1;strokeWidth=2;strokeColor=#B20000;fontFamily=Red Hat Text;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-72" target="wKwqxUoDFulItXsNiEHh-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-75" value="&lt;font color=&quot;#b20000&quot; style=&quot;font-size: 13px;&quot;&gt;&lt;b style=&quot;font-size: 13px;&quot;&gt;watch&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;fontSize=13;" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="138.9979302952587" y="-258.0028937469434" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-77" value="&lt;font style=&quot;font-size: 13px;&quot; color=&quot;#b20000&quot;&gt;&lt;b&gt;watch&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="138.9977837614736" y="58.998096101896635" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-78" value="&lt;font style=&quot;font-size: 13px;&quot; color=&quot;#b20000&quot;&gt;&lt;b&gt;watch&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="138.9977837614736" y="-72.00190389810336" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-79" value="&lt;font style=&quot;font-size: 13px;&quot; color=&quot;#b20000&quot;&gt;&lt;b&gt;watch&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="138.9977837614736" y="498.99809610189664" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-80" value="" style="group" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="270" y="-10" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-39" value="KServe" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Red Hat Text;fontStyle=1" vertex="1" parent="wKwqxUoDFulItXsNiEHh-80">
+          <mxGeometry width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-40" value="" style="group;fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="wKwqxUoDFulItXsNiEHh-80">
+          <mxGeometry y="40" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-41" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-40">
+          <mxGeometry y="-10" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-42" value="Model" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-40">
+          <mxGeometry x="10.600000000000001" y="6.833333333333334" width="116.60000000000001" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-43" value="Model" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-40">
+          <mxGeometry x="16.96" y="12.666666666666668" width="120.84" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-44" value="Model" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-40">
+          <mxGeometry x="25.44" y="18.5" width="122.96000000000001" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-45" value="&lt;font&gt;&lt;i&gt;InferenceService&lt;/i&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-40">
+          <mxGeometry x="32.86" y="25.5" width="127.14" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-81" value="" style="group" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="270" y="-141" width="180" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-82" value="ModelMesh" style="text;html=1;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Red Hat Text;fontStyle=1" vertex="1" parent="wKwqxUoDFulItXsNiEHh-81">
+          <mxGeometry width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-83" value="" style="group;fontFamily=Red Hat Text;" vertex="1" connectable="0" parent="wKwqxUoDFulItXsNiEHh-81">
+          <mxGeometry y="40" width="180" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-84" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-83">
+          <mxGeometry y="-10" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-85" value="Model" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-83">
+          <mxGeometry x="10.600000000000001" y="6.833333333333334" width="116.60000000000001" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-86" value="Model" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-83">
+          <mxGeometry x="16.96" y="12.666666666666668" width="120.84" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-87" value="Model" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-83">
+          <mxGeometry x="25.44" y="18.5" width="122.96000000000001" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-88" value="&lt;font&gt;&lt;i&gt;InferenceService&lt;/i&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Red Hat Text;" vertex="1" parent="wKwqxUoDFulItXsNiEHh-83">
+          <mxGeometry x="32.86" y="25.5" width="127.14" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-89" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.829;entryY=-0.017;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#009900;startArrow=classic;startFill=1;" edge="1" parent="1" source="wKwqxUoDFulItXsNiEHh-34" target="wKwqxUoDFulItXsNiEHh-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wKwqxUoDFulItXsNiEHh-90" value="manage" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#009900;fontSize=13;fontFamily=Red Hat Text;fontStyle=1" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="145" y="213" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
