@@ -75,6 +75,21 @@ spec:
       storageUri: gs://kfserving-examples/models/sklearn/1.0/model
 ```
 
+## Authentication
+
+Each TAS will have two associated `Services`:
+
+- `$(metadata.name)-service` (1)
+- `$(metadata.name)-tls` (2)
+
+(1) will have no route associated with it, and will be used for internal communication between the IS and the TAS. This service does not support authentication or TLS at the moment (2) will be exposed via a `Route`, supports TLS and will be used for OAuth authentication.
+
+Request to (2) will be authenticated using a bearer token in the request header, `Authorization: Bearer <token>`. These requests will be forwarded to the OAuth container (running `oauth-proxy`[^oauth-proxy]) for authentication. If the token is valid, the request will be forwarded to the TrustyAI service container.
+
+Requests to (1) will not be authenticated, and will be forwarded directly to the TrustyAI service container.
+
+
 
 [^operator]: [TrustyAI Operator repository](https://github.com/trustyai-explainability/trustyai-service-operator).
 [^kserveis]: Example IS taken from [KServe's documentation](https://kserve.github.io/website/0.11/modelserving/logger/logger/#create-message-dumper).
+[^oauth-proxy]: [OAuth Proxy repository](https://github.com/openshift/oauth-proxy)
