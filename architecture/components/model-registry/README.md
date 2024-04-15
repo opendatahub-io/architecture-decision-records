@@ -46,7 +46,7 @@ Enforcing of RBAC policies can be handled at the REST API layer using service ac
     - Get a catalog of models
     - Manage the deployment statutes of a model
   
-  - The REST API server converts its requests into one or more underlaying gRPC requests on the MLMD Server. This layer is mainly designed to be used with UI.
+  - The REST API server converts its requests into one or more underlying gRPC requests on the MLMD Server. This layer is mainly designed to be used with UI.
 
 - *[Model Registry Controller](https://github.com/opendatahub-io/model-registry-operator)*
   - Model Registry controller is also called Model Registry Operator. The main purpose of this component is to install/deploy components of the Model Registry stack on the OpenShift. Once the components are installed, the reconciler in the controller will continuously run and monitor these components to keep them healthy and alive. 
