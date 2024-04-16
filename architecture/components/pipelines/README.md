@@ -10,7 +10,13 @@ Data Science Pipelines is a platform for building and deploying portable, scalab
 * This CRD is responsible for defining the configuration of the Data Science Pipelines stack.
 
 ## DSP High Level Architecture
-![DSP High Level Architecture](dsp-v2-high-level-architecture.png)
+![DSP High Level Architecture](./dsp-v2-high-level-architecture.png)
 
 ## DSP Detailed Architecture
-![DSP Detailed Architecture](dsp-v2-architecture.drawio.png)
+![DSP Detailed Architecture](./dsp-v2-architecture.drawio.png)
+
+## Kubeflow Pipelines Architecture references
+
+[Kubeflow Pipelines v2 System Design](https://docs.google.com/document/d/1fHU29oScMEKPttDA1Th1ibImAKsFVVt2Ynr4ZME05i0/edit) -- goes into deeper detail for the data plane design. The Orchestration section in that document is particularly helpful.
+
+[KFP v2 control flow](https://docs.google.com/document/d/1TZeZtxwPzAImIu8Jk_e-4otSx467Ckf0smNe7JbPReE/edit)
