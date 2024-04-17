@@ -22,7 +22,7 @@ the configuration
 
 
 ## Platform Architecture Overview
-![](Platform Architecture Overview.png)
+![Platform Architecture Overview](./Platform%20Architecture%20Overview.png)
 
-## Authroeization in ServiceMesh
-![](Authorization in Service Mesh.png)
+## Authorization in ServiceMesh
+![Authorization in ServiceMesh](./Authorization%20in%20Service%20Mesh.png)
