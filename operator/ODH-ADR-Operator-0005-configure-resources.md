@@ -47,9 +47,15 @@ fields will not be overwritten by the operator.
 ## Stakeholder Impacts
 
 | Group                   | Key Contacts                                                   | Impacted? |
-| ----------------------- |----------------------------------------------------------------|--------|
-| Platform                | [Landon LaSmith](@LaVLas), [Edson Tirelli](@etirelli)                   | Yes    |
-| Model Serving           | [Daniel Zonca](@danielezonca), [Edgar Hernández](@israel-hdez) | Yes    |
+| ----------------------- |----------------------------------------------------------------|-----------|
+| Platform                | [Landon LaSmith](@LaVLas), [Edson Tirelli](@etirelli)          | Yes       |
+| Model Serving           | [Daniel Zonca](@danielezonca), [Edgar Hernández](@israel-hdez) | Yes       |
+| ODH Dashboard Team    | @andrewballantyne                                              | ?         |
+| IDE Team              | @harshad16                                                     | ?         |
+| DS Pipelines Team     | @HumairAK                                                      | ?         |
+| Serving Team          | @Jooho                                                         |  ?        |
+| TrustyAI Team         | @RobGeada                                                      | ?         |
+| Distributed Workloads | @dimakis                                                       | ?         |
 
 ## References
 
