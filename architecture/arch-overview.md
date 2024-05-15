@@ -33,12 +33,7 @@ Services
     Customer-facing dashboard presenting components as a single unified
     experience
 
-    -   Core components included as supported functionality within RHOAI
-
-        - Data Science Projects
-        - Notebook spawner
-        - RHOAI Administration
-        - Model Serving
+    -   [Core components included as supported functionality within RHOAI](./components/dashboard/README.md#supported-components)
 
     -   Integrated Red Hat applications such as Red Hat OpenShift API Management
 
@@ -103,10 +98,11 @@ API
 
     - Dashboard
 
-        -   odhdashboardconfigs.opendatahub.io
-        -   odhapplications.dashboard.opendatahub.io
-        -   odhdocuments.dashboard.opendatahub.io
-        -   odhquickstarts.console.openshift.io
+        -   [odhdashboardconfigs.opendatahub.io](./components/dashboard/README.md#odhdashboardconfig-singleton)
+        -   [odhapplications.dashboard.opendatahub.io](./components/dashboard/README.md#odhapplication)
+        -   [odhdocuments.dashboard.opendatahub.io](./components/dashboard/README.md#odhdocument)
+        -   [odhquickstarts.console.openshift.io](./components/dashboard/README.md#odhquickstart)
+        -   [acceleratorprofiles.dashboard.opendatahub.io](./components/dashboard/README.md#acceleratorprofiles)
 
     - Notebooks
 
