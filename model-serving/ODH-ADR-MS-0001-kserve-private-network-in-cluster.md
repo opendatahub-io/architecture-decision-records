@@ -20,7 +20,7 @@ Customers deploying ODH/RHOAI on OpenShift Cluster do not expect to include thei
 
 ## Goals
 - Pods without an Istio sidecar should have access to the isvc endpoint.
-- Ensure a seamless transition for users from ModelMash to KServe.
+- Ensure a seamless transition for users from ModelMesh to KServe.
 - Implement a stable and tested solution.
 
 ## Non-Goals
@@ -36,17 +36,17 @@ The new Istio ingress gateway would only be used for internal requests.
 - i.e. we build on top of Knative routing needs (or we chain KServe routing needs with Knative ones)
 - The ISTIO_MUTUAL configuration on knative-local-gateway is no longer an issue.
 - Since both KServe and Knative gateways belong to the mesh, they can use mTLS.
-- KServe gateway would be capable of listening either to plain HTTP, or have a TLS-simple configuration.
+- KServe gateway would be capable of a TLS-simple configuration.
 
 ![proposed architecture](./images/ODH-ADR-MS-0001-kserve-private-network-in-cluster-img-1.png)  
 
 ## Open Questions
 Does UI need to add a URL for private?
-Does Knative/istio team support the proposed way?
-Can Service Mesh team make the solution more efficient? 
+Does Serverless/ServiceMesh team support the proposed way?
+Can ServiceMesh team make the solution more efficient? 
 
 ## Alternatives
-Knative team members designed the solution below for consideration. The benefit of the solution being in Knative layer is sharing tests coverage within the component and have lighter the ODH/KServe layer on top of it. This alternative solution is not available in Knative yet and may take a time to be done, so it can be considerable in the future once available. In contrast, the main solution proposed in this document is for the short term in ODH releases.
+Knative team members designed the solution below for consideration. The benefit of the solution being in Knative layer is sharing tests coverage within the component and have lighter the ODH/KServe layer on top of it. This alternative solution is not available in Knative yet and it requires a new component `cert-manager`. Therefore, it may take a time to be done, so it can be considerable in the future once available. In contrast, the main solution proposed in this document is for the short term in ODH releases.
 
 ![alternative architecture](./images/ODH-ADR-MS-0001-kserve-private-network-in-cluster-img-2.png)  
 
@@ -75,7 +75,8 @@ Knative team members designed the solution below for consideration. The benefit 
 | Jooho Lee             | Jun 3, 2024 | Approved |       |
 | Edgar Hernandez       | Jun 3, 2024 | Approved |       |
 | Alessandro Lazarotti  | Jun 3, 2024 | Approved |       |
-| Reto Lehmann          |             |          |       |
+| Daniele Zonca         | Jun 3, 2024 | Approved |       |
+| Reto Lehmann          | Jun 3, 2024 | Approved |       |
 | Lukas Berk            |             |          |       |
 | Stavros Kontopoulos   |             |          |       |
 | Roland Huß            |             |          |       |
