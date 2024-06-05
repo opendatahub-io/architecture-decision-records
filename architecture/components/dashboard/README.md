@@ -1,11 +1,15 @@
 # Dashboard
 
+> These docs are best viewed in Dark Mode. Improvements for Light Mode are coming soon.
+
 The Dashboard is the primary UI provided for OpenShift AI. The Dashboard serves as a [thin-layer of UI](#the-thin-wrapped-layer) functionality to interact with the flows provided through OpenShift AI. 
 
 * [Architecture](#architecture)
     * [Overview](#overview)
     * [Feature Types](#feature-types)
     * [The Thin Wrapped Layer](#the-thin-wrapped-layer)
+* [Configuring & Interacting with the Dashboard](#configuring--interacting-with-the-dashboard)
+* [How Dashboard Stores Data](#how-dashboard-stores-data)
 * [User Access - Permissions](#user-access---permissions)
 * [Supported Components](#supported-components)
 * [Projects - OpenShift vs Data Science Differences](#projects---openshift-console-vs-data-science-differences)
@@ -51,9 +55,25 @@ Features that use this model are (some examples):
 
 ### The Thin Wrapped Layer
 
-The Dashboard does not watch resources and it does not manage the lifecycle of them (not even CRD variants we own). We simply CRUD data at runtime (when the user reaches a page or the backend node instance/pod starts up).
+The Dashboard does not watch resources, so it does not manage the lifecycle of them (not even CRD variants we own). We simply CRUD data at runtime (when the user reaches a page or the backend node instance/pod starts up).
 
 All functionality to do something complex is driven by backend components and not something the Dashboard ever owns. From a stack perspective, Dashboard is not required to use our API / features and thus cannot be the glue to make it happen.
+
+## Configuring & Interacting with the Dashboard
+
+The Dashboard does not expose direct API, rest or otherwise. Our Pod HTTPS endpoints are a Tier 4 API system (not for external consumption), and thus not intended for anyone to use other than our frontend UI client.
+
+However, the dashboard has some ways to configure it and how we will store information the user does internally, which most of the time can be configured externally if desired.
+
+Read more about the specifics in [Configuring the Dashboard](./configuringDashboard.md)
+
+## How Dashboard Stores Data
+
+The Dashboard does not contain a self-storage (eg. DBs, in-memory caches[1], etc). We use K8s resources for storage for all things shared between users. We also use some browser storage to maintain user preferences.
+
+> [1] Note: The dashboard has a 2-min in-memory cache of some resources to help with performance; these are copies of on-cluster resources and not unique storages.
+
+Read more details about our storage mechanisms in [Dashboard Storage Mechanisms](./dashboardStorage.md)
 
 ## User Access - Permissions
 
@@ -116,11 +136,12 @@ Short answer: **There is no difference**. All projects the user has access to is
 More details:
 
 * Initially there was an intent to have Projects created by the Dashboard to have specific flows to provide to users; this since has become a point of confusion and frustration trying to extend existing Projects
-* Projects created in the Dashboard have a `openshift.io/dashboard` label to indicate they are Dashboard Data Science Projects
-    * Note: This concept is deprecated, it is adding no value and is adding confusion to the concept of "what is a DS Project"
+* Projects created in the Dashboard have a `opendatahub.io/dashboard` label to indicate they are Dashboard Data Science Projects
 * Some namespaces are ignored despite permissions, these are namespaces that are not intended for data science flows (infrastructure namespaces, configuration namespaces, etc)
-* Most resources within projects have the `openshift.io/dashboard` label to help indicate their intent for Data Science flows
+* Most resources within projects have the `opendatahub.io/dashboard` label to help indicate their intent for Data Science flows
     * Note: There is a goal to reduce this to pure K8s resources and all AI custom resources (Notebook, ServingRuntimes, InferenceServices, etc) should not need the label 
+
+> Note: You can read more about `opendatahub.io/dashboard` in [Dashboard K8s Labels & Annotations](./k8sLabelsAndAnnotations.md#opendatahubiodashboard)
 
 ## Dashboard Custom Resource Definitions (CRDs)
 
