@@ -17,6 +17,8 @@ Data Science Pipelines is a platform for building and deploying portable, scalab
 
 ## Kubeflow Pipelines Architecture references
 
+Note: you must join https://groups.google.com/g/kubeflow-discuss to access these documents
+
 [Kubeflow Pipelines v2 System Design](https://docs.google.com/document/d/1fHU29oScMEKPttDA1Th1ibImAKsFVVt2Ynr4ZME05i0/edit) -- goes into deeper detail for the data plane design. The Orchestration section in that document is particularly helpful.
 
 [KFP v2 control flow](https://docs.google.com/document/d/1TZeZtxwPzAImIu8Jk_e-4otSx467Ckf0smNe7JbPReE/edit)
