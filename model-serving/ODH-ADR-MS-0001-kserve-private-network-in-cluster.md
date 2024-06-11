@@ -77,14 +77,7 @@ Knative team members designed the solution below for consideration. The benefit 
 | Alessandro Lazarotti  | Jun 3, 2024 | Approved |       |
 | Daniele Zonca         | Jun 3, 2024 | Approved |       |
 | Reto Lehmann          | Jun 3, 2024 | Approved |       |
-| Lukas Berk            |             |          |       |
-| Stavros Kontopoulos   |             |          |       |
-| Roland Huß            |             |          |       |
 | Rob Cernich           |             |          |       |
-| Bartosz Majsak        |             |          |       |
-| Aslak Knutsen         |             |          |       |
-| Andrew Ballantyne     |             |          |       |
 | Lucas Fernadez aragon |             |          |       |
-| Vince Conzola         |             |          |       |
 | Vaishnavi Hire        |             |          |       |
 | Wen Zhou              |             |          |       |
