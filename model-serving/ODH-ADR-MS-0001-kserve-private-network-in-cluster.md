@@ -78,6 +78,6 @@ Knative team members designed the solution below for consideration. The benefit 
 | Daniele Zonca         | Jun 3, 2024 | Approved |       |
 | Reto Lehmann          | Jun 3, 2024 | Approved |       |
 | Rob Cernich           |             |          |       |
-| Lucas Fernadez aragon |             |          |       |
+| Lucas Fernadez aragon | Jun 12, 2024| Approved |       |
 | Vaishnavi Hire        |             |          |       |
 | Wen Zhou              |             |          |       |
