@@ -1,13 +1,14 @@
 # Open Data Hub - Architecture Decision Record template
 
 <!-- copy and paste this template to start authoring your own ADR -->
+<!-- for the Status of new ADRs, please use Approved, since it will be approved by the time it is merged -->
 <!-- remove this comment block too -->
 
 |                |            |
 | -------------- | ---------- |
 | Date           | insert data |
 | Scope          | |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | [name](@github-username) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
