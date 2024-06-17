@@ -13,28 +13,28 @@
 
 ## What
 
-This document outlines the requirements for each individual component before General Availability (set to 'Managed' in DSC CR by default) requires API stability (as on Stable level)
+This document outlines the requirements for each individual component before General Availability (set to 'Managed' in DSC CR by default) requires Kubernetes CRD API stability (as on Stable level)
 
 ## Why
 
-This guidance aims to mitigate risks to tier-0 components from non-backwards compatible API changes for Beta level.
+This guidance aims to mitigate risks to tier-0 components from non-backwards compatible Kubernetes API changes for Beta level.
 
 ## Goals
 
-- Ensure that all components have their API versions on Stable level.
+- Ensure that all components have their Kubernetes API versions on Stable level.
 - Enforce compliance with this guidance for all components.
 - Make adherence to this guidance a prerequisite for downstream offerings.
-- Minimize the need to fork upstream projects to integrate API into opendatahub.io group.
+- Minimize the need to fork upstream projects to integrate Kubernetes API into opendatahub.io group.
 
 ## Non-Goals
 
-- This ADR is specifically intendeded for ODH tier-0 components and focus on the API in opendatahub.io group.
+- This ADR is specifically intendeded for ODH tier-0 components and focus on the Kubernetes API in opendatahub.io group.
 - For components with CRDs from their upstream projects, we aim to maintain Beta level versions when the component reaches tier-0. However, we will need to support all available versions for a certain period as part of the deprecation window.
 
 ## How
 
-To capture API we have in ODH with the current version 2.11.0
-| Component             | Kind                  | Group                             | Version | CRD
+To capture Kubernetes API we have in ODH with the current version 2.11.0
+| Component             | Kind                  | Group                             | Version | CRD |
 | --------------------- | --------------------- | --------------------------------- | -- | ----------------------------------------------------- |
 | Platform              | DSCInitialization     | dscinitialization.opendatahub.io  | v1 | dscinitializations.dscinitialization.opendatahub.io   |
 | Platform              | DataScienceCluster    | datasciencecluster.opendatahub.io | v1 | datascienceclusters.datasciencecluster.opendatahub.io |
