@@ -1,4 +1,4 @@
-# Open Data Hub - opendatahub.io API version guidence
+# Open Data Hub - opendatahub.io API version guidance
 
 |                |                                  |
 | -------------- |----------------------------------|
