@@ -66,12 +66,13 @@ N/A
 |-----------------------|------------------------------|---|
 | Platform              | @VaishnaviHire/@LaVLas       | ? |
 | ODH Dashboard Team    | @andrewballantyne/@lucferbux | Yes |
-| DS Pipelines Team     | @anishasthana/@HumairAK      | ? |
-| TrustyAI Team         | @RobGeada/@ruivieira         | ? |
-| Model Registry Team   | @dhirajsb                    | ? |
+| DS Pipelines Team     | @anishasthana/@HumairAK      | Yes |
+| TrustyAI Team         | @RobGeada/@ruivieira         | Yes |
+| Model Registry Team   | @dhirajsb                    | Yes |
 
 ## Reviews
 
-| Reviewed by   | Date       | Notes |
-|---------------|------------| ------|
-| XXX           | 2024-MM-DD | ?     |
+| Reviewed by       | Date       | Notes |
+|------------------ |------------| ------|
+| @andrewballantyne | 2024-05-30 | ------|
+| @ruivieira        | 2024-06-17 | ------|
