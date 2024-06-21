@@ -40,11 +40,6 @@ The new Istio ingress gateway would only be used for internal requests.
 
 ![proposed architecture](./images/ODH-ADR-MS-0001-kserve-private-network-in-cluster-img-1.png)  
 
-## Open Questions
-Does UI need to add a URL for private?
-Does Serverless/ServiceMesh team support the proposed way?
-Can ServiceMesh team make the solution more efficient? 
-
 ## Alternatives
 Knative team members designed the solution below for consideration. The benefit of the solution being in Knative layer is sharing tests coverage within the component and have lighter the ODH/KServe layer on top of it. This alternative solution is not available in Knative yet and it requires a new component `cert-manager`. Therefore, it may take a time to be done, so it can be considerable in the future once available. In contrast, the main solution proposed in this document is for the short term in ODH releases.
 
@@ -70,14 +65,13 @@ Knative team members designed the solution below for consideration. The benefit 
 
 # Reviews
 
-| Reviewed by           | Date        | Approval | Notes |
-| --------------------- | ----------- | -------- | ----- |
-| Jooho Lee             | Jun 3, 2024 | Approved |       |
-| Edgar Hernandez       | Jun 3, 2024 | Approved |       |
-| Alessandro Lazarotti  | Jun 3, 2024 | Approved |       |
-| Daniele Zonca         | Jun 3, 2024 | Approved |       |
-| Reto Lehmann          | Jun 3, 2024 | Approved |       |
-| Rob Cernich           |             |          |       |
-| Lucas Fernadez aragon | Jun 12, 2024| Approved |       |
-| Vaishnavi Hire        |             |          |       |
-| Wen Zhou              |             |          |       |
+| Reviewed by           | Date         | Approval | Notes |
+| --------------------- | -----------  | -------- | ----- |
+| Jooho Lee             | Jun 3, 2024  | Approved |       |
+| Edgar Hernandez       | Jun 3, 2024  | Approved |       |
+| Alessandro Lazarotti  | Jun 3, 2024  | Approved |       |
+| Daniele Zonca         | Jun 3, 2024  | Approved |       |
+| Reto Lehmann          | Jun 3, 2024  | Approved |       |
+| Rob Cernich           | Jun 18, 2024 | Approved |       |
+| Lucas Fernadez aragon | Jun 12, 2024 | Approved |       |
+| Wen Zhou              |              |          |       |
