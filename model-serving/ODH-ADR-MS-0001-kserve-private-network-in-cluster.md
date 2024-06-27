@@ -74,4 +74,4 @@ Knative team members designed the solution below for consideration. The benefit 
 | Reto Lehmann          | Jun 3, 2024  | Approved |       |
 | Rob Cernich           | Jun 18, 2024 | Approved |       |
 | Lucas Fernadez aragon | Jun 12, 2024 | Approved |       |
-| Wen Zhou              |              |          |       |
+| Wen Zhou              | Jun 27, 2024 | Approved |       |
