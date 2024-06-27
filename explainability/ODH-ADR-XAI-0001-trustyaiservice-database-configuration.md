@@ -4,8 +4,8 @@
 | -------------- |------------------------------------------------------------------|
 | Date           | 8 Jun 2024                                                       |
 | Scope          | Explainability                                                   |
-| Status         | Review                                                           |
-| Authors        | [Rui Vieira](https://github.com/ruivieira)                                         |
+| Status         | Approved                                                         |
+| Authors        | [Rui Vieira](https://github.com/ruivieira)                       |
 | Supersedes     | N/A                                                              |
 | Superseded by: | N/A                                                              |
 | Tickets        | [Tracking Issue](https://issues.redhat.com/browse/RHOAIENG-8178) |
