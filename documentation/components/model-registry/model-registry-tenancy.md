@@ -1,6 +1,6 @@
 # Model Registry Tenancy
 
- OpenShift AI deploys components per RedHat OpenShift AI Project. In this model, all OpenShift AI components are deployed per Project (K8s namespace) (except for Dashboard, which is per-cluster).   
+ OpenShift AI deploys components per RedHat OpenShift AI Project. In this model, all OpenShift AI components are deployed per Project (Kubernetes namespace) (except for Dashboard, which is per-cluster).   
 
 Model Registry needs to support sharing ML Model metadata across multiple projects/environments, etc. The current RHOAI per-namespace deployment model uses “namespaces” as the tenant, i.e. any users or service accounts that are members of that namespace share all data as a single tenant. Ideally, there should be a _logical_ tenancy model that allows users to group ML Model development based on teams, groups, or organizations, independent of the underlying Kubernetes deployment architecture. 
 
@@ -29,7 +29,7 @@ clients could be either human users that have authenticated with their user cred
 
 ## Deployment Architecture - Use Service Mesh and Authorino for RBAC
 
-This architecture calls for deploying the Model Registry deployment(s) in a known namespace such as “odh-model-registries”, where OpenShift AI administrators can provision any number of Model Registries with a unique name. For example, the administrator can install a single Model Registry called “public” and configure its permissions such that any authenticated user to the k8s cluster has access to its APIs. Similarly, another instance can be configured to be accessible to a set of known users/groups. 
+This architecture calls for deploying the Model Registry deployment(s) in a known namespace such as “odh-model-registries”, where OpenShift AI administrators can provision any number of Model Registries with a unique name. For example, the administrator can install a single Model Registry called “public” and configure its permissions such that any authenticated user to the Kubernetes cluster has access to its APIs. Similarly, another instance can be configured to be accessible to a set of known users/groups. 
 
 The namespace “odh-model-registries” will be automatically signed up as a member of the service mesh and all the model registry deployments will be configured to run an envoy proxy as a sidecar component. 
 
@@ -46,15 +46,14 @@ The diagram below shows the RBAC proxy deployment model:
 
 Model Registry Operator will create the following:
 
-K8s Role "RegistryUser&lt;registry-name&gt;" that allows the verb *Get* on the Kubernetes service created for "&lt;registry-name&gt;". This role will make it convenient for users, group, and service accounts to be granted access to a specific Model Registry service. 
-
-The Model Registry operator will also create a user group called "Group&lt;registry-name&gt;" with a binding to "RegistryUser&lt;registry-name&gt;" to help namespace administrators easily add users to this group and grant them access to the registry. 
+* Kubernetes Role `registry-user-<registry-name>` - allows the verb `GET` on the Kubernetes service created for `registry-name`. This role will make it convenient for users, group, and service accounts to be granted access to a specific Model Registry service. 
+* OpenShift User Group `<registry-name>-users` - with role binding to role `registry-user-<registry-name>` to help registry administrators easily add users to this group and grant them access to the registry. 
 
 Using the above two resources to handle the access permissions, Model Registry creates the tenancy model.
 
 ### Multiple “Model Registry” deployments in OpenShift AI
 
-This is the prescribed deployment model for multiple Model Registries in the MVP release with tenancy model. The tenncy is enforced with RBAC access to given instance of the Model Registry.
+This is the prescribed deployment model for multiple Model Registries in the MVP release with tenancy model. The tenancy is enforced with RBAC access to given instance of the Model Registry.
 
 ![alt_text](images/model-registry-tenancy-model.png "image_tooltip")
 
