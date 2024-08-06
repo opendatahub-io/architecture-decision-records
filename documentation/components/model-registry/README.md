@@ -10,7 +10,7 @@
 A model registry plays a pivotal role in the lifecycle of AI/ML models, serving as the central repository holding metadata pertaining to machine learning models from inception to deployment. This encompasses both high-level details like deployment environment and project origins, as well as intricate information like training hyperparameters, performance metrics, and deployment events. Acting as a bridge between model experimentation and serving, it offers a secure, collaborative interface of a metadata store for stakeholders involved in the ML lifecycle.
 
 ## Model Registry High Level Architecture 
-![Model Registry High Level Architecture](./model-registry-overview.jpg)
+![Model Registry High Level Architecture](./images/model-registry-overview.jpg)
 
 > [!NOTE]  
 > The Model Registry is a passive repository for metadata and is not meant to be a Control Plane. It does not perform any orchestration or expose APIs to perform actions on underlying OpenShift AI components. 
@@ -31,9 +31,9 @@ The model registry uses the ml-metadata project’s C++ server as-is to handle t
 - Python/Go extensions to support the Model Registry interaction
 - an OpenAPI interface to expose the Model Registry API to the clients
 
-![Model Registry Connections](./model-registry-connections.png)
+![Model Registry Connections](./images/model-registry-connections.png)
 
-Enforcing of RBAC policies can be handled at the REST API layer using service accounts with Authorino, which is currently not supported by ml-metadata (more details about ODH Auth strategy ODH OSSM Design).
+Enforcing of RBAC policies can be handled at the REST API layer using service accounts with Authorino, details about [RBAC and Tenancy](model-registry-tenancy.md) are described here.
 
 ## Components
 - *[MLMD C++ Server](https://github.com/google/ml-metadata)*
