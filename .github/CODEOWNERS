@@ -1,0 +1,22 @@
+# Assigning ownership for specific files or directories
+# Syntax: <file or directory path> <GitHub username or team>
+
+# Assigning ownership for all files in a directory
+# Syntax: <directory path>/* <GitHub username or team>
+
+# Assigning ownership for all files in a repository
+# Syntax: * <GitHub username or team>
+
+* @opendatahub-io/Architects
+
+/documentation/components/dashboard/* @opendatahub-io/Architects @opendatahub-io/ODH\ Dashboard\ Developers
+/documentation/components/devops/* @opendatahub-io/Architects @opendatahub-io/Platform
+/documentation/components/distributed-workloads/* @opendatahub-io/Architects @opendatahub-io/Distributed\ Workloads\ Members
+/documentation/components/edge/* @opendatahub-io/Architects @opendatahub-io/Platform
+/documentation/components/explainability/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
+/documentation/components/model-registry/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
+/documentation/components/pipelines/* @opendatahub-io/Architects @opendatahub-io/Data\ Science\ Pipelines\ Maintainers
+/documentation/components/platform/* @opendatahub-io/Architects @opendatahub-io/ODH\ Platform\ Members
+/documentation/components/serving/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
+/documentation/components/workbenches/* @opendatahub-io/Architects @opendatahub-io/Exploring\ Team
+
