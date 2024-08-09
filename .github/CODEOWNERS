@@ -9,14 +9,14 @@
 
 * @opendatahub-io/Architects
 
-/documentation/components/dashboard/* @opendatahub-io/Architects @opendatahub-io/ODH\ Dashboard\ Developers
+/documentation/components/dashboard/* @opendatahub-io/Architects @opendatahub-io/Exploring\ Team
 /documentation/components/devops/* @opendatahub-io/Architects @opendatahub-io/Platform
-/documentation/components/distributed-workloads/* @opendatahub-io/Architects @opendatahub-io/Distributed\ Workloads\ Members
+/documentation/components/distributed-workloads/* @opendatahub-io/Architects @opendatahub-io/Training\ \&\ Experimentation
 /documentation/components/edge/* @opendatahub-io/Architects @opendatahub-io/Platform
 /documentation/components/explainability/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
 /documentation/components/model-registry/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
-/documentation/components/pipelines/* @opendatahub-io/Architects @opendatahub-io/Data\ Science\ Pipelines\ Maintainers
-/documentation/components/platform/* @opendatahub-io/Architects @opendatahub-io/ODH\ Platform\ Members
+/documentation/components/pipelines/* @opendatahub-io/Architects @opendatahub-io/Training\ \&\ Experimentation
+/documentation/components/platform/* @opendatahub-io/Architects @opendatahub-io/Platform
 /documentation/components/serving/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
 /documentation/components/workbenches/* @opendatahub-io/Architects @opendatahub-io/Exploring\ Team
 
