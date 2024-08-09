@@ -7,16 +7,16 @@
 # Assigning ownership for all files in a repository
 # Syntax: * <GitHub username or team>
 
-* @opendatahub-io/Architects
+* @opendatahub-io/architects
 
 /documentation/components/dashboard/* @opendatahub-io/architects @opendatahub-io/exploring-team
-/documentation/components/devops/* @opendatahub-io/Architects @opendatahub-io/Platform
-/documentation/components/distributed-workloads/* @opendatahub-io/Architects @opendatahub-io/Training\ \&\ Experimentation
-/documentation/components/edge/* @opendatahub-io/Architects @opendatahub-io/Platform
-/documentation/components/explainability/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
-/documentation/components/model-registry/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
-/documentation/components/pipelines/* @opendatahub-io/Architects @opendatahub-io/Training\ \&\ Experimentation
-/documentation/components/platform/* @opendatahub-io/Architects @opendatahub-io/Platform
-/documentation/components/serving/* @opendatahub-io/Architects @opendatahub-io/Model\ Serving
-/documentation/components/workbenches/* @opendatahub-io/Architects @opendatahub-io/Exploring\ Team
+/documentation/components/devops/* @opendatahub-io/architects @opendatahub-io/platform
+/documentation/components/distributed-workloads/* @opendatahub-io/architects @opendatahub-io/training-experimentation
+/documentation/components/edge/* @opendatahub-io/architects @opendatahub-io/platform
+/documentation/components/explainability/* @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/model-registry/* @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/pipelines/* @opendatahub-io/architects @opendatahub-io/training-experimentation
+/documentation/components/platform/* @opendatahub-io/architects @opendatahub-io/platform
+/documentation/components/serving/* @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/workbenches/* @opendatahub-io/architects @opendatahub-io/exploring-team
 
