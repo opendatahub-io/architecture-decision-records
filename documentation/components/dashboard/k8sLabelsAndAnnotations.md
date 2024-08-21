@@ -4,6 +4,7 @@
 [`openshift.io/description`]: #openshiftiodescription
 [`opendatahub.io/recommended-accelerators`]: #opendatahubiorecommended-accelerators
 [`opendatahub.io/accelerator-name`]: #opendatahubioaccelerator-name
+[`opendatahub.io/sc-config`]: #opendatahubiosc-config
 
 # Dashboard K8s Labels & Annotations
 
@@ -20,12 +21,14 @@ Dashboard has a reputation of using a lot of annotations and labels on various r
   * [`openshift.io/description`]
   * [`opendatahub.io/recommended-accelerators`]
   * [`opendatahub.io/accelerator-name`]
+  * [`opendatahub.io/sc-config`]
 * [Specific Use-Cases](#specific-use-cases)
   * [DS Projects](#data-science-projects)
   * [Data Connections](#data-connections)
   * [ImageStreams](#imagestreams)
   * [Notebooks](#notebooks)
   * [ServingRuntime Templates](#servingruntime-templates)
+  * [Storage Classes](#storage-classes)
 
 ## Common Labels
 
@@ -77,6 +80,21 @@ This annotation is what we use to suggest a recommended connection between a res
 This annotation is what we use to relate back to an accelerator profile. This is metadata to help with reselection of the right accelerator profile in read & edit modes. This is needed as a way to convert back from the resource values used to the proper profile the user selected. We have a fallback for legacy support for Nvidia GPU, but everything else will fail to locate a profile and show an intermediary custom profile that cannot be mutated in edit modes.
 
 If no accelerator was selected, this value should not appear.
+
+### opendatahub.io/sc-config
+
+> Type: object
+```js
+{
+    displayName: string;
+    isEnabled: boolean;
+    isDefault: boolean;
+    lastModified: string;
+    description?: string;
+}
+```
+
+This annotation is used as internal Dashboard metadata to describe, enable, and set which storage class is the default. This annotation does not affect Openshift default storage classes.
 
 ## Specific Use-Cases
 
@@ -151,3 +169,8 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * [`opendatahub.io/accelerator-name`]
   * `opendatahub.io/template-name` - the runtime used
   * `opendatahub.io/template-display-name` - the display name shown for the runtime
+
+### Storage Classes
+
+* Annotations
+  * [`opendatahub.io/sc-config`] - (managed by the UI) a JSON Blob of storage class metadata
