@@ -29,6 +29,7 @@ Dashboard has a reputation of using a lot of annotations and labels on various r
   * [Notebooks](#notebooks)
   * [ServingRuntime Templates](#servingruntime-templates)
   * [Storage Classes](#storage-classes)
+  * [Model Registry](#model-registry)
 
 ## Common Labels
 
@@ -174,3 +175,10 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
 
 * Annotations
   * [`opendatahub.io/sc-config`] - (managed by the UI) a JSON Blob of storage class metadata
+
+### Model Registry
+
+* Labels
+  * `opendatahub.io/rb-project-subject` - This label is used to distinguish RoleBindings with the group subject `system:serviceaccounts:{projectName}`, identifying them as specific to project service accounts. This allows us to use group RoleBindings separately for groups and projects, making sure they always appear in the view where they were created without relying on filtering by a string prefix.
+
+  * `modelregistry.opendatahub.io/registered-model-id` and `modelregistry.opendatahub.io/model-version-id` - These labels identify InferenceServices deployed via the model registry UI and get the Model Registry Controller to sync the deployment. They are also used to filter InferenceServices when viewing the list of deployments for a specific model version.
