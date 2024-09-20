@@ -2,10 +2,25 @@
 
 # Configuring the Dashboard
 
+* [The Big Picture](#the-big-picture)
 * [Configuring Features On/Off](#configuring-features-onoff)
   * [UI-K8s Features](#ui-k8s-feature-eg-ds-projects-feature)
   * [UI-Backend Component Features](#ui-backend-component-feature-eg-ds-pipelines-feature)
 * [Configuring Aspects of Features](#configuring-aspects-of-features)
+
+## The Big Picture
+
+![featureFlags.png](assets%2FfeatureFlags.png)
+
+- (1) The user accesses the dashboard from their computer
+  - (1a) They'll access the Dashboard route url
+  - (1b) The client is served resources specifically from one pod (irrespective of replica counts)
+  - (1c) This pod for all intensive purposes is the only thing the client sees & operates with
+- (2) All features use our "areas" concept (explained in more detail [below](#configuring-features-onoff))
+- (3) "Areas" fetches all needed settings from the cluster
+  - (3a) From the DSC & DSCI we get only `.status` values (this is typically only for features backed by a [OpenShift AI served backend](#ui-backend-component-feature-eg-ds-pipelines-feature))
+  - (3b) From our own OdhDashboardConfig, we will get our feature flags
+- (4) Every 2 minutes, each pod refreshes the internal cached state of the DashboardConfig (this delays any changes you do in this area)
 
 ## Configuring Features On/Off
 

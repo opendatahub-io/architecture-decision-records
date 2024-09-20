@@ -1,0 +1,142 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36" version="24.7.7">
+  <diagram name="Page-1" id="_F1Y5q_0cjQZbcs4WvlD">
+    <mxGraphModel dx="1512" dy="635" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-87" value="" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-110" y="280" width="890" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-52" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="310" y="320" width="450" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-60" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="320" y="470" width="420" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-39" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-40" y="554" width="250" height="178" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-72" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ZpG1sT2TVCUBfAVEROlj-36" target="ZpG1sT2TVCUBfAVEROlj-31">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-74" value="Refresh cache&lt;br&gt;(every 2 mins)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="ZpG1sT2TVCUBfAVEROlj-72">
+          <mxGeometry x="-0.3402" y="-1" relative="1" as="geometry">
+            <mxPoint x="10" y="-1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-36" value="" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="399" y="508" width="161" height="152" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-26" value="rhods-dashboard-{id}" style="shape=image;verticalLabelPosition=middle;labelBackgroundColor=default;verticalAlign=middle;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/labeled/pod.svg;labelPosition=right;align=left;" vertex="1" parent="1">
+          <mxGeometry x="380" y="490" width="47.39" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-31" value="OdhDashboardApplication&#xa;(odh-dashboard-config)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/unlabeled/crd.svg;" vertex="1" parent="1">
+          <mxGeometry x="618" y="612" width="68" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-34" value="OdhDashboardApplication&#xa;(cached)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/unlabeled/crd.svg;" vertex="1" parent="1">
+          <mxGeometry x="444" y="546" width="68" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-38" value="client browser" style="image;aspect=fixed;perimeter=ellipsePerimeter;html=1;align=center;shadow=0;dashed=0;spacingTop=3;image=img/lib/active_directory/laptop_client.svg;" vertex="1" parent="1">
+          <mxGeometry x="-70" y="524" width="54.5" height="60.56" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-57" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="ZpG1sT2TVCUBfAVEROlj-41" target="ZpG1sT2TVCUBfAVEROlj-34">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-58" value="Calls pod and&lt;div&gt;&lt;div&gt;gets cached value&lt;/div&gt;&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];labelBackgroundColor=none;" vertex="1" connectable="0" parent="ZpG1sT2TVCUBfAVEROlj-57">
+          <mxGeometry x="-0.2917" y="1" relative="1" as="geometry">
+            <mxPoint x="7" y="1" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-67" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="90" y="574" as="sourcePoint" />
+            <mxPoint x="550" y="382.9999999999999" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="90" y="383" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-71" value="Gets various&amp;nbsp;&lt;div&gt;stack information&lt;/div&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="ZpG1sT2TVCUBfAVEROlj-67">
+          <mxGeometry x="-0.6311" y="-4" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-41" value="&quot;Areas&quot;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="564" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-47" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;curved=1;" edge="1" parent="1" source="ZpG1sT2TVCUBfAVEROlj-42" target="ZpG1sT2TVCUBfAVEROlj-41">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="90" y="644" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-42" value="Feature&lt;br&gt;A" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="-30" y="644" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-48" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;curved=1;" edge="1" parent="1" source="ZpG1sT2TVCUBfAVEROlj-43" target="ZpG1sT2TVCUBfAVEROlj-41">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-43" value="Feature&lt;br&gt;B" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="644" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-49" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;curved=1;" edge="1" parent="1" source="ZpG1sT2TVCUBfAVEROlj-44" target="ZpG1sT2TVCUBfAVEROlj-41">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="100" y="624" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="180" y="624" />
+              <mxPoint x="90" y="624" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-51" value="Am I Enabled?" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="ZpG1sT2TVCUBfAVEROlj-49">
+          <mxGeometry x="0.1667" y="1" relative="1" as="geometry">
+            <mxPoint x="-36" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-44" value="Feature&lt;br style=&quot;font-size: 6px;&quot;&gt;n" style="rhombus;whiteSpace=wrap;html=1;fontSize=6;" vertex="1" parent="1">
+          <mxGeometry x="160" y="664" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-45" value="..." style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=17;" vertex="1" parent="1">
+          <mxGeometry x="120" y="669" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-59" value="redhat-ods-applications" style="shape=image;verticalLabelPosition=middle;labelBackgroundColor=default;verticalAlign=middle;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/labeled/ns.svg;labelPosition=right;align=left;" vertex="1" parent="1">
+          <mxGeometry x="320" y="444" width="47.39" height="46" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-65" value="" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/unlabeled/crd.svg;" vertex="1" parent="1">
+          <mxGeometry x="550" y="340" width="68" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-69" value="DSC &amp; DSCI&#xa;(cluster CRs)" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/unlabeled/crd.svg;" vertex="1" parent="1">
+          <mxGeometry x="560" y="350" width="68" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-70" value="K8s Cluster" style="shape=image;verticalLabelPosition=middle;labelBackgroundColor=default;verticalAlign=middle;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/infrastructure_components/unlabeled/control-plane.svg;labelPosition=right;align=left;" vertex="1" parent="1">
+          <mxGeometry x="288" y="290" width="68" height="66" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-76" value="2" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="140" y="612" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-77" value="1b" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="-90.00000000000001" y="516" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-79" value="3a" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="110" y="386" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-85" value="3b" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="250" y="534" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-86" value="1c" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="350" y="508" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-88" value="4" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="640" y="539.28" width="30" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-89" value="Dashboard&#xa;Route" style="shape=image;verticalLabelPosition=bottom;labelBackgroundColor=default;verticalAlign=top;aspect=fixed;imageAspect=0;image=https://raw.githubusercontent.com/kubernetes/community/0a485eaaa96a1e194b056cdaa2261f8f371d5891/icons/svg/resources/unlabeled/svc.svg;" vertex="1" parent="1">
+          <mxGeometry x="338.2099999999999" y="630" width="53.58" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="ZpG1sT2TVCUBfAVEROlj-91" value="1a" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="399" y="682" width="30" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
