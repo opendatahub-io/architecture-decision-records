@@ -99,6 +99,32 @@ There are a few exceptions that are mostly deprecated and have a desire to be re
     * All UI admin functionality is done by the Service Account despite the user maybe having valid permissions to do so
     * **Future Goal:** Empower those picked as Admins to have direct permissions & shift to a SSAR model for Admin views
 
+### Fundamental User Types
+
+**Note:** This is not a section to discuss user personas. This is the technical understanding on how users will be impacted and will consume data from the API in the UI.
+
+There are fundamentally 3 types of users to understand.
+
+1. Cluster Admins (`cluster-admin` role granted at the cluster level)
+   * Cluster admins on the OpenShift Cluster are read in as Product admins to the Dashboard
+   * They also have _all_ k8s permissions one can have
+   * It is expected that this type of user is extremely small in number due to the implicit security concerns it would mean to the cluster's cluster
+   * This is a k8s concept ([external docs](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#user-facing-roles))
+2. Product Admins
+   * Product admins, aka RHOAI Admins, are admins of the product who see `Settings` and who will be responsible for configuring the way Dashboard features work
+   * All functionality they have is done through our Service Account
+   * More information can be found in the [admins](#admins) section
+3. **Project** users
+   * aka just users with a project
+   * Without a project, these users are as basic as they come -- they should have no access to anything and permissions do anything
+   * This role concept can be combined with Product Admins today; combining it with Cluster Admins is expected to do nothing additional
+   * There are 3 variants to this:
+     1. **Admin**; can change permissions (invite/remove people from the project) & modify the name/description of the project
+     2. **Contributor** (aka Edit); Can do everything but what is explicitly noted for Admins 
+     3. **View**; We do not support this state -- but effectively they can change nothing and also cannot see secrets (Connections)
+
+**Note:** Self provisioning role is not covered in the list above -- assume this is separate of content in this section.
+
 ### Admins
 
 Admins today are determined by being in one of these groups:
