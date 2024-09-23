@@ -44,6 +44,8 @@ Features that impact all users or the Dashboard itself. These are only available
 * Serving Runtimes
     * These are stored as OpenShift Templates in the deployment namespace
       > Note: OpenShift Templates was an idea of future feature expansion and are not executed as OpenShift Templates today.
+* Connection Types
+    * These are stored as ConfigMaps in the deployment namespace
 
 ### Non-Admin Flows
 
@@ -51,9 +53,9 @@ Flows that can be performed by any user, provided the [feature is enabled](./con
 
 These are all stored as K8s resources using OCP or OpenShift AI backing CRDs.
 
-#### Data Connections
+#### Connections
 
-Data connections is a concept created by the Dashboard to store information relative to the user's Data Connection. This information is stored in a K8s secret of a specific structure:
+Connections is a concept created by the Dashboard to store information and enable users to connect to various data sources. This information is stored in a K8s secret. The data within these secrets conform to the schema defined within connection types. Connection types are predefined OOTB and can also be defined by an admin.
 
 ```yaml
 kind: Secret
@@ -76,4 +78,4 @@ data:
 type: Opaque
 ```
 
-See more information on the labels & annotations in the [Data Connection section of the K8s Labels & Annotations](./k8sLabelsAndAnnotations.md#data-connections)
+See more information on the labels & annotations in the [Connection section of the K8s Labels & Annotations](./k8sLabelsAndAnnotations.md#connections)
