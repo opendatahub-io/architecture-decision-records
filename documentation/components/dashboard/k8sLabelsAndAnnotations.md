@@ -24,7 +24,8 @@ Dashboard has a reputation of using a lot of annotations and labels on various r
   * [`opendatahub.io/sc-config`]
 * [Specific Use-Cases](#specific-use-cases)
   * [DS Projects](#data-science-projects)
-  * [Data Connections](#data-connections)
+  * [Connection Types](#connection-types)
+  * [Connections](#connections)
   * [ImageStreams](#imagestreams)
   * [Notebooks](#notebooks)
   * [ServingRuntime Templates](#servingruntime-templates)
@@ -111,15 +112,24 @@ This annotation is used as internal Dashboard metadata to describe, enable, and 
 For the Project Sharing feature specifically:
 * Label `opendatahub.io/project-sharing` is used to denote permissions crafted by Dashboard flows & thus show up in the Dashboard UI
 
-### Data Connections
-
-Specific additional items are used specifically in the usage of Data Connections.
+### Connection Types
 
 * Labels
-  * `opendatahub.io/managed` - helps us define that this is a managed resource by us and not a normal secret
+  * `opendatahub.io/connection-type` - a value of `true` indicates that the `ConfigMap` represents a connection type
 * Annotations
   * [`openshift.io/display-name`]
-  * `opendatahub.io/connection-type` - the type of connection, currently this is only S3
+  * [`openshift.io/description`]
+  * `opendatahub.io/enabled` - a `true` or `false` value indicates whether the connection type is enabled for use
+  * `opendatahub.io/username` - the name of the user who created the connection type
+
+### Connections
+
+* Labels
+  * `opendatahub.io/managed` - helps us define that this is a managed resource by us and not a normal `Secret`
+* Annotations
+  * [`openshift.io/display-name`]
+  * [`openshift.io/description`]
+  * `opendatahub.io/connection-type` - a reference to the connection type; eg. `s3`
 
 ### ImageStreams
 
