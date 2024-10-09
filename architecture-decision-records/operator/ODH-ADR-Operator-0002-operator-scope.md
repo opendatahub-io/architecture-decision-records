@@ -47,7 +47,7 @@ The operator (optionally) requires and/or manages the following dependent operat
 - KServe
 - ModelMesh
 - Data Science Pipeline Operator
-- Ray
+- KubeRay
 - Codeflare Operator
 - Kueue
 - Training Operator
