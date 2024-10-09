@@ -92,7 +92,7 @@ The use of namespaced operator would prevent us from meeting the requirements of
 
 ## Tradeoffs
 
-The main drawback of using a cluster scoped operator is the impossibility of running multiple instances and/or versions of RHOAI in the same cluster. Users that need multiple instances/versions of RHODS are required to use one cluster for each. For cases where cost is a concern, alternatives like Hypershift can be considered.
+The main drawback of using a cluster scoped operator is the impossibility of running multiple instances and/or versions of RHOAI in the same cluster. Users that need multiple instances/versions of RHOAI are required to use one cluster for each. For cases where cost is a concern, alternatives like Hosted Control Plane can be considered.
 
 ## Stakeholder Impacts
 
