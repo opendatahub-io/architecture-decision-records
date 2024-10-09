@@ -57,7 +57,7 @@ The operator (optionally) requires and/or manages the following dependent operat
 In order to properly manage these resources, the operator requires access and permissions across namespaces. In particular, the operator creates and/or manages the following namespace (the namespace name can be changed via configuration):
 
 - opendatahub
-- odh-model-regiestires
+- odh-model-registries
   
 The operator also leverages the platform’s [Owner References](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) capability that ensures all dependent resources are owned by the operator and their life cycles are tracked and managed cleanly. Kubernetes however restricts the use of owner references in a way that only cluster scoped resources can own other cluster scoped resources, leading to the requirement of the operator being cluster scoped. 
 
