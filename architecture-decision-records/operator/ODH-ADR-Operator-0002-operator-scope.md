@@ -40,22 +40,24 @@ The operator deploys the following Custom Resource Definitions:
 
 - DSCInitialization
 - DataScienceCluster
+- FeatureTracker
  
 The operator (optionally) requires and/or manages the following dependent operators, among others:
 
 - KServe
 - ModelMesh
+- Data Science Pipeline Operator
 - Ray
-- Codeflare
-- ServiceMesh
-- Serverless
-- NFD 
-- NVIDIA GPU
-- openshift-pipelines
+- Codeflare Operator
+- Kueue
+- Training Operator
+- TrustyAI Operator
+- Model Registry Operator
 
 In order to properly manage these resources, the operator requires access and permissions across namespaces. In particular, the operator creates and/or manages the following namespace (the namespace name can be changed via configuration):
 
 - opendatahub
+- odh-model-regiestires
   
 The operator also leverages the platform’s [Owner References](https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/) capability that ensures all dependent resources are owned by the operator and their life cycles are tracked and managed cleanly. Kubernetes however restricts the use of owner references in a way that only cluster scoped resources can own other cluster scoped resources, leading to the requirement of the operator being cluster scoped. 
 
@@ -90,7 +92,7 @@ The use of namespaced operator would prevent us from meeting the requirements of
 
 ## Tradeoffs
 
-The main drawback of using a cluster scoped operator is the impossibility of running multiple instances and/or versions of RHODS in the same cluster. Users that need multiple instances/versions of RHODS are required to use one cluster for each. For cases where cost is a concern, alternatives like Hypershift can be considered.
+The main drawback of using a cluster scoped operator is the impossibility of running multiple instances and/or versions of RHOAI in the same cluster. Users that need multiple instances/versions of RHODS are required to use one cluster for each. For cases where cost is a concern, alternatives like Hypershift can be considered.
 
 ## Stakeholder Impacts
 
