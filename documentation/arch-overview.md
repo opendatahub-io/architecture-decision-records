@@ -69,10 +69,13 @@ Services
 
     -   For an overview of the Data Science Pipelines architecture, see the dedicated [*Data Science Pipelines Architecture*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit?usp=sharing) document.
 
-- Distributed Workload 
-   - CodeFlare
-   - Kueue
-   - Ray
+- Distributed Workload
+  
+  - Ray - responsible for handling distributed computing tasks by allowing scaling machine learning workloads across clusters. It simplifies task distribution, making it ideal for parallel execution of training, inference, and hyperparameter tuning across nodes.
+
+- CodeFlare - responsible for orchestrating complex machine learning pipelines to streamline the execution of distributed workflows. It simplifies the management of multi-step pipelines, optimizing resource usage and performance on hybrid cloud environments.
+
+- Kueue - responsible for job queuing and prioritization within Kubernetes, Kueue manages the scheduling and execution of distributed workloads. It ensures efficient resource allocation for batch jobs while respecting Kubernetes constraints and policies.
 
 - Model Registry
    - To be included yet
