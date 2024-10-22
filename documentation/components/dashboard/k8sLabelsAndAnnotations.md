@@ -119,7 +119,7 @@ For the Project Sharing feature specifically:
 * Annotations
   * [`openshift.io/display-name`]
   * [`openshift.io/description`]
-  * `opendatahub.io/enabled` - a `true` or `false` value indicates whether the connection type is enabled for use
+  * `opendatahub.io/disabled` - a `true` or `false` value indicates whether the connection type is disabled
   * `opendatahub.io/username` - the name of the user who created the connection type
 
 ### Connections
