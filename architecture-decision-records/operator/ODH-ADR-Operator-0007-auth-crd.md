@@ -32,13 +32,19 @@ There is a growing need for the ODH operator to handle authentication for the pl
 
 ## How
 
-A new API is added to the operator in the form of an *DSCAuth* (Naming to be decided) CRD. This will initially handle a list of adminGroups which the operator will reconcile for access to dashboard UIs and applying requisite openshift permissions. This is intended to be the canonical place for auth configuration for future auth initiatives.
+A new API is added to the operator in the form of an auth CRD in the services api group. This will initially handle a list of adminGroups which the operator will reconcile for access to dashboard UIs and applying requisite openshift permissions. This is intended to be the canonical place for auth configuration for future auth initiatives.
+
+An example of the CR:
+```
+apiVersion: services.opendatahub.io/v1alpha1
+kind: Auth
+metadata:
+    name: odhAuth
+spec:
+    adminGroups: []
+```
 
 ## Open Questions
-
-* Naming of the new CRD.
-    * DSCAuth
-    * odhAuth
     
 
 ## Alternatives
