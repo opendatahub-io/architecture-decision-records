@@ -21,7 +21,15 @@ This document outlines the decision to implement an auth CRD in ODH.
 
 ## Why
 
-There is a growing need for the ODH operator to handle authentication for the platform. OIDC is not handled gracefully over the entire system, and there are use cases where individual components are handling auth individually which those components would like to move away from. Centralising auth concerns will simplify the architecture of auth features, security and ease of use of these features for users.
+There is a growing need for the ODH operator to provide centralized authentication and authorization services for the platform.  The near term needs are :
+
+-  Add support for managing user groups. Currently this  is  managed by the Dashboard component and needs to be centralized.
+-  Prepare for upcoming for changes to handle OCP Platform support for external OIDC authentication
+
+Longer term,  this API and its controller will be enhanced to handle additional RBAC configuration currently handled in the Dashboard component, such as creating roles and role bindings.
+
+Centralising auth concerns will simplify the architecture of auth features, security and ease of use of these features for users.
+
 
 ## Goals
 
