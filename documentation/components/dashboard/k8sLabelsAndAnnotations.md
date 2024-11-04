@@ -125,11 +125,12 @@ For the Project Sharing feature specifically:
 ### Connections
 
 * Labels
-  * `opendatahub.io/managed` - helps us define that this is a managed resource by us and not a normal `Secret`
+  * `opendatahub.io/managed` - Legacy value. Identifies data connections which are watched by the model mesh controller for the purpose of populating the model serving `storage-config`
 * Annotations
   * [`openshift.io/display-name`]
   * [`openshift.io/description`]
-  * `opendatahub.io/connection-type` - a reference to the connection type; eg. `s3`
+  * `opendatahub.io/connection-type` - Legacy value. Used to identify S3-compatible data connections; `s3` is the only supported value
+  * `opendatahub.io/connection-type-ref` - a reference to the connection type that is used to create the connection
 
 ### ImageStreams
 
