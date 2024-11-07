@@ -53,7 +53,8 @@ spec:
 ```
 
 ## Open Questions
-    
+* Migration Path:
+    *   We will use [CEL](https://kubernetes.io/blog/2022/09/29/enforce-immutability-using-cel/#immutability-upon-object-creation) to make the groupsConfig field in the current OdhDashboardConfig CRD immutable. The operator will manage copying the content of the field over to the new CRD and the Auth CRD will be the new source of truth for adminGroups and allowedGroups. 
 
 ## Alternatives
 
