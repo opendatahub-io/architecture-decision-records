@@ -134,7 +134,7 @@ Admins today are determined by being in one of these groups:
 
 Note: Any other ways today, including comprehensive Role bindings or the initial kube:admin user do not inherently get the definition of an admin.
 
-Note: You can add `cluster-admin` role to the user or add them to an existing admin group to grant them access. Kube-admin specifically can be referenced by `b64:kube-admin` in the users of a Group.
+Note: You can add `cluster-admin` role to the user or add them to an existing admin group to grant them access. Kube-admin specifically can be referenced by `b64:kube:admin` in the users of a Group.
 
 ## Supported Components
 
