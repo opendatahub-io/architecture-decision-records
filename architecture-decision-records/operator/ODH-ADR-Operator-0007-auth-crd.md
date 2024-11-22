@@ -40,7 +40,7 @@ Centralising auth concerns will simplify the architecture of auth features, secu
 
 ## How
 
-A new  API is added to the operator in the form of an auth CRD in the services api group. This will initially handle a list of adminGroups which the operator will reconcile for access to dashboard UIs and applying requisite openshift permissions. This is intended to be the canonical place for auth configuration for future auth initiatives.
+A new  API is added to the operator in the form of an auth CRD in the services api group. This will initially handle a list of adminGroups and allowedGroups (migrated from the groupsConfig field of the dashboardConfig) which the operator will reconcile for access to dashboard UIs and applying requisite openshift permissions. This is intended to be the canonical place for auth configuration for future auth initiatives.
 
 The Auth CR is a singleton like the DSC and DSCi CRs.
 
@@ -52,6 +52,7 @@ metadata:
     name: odhAuth
 spec:
     adminGroups: []
+    allowedGroups: []
 ```
 
 ## Open Questions
