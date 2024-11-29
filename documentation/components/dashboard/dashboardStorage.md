@@ -79,3 +79,5 @@ type: Opaque
 ```
 
 See more information on the labels & annotations in the [Connection section of the K8s Labels & Annotations](./k8sLabelsAndAnnotations.md#connections)
+
+See more information on how the Connection feature works by reading more in the [Feature Connections section](./features/connections.md).
