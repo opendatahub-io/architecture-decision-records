@@ -24,6 +24,8 @@ exporting the ODH model for hosting in your environment.
 For more detailed information about RHOAI, read the
 [*service definition*](https://docs.google.com/document/d/1MKLhNu6ALmuA4UdoqfbvEbLrpGSDcSRaKvMTQX28jdU/edit?usp=sharing).
 
+![Architecture Overview](images/RHOAI%20Architecture-Overview.drawio.png)
+
 # Current Architecture
 
 ## Components and Services
