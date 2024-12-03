@@ -1,4 +1,4 @@
-# RHOAI Architecture - 2.6
+# RHOAI Architecture - 2.13
 
 # Overview
 
@@ -8,14 +8,14 @@ workflows through the integration of Red Hat components, Open Source
 software, and Independent Software Vendor (ISV) Marketplace offerings.
 
 RHOAI is a fully Red Hat managed and self-managed data and AI/ML solution based on the
-[*Open Data Hub*](http://opendatahub.io/) (ODH) platform. It includes
+[*Open Data Hub*](http://opendatahub.io/) (ODH) platform. It leverages Kubeflow,
 Jupyter Notebooks, Model Serving (traditional ML and GenAI), Tensorflow & Pytorch support,
 Pipeline, Monitoring, Integrated Service Vendors (ISV), data access capabilities, with
 additional features on the product roadmap.
 
 The RHOAI managed service is available as an add-on to [OpenShift
 Dedicated](https://access.redhat.com/documentation/en-us/openshift_dedicated/4/html-single/introduction_to_openshift_dedicated/index#policies-and-service-definition)
-(OSD) on AWS and GCP and ROSA (Red Hat OpenShift Service on AWS). The
+(OSD) on AWS and GCP, and ROSA (Red Hat OpenShift Service on AWS). The
 RHOAI self-managed product is available on supported OpenShift Container
 Platform (OCP) deployments including on-premise. RHOAI also supports
 model deployment through integration into external applications, or
@@ -23,6 +23,8 @@ exporting the ODH model for hosting in your environment.
 
 For more detailed information about RHOAI, read the
 [*service definition*](https://docs.google.com/document/d/1MKLhNu6ALmuA4UdoqfbvEbLrpGSDcSRaKvMTQX28jdU/edit?usp=sharing).
+
+![Architecture Overview](images/RHOAI%20Architecture-Overview.drawio.png)
 
 # Current Architecture
 
@@ -41,6 +43,8 @@ Services
 
     -   Tutorials, documentation, quick start examples, and a summary of deployed components with endpoints or links to interfaces.
 
+    ![Dashboard Architecture Overview](images/RHOAI%20Architecture%20-%20D4%20-%20Dashboard.png) 
+
 - Notebook Servers
 
     -   Kubeflow Notebook Controller - responsible for creation, management, and implementation of notebook servers
@@ -51,6 +55,8 @@ Services
 
         -   JupyterLab - Notebook interface for data scientists to
             develop machine learning models using code.
+
+    ![Workbenches Architecture Overview](images/RHOAI%20Architecture%20-%20D3%20-%20Workbenches.png) 
 
 - Model Serving
 
@@ -63,19 +69,32 @@ Services
     - KServe Controller - responsible for the management of the "Single Model Deployment" model serving artifacts, including the mesh metadata stored, serving runtimes, and inference services and their associated resources (deployments, services, etc)
         -   OpenShift Serverless / OpenShift Service Mesh are dependencies used by this component.
  
+    ![Model Serving Architecture Overview](images/RHOAI%20Architecture%20-%20D6a%20-%20Model%20Serving.png) 
+
+    ![Model Serving Architecture Overview](images/RHOAI%20Architecture%20-%20D6b%20-%20Model%20Serving.png) 
+
+    ![Model Serving Architecture Overview](images/RHOAI%20Architecture%20-%20D6c%20-%20Model%20Serving.png) 
+
+
     - TrustyAI Service - responsible for storing model inference data and providing fairness metrics
+
+    ![Trusty AI Architecture Overview](images/RHOAI%20Architecture%20-%20D7%20-%20Trusty.png) 
 
 - Data Science Pipelines
 
     -   For an overview of the Data Science Pipelines architecture, see the dedicated [*Data Science Pipelines Architecture*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit?usp=sharing) document.
 
+    ![Data Science Pipelines Architecture Overview](images/RHOAI%20Architecture%20-%20D2%20-%20DSP.png) 
+
 - Distributed Workload
   
   - Ray - responsible for handling distributed computing tasks by allowing scaling machine learning workloads across clusters. It simplifies task distribution, making it ideal for parallel execution of training, inference, and hyperparameter tuning across nodes.
 
-- CodeFlare - responsible for orchestrating complex machine learning pipelines to streamline the execution of distributed workflows. It simplifies the management of multi-step pipelines, optimizing resource usage and performance on hybrid cloud environments.
+  - CodeFlare - responsible for orchestrating complex machine learning pipelines to streamline the execution of distributed workflows. It simplifies the management of multi-step pipelines, optimizing resource usage and performance on hybrid cloud environments.
 
-- Kueue - responsible for job queuing and prioritization within Kubernetes, Kueue manages the scheduling and execution of distributed workloads. It ensures efficient resource allocation for batch jobs while respecting Kubernetes constraints and policies.
+  - Kueue - responsible for job queuing and prioritization within Kubernetes, Kueue manages the scheduling and execution of distributed workloads. It ensures efficient resource allocation for batch jobs while respecting Kubernetes constraints and policies.
+
+  ![Distributed Workloads Architecture Overview](images/RHOAI%20Architecture%20-%20D5%20-%20Distr%20Workloads.png) 
 
 - Model Registry
    - To be included yet
@@ -85,6 +104,9 @@ Management
 -   RHOAI Operator
 
     -   Meta-operator for all RHOAI components and sub-operators. Responsible for deploying and maintaining all components.
+  
+    ![Operator Architecture Overview](images/RHOAI%20Architecture%20-%20D3%20-%20Workbenches.png) 
+
 
 -   Prometheus
 
@@ -147,16 +169,6 @@ redhat-ods-applications, RHOAI-notebooks, redhat-ods-monitoring.
 
 The installation can also be done from OCP console UI, from Menu >
 Operators > OperatorHub page.
-
-### Diagram
-
-![](images%2FRHODS%20Architecture%20-%201.27.png)
-
-For comparison, in RHOAI' upstream OpenDataHub, the namespaces are
-
-1.  openshift-operators: for the OpenDataHub operator.
-
-2.  odh (by convention) for OpenDataHub 1.X, opendatahub for OpenDataHub 2.X: for the DataScienceCluster applications.
 
 ### Network
 
