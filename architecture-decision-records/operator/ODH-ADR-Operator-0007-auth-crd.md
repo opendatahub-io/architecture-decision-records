@@ -1,4 +1,4 @@
-# Open Data Hub - Architecture Decision Record template
+# Open Data Hub - Addition of an Auth CR
 
 <!-- copy and paste this template to start authoring your own ADR -->
 <!-- for the Status of new ADRs, please use Approved, since it will be approved by the time it is merged -->
@@ -8,7 +8,7 @@
 | -------------- | ---------- |
 | Date           | 22-10-2024 |
 | Scope          | Open Data Hub Operator |
-| Status         | In-review |
+| Status         | Accepted |
 | Authors        | [Steven Tobin](@StevenTobin) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
