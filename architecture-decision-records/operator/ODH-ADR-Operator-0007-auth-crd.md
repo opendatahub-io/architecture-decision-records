@@ -46,7 +46,7 @@ The Auth CR is a singleton like the DSC and DSCi CRs.
 
 An example of the CR:
 ```
-apiVersion: services.opendatahub.io/v1alpha1
+apiVersion: services.platform.opendatahub.io/v1alpha1
 kind: Auth
 metadata:
     name: odhAuth
