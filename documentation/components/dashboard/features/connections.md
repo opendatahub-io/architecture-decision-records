@@ -26,6 +26,41 @@ Connection Types are a configmap in the deployment namespace. They are managed i
 
 Connections are project-based and always built off of one of the Connection Types that are accessible (created and enabled) to the user at time of creation. They are saved as Secrets inside the project.
 
+Connection types are of this structure:
+```typescript
+type ConnectionTypeConfigMap = K8sConfigMapResource & {
+  metadata: {
+    annotations?: DisplayNameAnnotations & {
+      'opendatahub.io/disabled'?: 'true' | 'false';
+      'opendatahub.io/username'?: string;
+    };
+    labels: DashboardLabels & {
+      'opendatahub.io/connection-type': 'true';
+    };
+  };
+  data?: {
+    category?: string;
+    // JSON array of ConnectionTypeFields
+    fields?: string;
+  };
+};
+```
+
+Each `ConnectionTypeField` is a configuration of a type of field. Read more about the [Dashboard Labels & Annotations over here](../k8sLabelsAndAnnotations.md).
+
+The supported field types today are:
+* BooleanField
+* DropdownField
+* FileField
+* HiddenField
+* NumericField
+* SectionField
+* ShortTextField
+* TextField
+* UriField
+
+> Note: Each of these have fields to configure read-only, required, and varying configurations based on the type. There is quite a bit of variability here, so the details can be added if that kind of granularity is needed.
+
 ### How Editing Impacts Things
 
 Editing an existing connection attempts to re-present the same look and feel at the time of creation with a few exceptions:
@@ -39,6 +74,8 @@ Editing an existing connection attempts to re-present the same look and feel at 
   * & existing fields removed
     * If they were not used, it will be pretty seamless to the form experience
     * If they were used, the field will be marked with very little information [1] & will just be the environment variable name to its value
+  * & changes an existing field's type
+    * The field should remain as-is in the old type/value until otherwise modified
 * If the Connection Type has since been deleted
   * The Connection edit screen will have very little information [1] and will entirely just be a listing of environment variable names to their value
 
