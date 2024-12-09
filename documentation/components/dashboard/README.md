@@ -9,6 +9,7 @@ The Dashboard is the primary UI provided for OpenShift AI. The Dashboard serves 
     * [Feature Types](#feature-types)
     * [The Thin Wrapped Layer](#the-thin-wrapped-layer)
 * [Configuring & Interacting with the Dashboard](#configuring--interacting-with-the-dashboard)
+    * [Dashboard Feature Details](#dashboard-feature-details)
 * [How Dashboard Stores Data](#how-dashboard-stores-data)
 * [User Access - Permissions](#user-access---permissions)
 * [Supported Components](#supported-components)
@@ -29,6 +30,10 @@ Key takeaways:
 * There are multiple startup calls for various information, see the rest of the doc more more information on what those are
 
 ### Feature Types
+
+This section describes at a high level how feature connectivity works. For specific details on features, see the [Dashboard Feature Details](#dashboard-feature-details) section.
+
+There are a couple ways features work today, through a k8s direct backend or a REST based OpenShift AI component backend.
 
 #### K8s API Based Feature
 
@@ -66,6 +71,10 @@ The Dashboard does not expose direct API, rest or otherwise. Our Pod HTTPS endpo
 However, the dashboard has some ways to configure it and how we will store information the user does internally, which most of the time can be configured externally if desired.
 
 Read more about the specifics in [Configuring the Dashboard](./configuringDashboard.md)
+
+### Dashboard Feature Details
+
+Most features in the Dashboard are documented by other component's documentation. However, there are details about connectivity & specific Dashboard feature that are documented in the [Features](./features/README.md) section.
 
 ## How Dashboard Stores Data
 
