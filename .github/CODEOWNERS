@@ -9,14 +9,14 @@
 
 * @opendatahub-io/architects
 
-/documentation/components/dashboard/* @opendatahub-io/architects @opendatahub-io/exploring-team
-/documentation/components/devops/* @opendatahub-io/architects @opendatahub-io/platform
-/documentation/components/distributed-workloads/* @opendatahub-io/architects @opendatahub-io/training-experimentation
-/documentation/components/edge/* @opendatahub-io/architects @opendatahub-io/platform
-/documentation/components/explainability/* @opendatahub-io/architects @opendatahub-io/model-serving
-/documentation/components/model-registry/* @opendatahub-io/architects @opendatahub-io/model-serving
-/documentation/components/pipelines/* @opendatahub-io/architects @opendatahub-io/training-experimentation
-/documentation/components/platform/* @opendatahub-io/architects @opendatahub-io/platform
-/documentation/components/serving/* @opendatahub-io/architects @opendatahub-io/model-serving
-/documentation/components/workbenches/* @opendatahub-io/architects @opendatahub-io/exploring-team
+/documentation/components/dashboard/ @opendatahub-io/architects @opendatahub-io/exploring-team
+/documentation/components/devops/ @opendatahub-io/architects @opendatahub-io/platform
+/documentation/components/distributed-workloads/ @opendatahub-io/architects @opendatahub-io/training-experimentation
+/documentation/components/edge/ @opendatahub-io/architects @opendatahub-io/platform
+/documentation/components/explainability/ @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/model-registry/ @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/pipelines/ @opendatahub-io/architects @opendatahub-io/training-experimentation
+/documentation/components/platform/ @opendatahub-io/architects @opendatahub-io/platform
+/documentation/components/serving/ @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/workbenches/ @opendatahub-io/architects @opendatahub-io/exploring-team
 
