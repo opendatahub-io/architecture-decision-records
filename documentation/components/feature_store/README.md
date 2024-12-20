@@ -39,8 +39,9 @@ https://docs.feast.dev/getting-started/components
    - Retrieve online features.
 5. [**Batch Materialization Engine**](https://docs.feast.dev/getting-started/components/batch-materialization-engine) : A batch materialization engine is a component of Feast that's responsible for moving data from the offline store into the online store.
 6. [**Feature Repository**](https://docs.feast.dev/reference/feature-repository/feature-store-yaml) : Contains Feature definitions files written in Python , and the `feature_store.yaml` file to configure the feature store, including data sources with Feast project.
-7. [**Feature Store Controller/Operator**](https://github.com/feast-dev/feast/tree/master/infra/feast-operator) - Responsible for the deployment of Feast Feature Servers (online store, offline store, registry) in Kubernetes/OpenShift environments.
-
+7. [**Feature Server**](https://docs.feast.dev/reference/feature-servers/python-feature-server): The Feature Server is a core architectural component in Feast, designed to provide low-latency feature retrieval and updates for machine learning applications.
+      It is a REST API server built using [FastAPI](https://fastapi.tiangolo.com/) and exposes a limited set of endpoints to serve features, push data, and support materialization operations. The server is scalable, flexible, and designed to work seamlessly with various deployment environments, including local setups and cloud-based systems.
+8. [**Feature Store Controller/Operator**](https://github.com/feast-dev/feast/tree/master/infra/feast-operator): The Feature Store Controller/Operator is responsible for the deployment and management of the Feast servers ([Offline Server](https://docs.feast.dev/reference/feature-servers/offline-feature-server), [Online Server](https://docs.feast.dev/reference/feature-servers/python-feature-server), [Registry Server](https://github.com/feast-dev/feast/blob/master/docs/reference/feature-servers/registry-server.md)) in Kubernetes/OpenShift environments:
 
 ## Feature Store Flow with OpenShift AI.
 
