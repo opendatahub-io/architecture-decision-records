@@ -2,7 +2,7 @@
 
 <!-- sources:
 https://docs.feast.dev/
-
+https://rtd.feast.dev/
 -->
 
 ## Introduction
@@ -45,16 +45,18 @@ https://docs.feast.dev/getting-started/components
 ## Feature Store Flow with OpenShift AI.
 
 **1. Feature Store Initialization**
-The UI Dashboard initializes/Create the FeatureStore CR and sets config for feature services for data ingestion, transformation, and storage.
+The UI Dashboard initializes/Creates the FeatureStore CR and sets the config for feature services used for data ingestion, transformation, and storage.
 
 **2. Data Ingestion into Feature Store**
-Once pre-processed, the data is sent to Feast via batch or streaming data pipelines. Feast connectors simplify integration with various data sources (batch, stream, and on-demand).
+Data can be sent to Feast either pre-processed (e.g., via batch or streaming data pipelines) or raw and transformed by the Feast feature server during data ingestion (i.e., transformed prior to being written to the online store). Feast simplifies the integration with various data sources by providing an opinionated yet flexible API.
 
 **3. Data Storage in Feature Store**
 
 **Offline Store:** Persistent storage (database/warehouse) for historical feature data used in model training and batch scoring.
-**Online Store:** Low-latency storage (in-memory/cache) for frequently accessed features required during real-time inference.
-**Feature Registry:** Metadata storage to track feature definitions and their transformations.
+**Offline Store**: A lower-cost, persistent storage system (e.g., data warehouse) optimized for storing large volumes of historical feature data used in model training and batch scoring. It prioritizes storage efficiency over low-latency access.
+
+**Online Store**: A higher-cost, low-latency storage system (e.g., in-memory database or cache) designed to provide rapid access to frequently used features during real-time inference, optimizing for speed and responsiveness.
+**Feature Registry:** Metadata storage to track feature definitions, feature transformations, and feature metadata.
 
 **4. Data Retrieval for Model Training**
 Data Science Pipelines retrieve historical features from the Offline Store. Feature views in the Feature Registry define how features are joined and retrieved.
