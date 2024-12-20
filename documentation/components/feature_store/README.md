@@ -29,17 +29,17 @@ https://docs.feast.dev/getting-started/components
 
 -->
 
-1. [**Offline Store**](https://docs.feast.dev/getting-started/components/registry) : Used for historical feature extraction used in model training.
-2. [**Online Store**](https://docs.feast.dev/getting-started/components/offline-store): Used for serving features at low-latency in production. 
-3. [**Registry**](https://docs.feast.dev/getting-started/components/online-store): Used to keep track of feature store definitions and state (optionally backed by GCS or S3 based persistent storage). The Feast Registry acts as the backbone for storing feature definitions, which are typically written in Python, stored in repositories, and shared across environments such as staging and production.
+1. [**Offline Store**](https://docs.feast.dev/getting-started/components/offline-store) : Used for historical feature extraction used in model training.
+2. [**Online Store**](https://docs.feast.dev/getting-started/components/online-store): Used for serving features at low-latency for inference requests in production. 
+3. [**Registry**](https://docs.feast.dev/getting-started/components/registry): Used to keep track of feature store definitions and state (optionally backed by GCS or S3 based persistent storage). The Feast Registry acts as the backbone for storing feature definitions, which are typically written in Python, stored in feature repositories, and shared across environments such as staging and production.
 4. [**Feast Python SDK/CLI**](https://docs.feast.dev/reference/feast-cli-commands): The primary user facing SDK
    - Manage version controlled feature definitions.
    - Materialize (load) feature values into the online store.
    - Build and retrieve training datasets from the offline store.
    - Retrieve online features.
 5. [**Batch Materialization Engine**](https://docs.feast.dev/getting-started/components/batch-materialization-engine) : A batch materialization engine is a component of Feast that's responsible for moving data from the offline store into the online store.
-
 6. [**Feature Repository**](https://docs.feast.dev/reference/feature-repository/feature-store-yaml) : Contains Feature definitions files written in Python , and the `feature_store.yaml` file to configure the feature store, including data sources with Feast project.
+7. [**Feature Store Controller/Operator**](https://github.com/feast-dev/feast/tree/master/infra/feast-operator) - Responsible for the deployment of Feast Feature Servers (online store, offline store, registry) in Kubernetes/OpenShift environments.
 
 
 ## Feature Store Flow with OpenShift AI.
