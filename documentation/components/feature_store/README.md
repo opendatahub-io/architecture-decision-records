@@ -65,7 +65,7 @@ Data Science Pipelines retrieve historical features from the Offline Store. Feat
 The retrieved data is split into train, test, and hold-out sets. The model is iteratively trained and evaluated on these datasets.
 
 **6. Model Evaluation**
-The trained model is validated on a hold-out dataset to assess its accuracy and generalizability.
+The trained model is validated on a hold-out dataset to assess its accuracy, generalizability, and impact to its domain.
 **Workflow:** Data retrieved → Train/Test split → Train Model → Evaluate Performance.
 
 **7. Model Registration**
