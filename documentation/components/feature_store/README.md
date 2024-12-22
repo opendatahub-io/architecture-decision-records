@@ -76,7 +76,10 @@ The trained model is registered in the Model Registry.
 The registered model is deployed to the Model Server.
 
 **9. Inference Request**
-Applications send inference requests to the Model Server. The server retrieves real-time features from the Online Store and generates predictions using the deployed model.
+There are three ways to orchestrate inference requests. 
+    1. The applications sends an inference requests to the Model Server and the Model Server retrieves real-time features from the Feature Server and generates predictions using the retrieved features and deployed model.
+    2. The application sends an inference request to the Feature Server and the Feature Server sends the features to the Model Server and generates predictions using the deployed model.
+    3. The application sends a request to the Feature Server and sends the features to the Model Server whcih generates predictions using the deployed model.
 
 
 ```mermaid
