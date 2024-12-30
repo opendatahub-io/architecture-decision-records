@@ -99,6 +99,14 @@ Services
 - Model Registry
    - To be included yet
 
+- Feature Store 
+    
+    - Feature Store Controller - responsible for creation, management, and deployment of Feast Feature Servers (online store, offline store, registry).
+   
+    ![Feature Store Architecture Overview](images/RHOAI%20Architecture%20-%20D9%20-%20Feature%20Store.png)
+
+                 
+
 Management
 
 -   RHOAI Operator
@@ -147,6 +155,10 @@ API
 
     - Distributed Workload
         - To be done 
+
+    - Feature Store
+        -  featurestores.feast.dev
+  
 
 ## Deployment
 
@@ -253,18 +265,20 @@ document.
 
 The default resource limits for RHOAI are as follows.
 
-| Application            | #Pods | Component                       | vCPU Req / Limit        | Memory Req / Limit       |
-|------------------------|-------|---------------------------------|-------------------------|--------------------------|
-| RHOAI Operator         | 1     | RHOAI-operator                  | 50m / 100m              | 500Mi / 6Gi              |
-|  Dashboard             | 5     | RHOAI-dashboard<br />oauth-proxy| 500m / 1000m<br />100m / 100m | 1Gi / 2Gi<br />256 Mi / 256 Mi |
-| Notebooks              | 1     | notebook-controller-deployment  | 500m / 500m             | 256Mi / 4Gi              |
-|                        | 1     | odh-notebook-controller-manager | 500m / 500m             | 256Mi / 4Gi              |
-| Model Serving          | 3     | modelmesh-controller            | 50m / 1000m             | 96Mi / 2Gi               |
-|                        | 3     | odh-model-controller            | 10m / 500m              | 64Mi / 2Gi               |
-|                        | 1     | etcd                            | 200m / 300m             | 100Mi / 200Mi            |
-|   Monitoring           | 1     | prometheus<br />oauth-proxy     | 200m / 400m<br />100m / 100m | 2Gi / 4Gi<br />256Mi / 256Mi  |
-|                        | 1     | blackbox-exporter               | 100m / 100m             | 256Mi / 256Mi            |
-| Data Science Pipelines | 1     | data-science-pipelines-operator | 10m / 1000m             | 64Mi / 4Gi               |
+| Application            | #Pods | Component                          | vCPU Req / Limit              | Memory Req / Limit             |
+|------------------------|-------|------------------------------------|-------------------------------|--------------------------------|
+| RHOAI Operator         | 1     | RHOAI-operator                     | 50m / 100m                    | 500Mi / 6Gi                    |
+| Dashboard              | 5     | RHOAI-dashboard<br />oauth-proxy   | 500m / 1000m<br />100m / 100m | 1Gi / 2Gi<br />256 Mi / 256 Mi |
+| Notebooks              | 1     | notebook-controller-deployment     | 500m / 500m                   | 256Mi / 4Gi                    |
+|                        | 1     | odh-notebook-controller-manager    | 500m / 500m                   | 256Mi / 4Gi                    |
+| Model Serving          | 3     | modelmesh-controller               | 50m / 1000m                   | 96Mi / 2Gi                     |
+|                        | 3     | odh-model-controller               | 10m / 500m                    | 64Mi / 2Gi                     |
+|                        | 1     | etcd                               | 200m / 300m                   | 100Mi / 200Mi                  |
+| Monitoring             | 1     | prometheus<br />oauth-proxy        | 200m / 400m<br />100m / 100m  | 2Gi / 4Gi<br />256Mi / 256Mi   |
+|                        | 1     | blackbox-exporter                  | 100m / 100m                   | 256Mi / 256Mi                  |
+| Data Science Pipelines | 1     | data-science-pipelines-operator    | 10m / 1000m                   | 64Mi / 4Gi                     |
+| Feature Store          | 1     | feast-operator-controller-manager  | 5m / 5000m                    | 64Mi / 128Mi                   |
+
 
 The RHOAI infrastructure components will generally require 5 vCPUs and
 11GB of memory.
@@ -354,6 +368,10 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 
     -   Information on configuration options for Data Science Pipelines is available [*here*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit#heading=h.ohwknwr8rm2h).
 
+- Feature Store Configuration:
+
+    - To be done
+
 -   Hardware/Infrastructure
 
 -   OpenShift Dedicated (AWS, GCP)
@@ -398,6 +416,8 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 
     -    Information on source code locations for Data Science Pipelines is available [*here*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit#heading=h.moaj376kawl2).
 
+-   Feature Store:  [*https://github.com/opendatahub-io/feast*](https://github.com/opendatahub-io/feast)  
+
 ### Downstream Repositories
 
 -   Manifests:
@@ -436,6 +456,8 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 -   Data Science Pipelines
 
     -   Information on source code locations for Data Science Pipelines is available [*here*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit#heading=h.moaj376kawl2).
+    
+-   Feature Store:    [*https://github.com/feast-dev/feast*](https://github.com/feast-dev/feast)
 
 ### Change-flow
 
