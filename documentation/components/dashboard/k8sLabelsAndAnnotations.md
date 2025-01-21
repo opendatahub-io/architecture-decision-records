@@ -193,3 +193,5 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * `opendatahub.io/rb-project-subject` - This label is used to distinguish RoleBindings with the group subject `system:serviceaccounts:{projectName}`, identifying them as specific to project service accounts. This allows us to use group RoleBindings separately for groups and projects, making sure they always appear in the view where they were created without relying on filtering by a string prefix.
 
   * `modelregistry.opendatahub.io/registered-model-id` and `modelregistry.opendatahub.io/model-version-id` - These labels identify InferenceServices deployed via the model registry UI and get the Model Registry Controller to sync the deployment. They are also used to filter InferenceServices when viewing the list of deployments for a specific model version.
+
+  * `modelregistry.opendatahub.io/name` - This label provides a unique reference to InferenceServices deployed via a model registry. It ensures that models will be listed in the deployments tab of that specific registry, preventing incorrect listing across multiple registries with overlapping model IDs.  
