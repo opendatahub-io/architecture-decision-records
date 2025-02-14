@@ -22,7 +22,7 @@ Components:
   - A collection of notebooks tailored for data analysis, machine learning, research and coding within the Openshift ecosystem. Designed to streamline data science workflows, these notebooks offer an integrated environment equipped with the latest tools and libraries. These notebooks were created to be used with Openshift with the Notebook Controller as the launcher. The following are the out of the box notebook images supported with One year cadence:
     
     - Minimal (includes: jupyterlab)
-    - Data-scince (includes: jupyterlab, numpy, scipy, pandas,etc)
+    - Data-science (includes: jupyterlab, numpy, scipy, pandas,etc)
     - PyTorch (includes: jupyterlab, torch,etc)
     - TensorFlow(includes: jupyterlab, tensorflow,etc)
     - TrustyAI (includes: jupyterlab, trustyai,etc)
