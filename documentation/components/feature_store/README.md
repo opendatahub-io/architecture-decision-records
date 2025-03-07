@@ -53,9 +53,7 @@ Data can be sent to Feast either pre-processed (e.g., via batch or streaming dat
 
 **3. Data Storage in Feature Store**
 
-**Offline Store:** Persistent storage (database/warehouse) for historical feature data used in model training and batch scoring.
 **Offline Store**: A lower-cost, persistent storage system (e.g., data warehouse) optimized for storing large volumes of historical feature data used in model training and batch scoring. It prioritizes storage efficiency over low-latency access.
-
 **Online Store**: A higher-cost, low-latency storage system (e.g., in-memory database or cache) designed to provide rapid access to frequently used features during real-time inference, optimizing for speed and responsiveness.
 **Feature Registry:** Metadata storage to track feature definitions, feature transformations, and feature metadata.
 

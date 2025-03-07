@@ -368,9 +368,21 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 
     -   Information on configuration options for Data Science Pipelines is available [*here*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit#heading=h.ohwknwr8rm2h).
 
-- Feature Store Configuration:
+  - Feature Store Configuration:
 
-    - To be done
+    -   A Feature Store CR will run an OnlineStore Feature Server container by default.
+    
+    -   Users can configure the OnlineStore, OfflineStore and Registry based on their needs.
+    
+    -   If they choose to, users can also run server containers for the OfflineStore, Registry, and Feast UI.
+    
+    -   Users can leverage PVCs for Feast’s supported file-based data stores. The operator can either create PVCs for the user, or it can use existing volumes.
+    
+    -   Users can configure Feast RBAC to control access to Feast objects.
+    
+    -   Users can configure TLS for inbound and outbound requests. In an OpenShift cluster, the operator will configure inbound TLS by default.
+    
+    -   Users can fetch the Feast project directory and its feature definitions from a Git repository.
 
 -   Hardware/Infrastructure
 
@@ -416,7 +428,9 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 
     -    Information on source code locations for Data Science Pipelines is available [*here*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit#heading=h.moaj376kawl2).
 
--   Feature Store:  [*https://github.com/opendatahub-io/feast*](https://github.com/opendatahub-io/feast)  
+-   Feature Store: 
+    -   [*https://github.com/opendatahub-io/feast*](https://github.com/opendatahub-io/feast)
+    -   [*https://github.com/opendatahub-io/feast/tree/master/infra/feast-operator*](https://github.com/opendatahub-io/feast/tree/master/infra/feast-operator)
 
 ### Downstream Repositories
 
@@ -457,7 +471,9 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 
     -   Information on source code locations for Data Science Pipelines is available [*here*](https://docs.google.com/document/d/1OA9PZpJ8pYxflCFbzLOuVZ3UQyvyGupIcsv6ci2SC5Y/edit#heading=h.moaj376kawl2).
     
--   Feature Store:    [*https://github.com/feast-dev/feast*](https://github.com/feast-dev/feast)
+-   Feature Store:    
+    -  [*https://github.com/red-hat-data-services/feast*](https://github.com/red-hat-data-services/feast.git)
+    -  [*https://github.com/red-hat-data-services/feast/tree/main/infra/feast-operator*](https://github.com/red-hat-data-services/feast/tree/main/infra/feast-operator)
 
 ### Change-flow
 
@@ -490,6 +506,7 @@ We have productized (downstream) builds for the following components:
 -   Minimal notebook
 -   Generic data science notebook
 -   TrustyAI Service
+-   Feast Feature Store 
 
 The product images are currently delivered to OSD from repositories in
 quay.io.
