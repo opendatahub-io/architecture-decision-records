@@ -383,6 +383,8 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
     -   Users can configure TLS for inbound and outbound requests. In an OpenShift cluster, the operator will configure inbound TLS by default.
     
     -   Users can fetch the Feast project directory and its feature definitions from a Git repository.
+    
+    -   For more details on configuration, see the [Operator API documentation](https://github.com/opendatahub-io/feast/blob/master/infra/feast-operator/docs/api/markdown/ref.md).
 
 -   Hardware/Infrastructure
 
