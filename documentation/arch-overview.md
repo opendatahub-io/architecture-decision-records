@@ -372,9 +372,9 @@ The RHOAI infrastructure components will generally require 5 vCPUs and
 
     -   A Feature Store CR will run an OnlineStore Feature Server container by default.
     
-      -   Users can configure the OnlineStore, OfflineStore and Registry based on their needs.
+        -   Users can configure the OnlineStore, OfflineStore and Registry based on their needs.
     
-      -   If they choose to, users can also run server containers for the OfflineStore, Registry, and Feast UI.
+        -   If they choose to, users can also run server containers for the OfflineStore, Registry, and Feast UI.
     
     -   Users can leverage PVCs for Feast’s supported file-based data stores. The operator can either create PVCs for the user, or it can use existing volumes.
     
