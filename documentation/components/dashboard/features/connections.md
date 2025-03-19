@@ -201,7 +201,7 @@ The `storageUri` path is queried for the model and installed into the pod that i
 
 > Pulling a model from an authenticated OCI container registry
 
-OCI is only supported one KServe single model serving deployments. Additionally, the image must be in a "Modelcar" format specified by KServe.
+OCI is only supported on KServe single model serving deployments. Additionally, the image must be in a Modelcar[^Modelcar] format specified by KServe.
 
 ```yaml
 apiVersion: serving.kserve.io/v1beta1
@@ -221,4 +221,6 @@ spec:
 
 The `imagePullSecrets` points to the OCI connection.
 
-The `storageUri` path start with `oci://` and point to an image.
+The `storageUri` path starts with `oci://` and points to an image.
+
+[^Modelcar]: https://kserve.github.io/website/latest/modelserving/storage/oci/#prepare-an-oci-image-with-model-data
