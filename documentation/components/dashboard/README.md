@@ -20,7 +20,6 @@ The Dashboard is the primary UI provided for OpenShift AI. The Dashboard serves 
 
 ### Overview
 
-<!-- ![DashboardStartup_Diagram.png](./assets/DashboardStartup_Diagram.png) -->
 
 #### 1. User Authentication Flow
 
