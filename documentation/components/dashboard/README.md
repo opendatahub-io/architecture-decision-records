@@ -20,14 +20,63 @@ The Dashboard is the primary UI provided for OpenShift AI. The Dashboard serves 
 
 ### Overview
 
-![DashboardStartup_Diagram.png](./assets/DashboardStartup_Diagram.png)
 
-Key takeaways:
+#### 1. User Authentication Flow
 
-* OAuth Proxy does our login screen -- Dashboard does not have one, all requests go through it
-* Every request cross the OAuth Proxy line on the way to getting data, and thus is authenticated through that mechanism per request
-* Our backend serves as a pass-through to get additional information from K8s (OpenShift Console)
-* There are multiple startup calls for various information, see the rest of the doc more more information on what those are
+This section illustrates how an end user interacts with the Dashboard UI and the OAuth Proxy for authentication.
+
+```mermaid
+sequenceDiagram
+    participant EndUser as End User
+    participant DashboardUI as Dashboard UI (Browser)
+    participant OAuthProxy as OAuth Proxy (Container)
+
+    EndUser->>DashboardUI: Request Dashboard HTML
+    DashboardUI->>OAuthProxy: (Not logged in) Redirect to OAuth Proxy
+    EndUser->>OAuthProxy: Login via OAuth Proxy's Page
+    OAuthProxy->>DashboardUI: (Logged in) Redirect to Dashboard
+```
+
+#### 2. Dashboard UI Initialization 
+
+After authentication, the Dashboard UI initializes by requesting necessary HTML content and assets.
+
+```mermaid
+sequenceDiagram
+    participant DashboardUI as Dashboard UI (Browser)
+    participant Dashboard as Dashboard (Container)
+
+    DashboardUI->>Dashboard: Request Dashboard HTML
+    Dashboard->>DashboardUI: Return HTML
+    DashboardUI->>Dashboard: Request HTML Assets (js, css, img, etc.)
+    Dashboard->>DashboardUI: Return Assets
+```
+
+#### 3. Data Fetching and Integration
+The Dashboard retrieves infrastructure data by interacting with the OpenShift Console Kubernetes API.
+
+```mermaid
+sequenceDiagram
+    participant DashboardUI as Dashboard UI (Browser)
+    participant Dashboard as Dashboard (Container)
+    participant OpenShift as OpenShift Console K8s
+
+    DashboardUI->>Dashboard: Request Infrastructure Data
+    Dashboard->>OpenShift: Request K8s Data
+    OpenShift->>Dashboard: Return OdhDashboardConfig
+    OpenShift->>Dashboard: Return Roles
+    OpenShift->>Dashboard: Return Groups
+    Dashboard->>DashboardUI: Return "/config"
+    Dashboard->>DashboardUI: Return "/status"
+```
+
+
+#### Key takeaways:
+
+* OAuth Proxy does our login screen -- Dashboard does *not* have one, all requests go through the Oauth Proxy
+* Every request cross the OAuth Proxy line on the way to getting data, and thus is authenticated through that mechanism per request (using bearer tokens on each request)
+* Our backend serves as a pass-through to get additional information from K8s (OpenShift Console) 
+* There are multiple startup calls for various information, see the rest of the doc for more detailed information. 
 
 ### Feature Types
 
