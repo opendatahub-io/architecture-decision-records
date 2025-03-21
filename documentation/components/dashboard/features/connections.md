@@ -85,13 +85,22 @@ It is worth noting that if the Connection Type is just disabled, we will still p
 
 ## Out of the Box (ootb) Offerings
 
-To help with existing usages before the upgrade 2.16, we naturally continue to have support for S3. Admins can disable this offering and/or duplicate it to provide defaults or read-only aspects to help their users with some information.
+Admins can disable this offering and/or duplicate it to provide defaults or read-only aspects to help their users with some information.
 
 > Note: It is important to note that since the Connection Types are stored as ConfigMaps, passwords and other credential information are exposed in plain text if stored in the Connection Type. We do not recommend storing this kind of information in Connection Types at this time.
 
+#### S3 compatible object storage - v1
+To help with existing usages before the upgrade 2.16, we naturally continue to have support for S3. 
+
+#### URI - v1
 We also provide a URI ootb variant to help with connecting public [2] URL models to model serving.
 
 > [2] At this time, private connections are not supported
+
+#### OCI compliant registry - v1
+With the OCI compliant registry ootb connection type, users are able to connect to a private container registry by providing a pull secret. Due to the presence of the `.dockerconfigjson` env variable, the created connection becomes a secret of type `kubernetes.io/dockerconfigjson` which can be used the same way traditional pull secrets are used in kubernetes, with the additional fields from the connection type.
+
+To connect to a public container registry, a user can use the "URI - v1" connection type and provide the URI to the image tag and prepending it with `oci://`
 
 ## Connectivity
 
@@ -136,6 +145,7 @@ The `my-s3-connection` (using the ootb S3 Connection Type) & `my-uri-connection`
 Essentially we only have support for these types:
 * [S3-compatible](#s3-compatible-connection)
 * [URI](#uri-connection)
+* [OCI model cars](#oci-model-cars-connection)
 
 > Note: At this time there is not much else that can be done as it requires specific integration logic in order to connect a specific set of fields from the Connection to align it with the implementation of the Serving feature (KServe, Model Mesh, etc).
 
@@ -186,3 +196,31 @@ spec:
 The `storageUri` path is queried for the model and installed into the pod that is associated to your deployment.
 
 > Note: The `storageUri` field is an overloaded one in the KServe documentation and can have wider implications for usage. Anything that 
+
+#### OCI Model Cars Connection
+
+> Pulling a model from an authenticated OCI container registry
+
+OCI is only supported on KServe single model serving deployments. Additionally, the image must be in a Modelcar[^Modelcar] format specified by KServe.
+
+```yaml
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: model-example-using-oci
+  # ...other properties
+spec:
+  predictor:
+    imagePullSecrets:
+      - name: oci-connection
+    # ...other properties
+    model:
+      # ...other properties
+      storageUri: 'oci://quay.io/someregistry/image:tag'
+```
+
+The `imagePullSecrets` points to the OCI connection.
+
+The `storageUri` path starts with `oci://` and points to an image.
+
+[^Modelcar]: https://kserve.github.io/website/latest/modelserving/storage/oci/#prepare-an-oci-image-with-model-data
