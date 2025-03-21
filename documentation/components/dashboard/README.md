@@ -72,12 +72,12 @@ sequenceDiagram
 ```
 
 
-Key takeaways:
+#### Key takeaways:
 
-* OAuth Proxy does our login screen -- Dashboard does not have one, all requests go through it
-* Every request cross the OAuth Proxy line on the way to getting data, and thus is authenticated through that mechanism per request
-* Our backend serves as a pass-through to get additional information from K8s (OpenShift Console)
-* There are multiple startup calls for various information, see the rest of the doc more more information on what those are
+* OAuth Proxy does our login screen -- Dashboard does *not* have one, all requests go through the Oauth Proxy
+* Every request cross the OAuth Proxy line on the way to getting data, and thus is authenticated through that mechanism per request (using bearer tokens on each request)
+* Our backend serves as a pass-through to get additional information from K8s (OpenShift Console) 
+* There are multiple startup calls for various information, see the rest of the doc for more detailed information. 
 
 ### Feature Types
 
