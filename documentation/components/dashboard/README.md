@@ -27,14 +27,18 @@ This section illustrates how an end user interacts with the Dashboard UI and the
 
 ```mermaid
 sequenceDiagram
-    participant EndUser as End User
-    participant DashboardUI as Dashboard UI (Browser)
-    participant OAuthProxy as OAuth Proxy (Container)
+    actor EndUser as End User
+    participant Browser as Browser Window
+    box Dashboard Pod
+    participant OAuthProxy
+    participant Dashboard
+    end
 
-    EndUser->>DashboardUI: Request Dashboard HTML
-    DashboardUI->>OAuthProxy: (Not logged in) Redirect to OAuth Proxy
-    EndUser->>OAuthProxy: Login via OAuth Proxy's Page
-    OAuthProxy->>DashboardUI: (Logged in) Redirect to Dashboard
+    EndUser->>Browser: https://dashboard-route/*
+    Browser--xOAuthProxy: (Not logged in)
+    OAuthProxy-->>Browser: Return log in screen
+    Browser-->>OAuthProxy: (log in)
+    Browser<<->>Dashboard: (Logged in) Redirect to Dashboard
 ```
 
 #### 2. Dashboard UI Initialization 
