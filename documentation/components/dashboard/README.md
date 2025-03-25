@@ -21,51 +21,44 @@ The Dashboard is the primary UI provided for OpenShift AI. The Dashboard serves 
 ### Overview
 
 
-#### 1. User Authentication Flow
+#### 1. User Authentication Flow and UI Initialization
 
-This section illustrates how an end user interacts with the Dashboard UI and the OAuth Proxy for authentication.
+This section illustrates how an end user interacts with the Dashboard UI and the OAuth Proxy for authentication. The OAuth Proxy is a sidecar pattern inside the dashboards pod in OpenShift. It ensures that all traffic has a valid token, and that subsequent requests are authenticated. 
 
 ```mermaid
 sequenceDiagram
     actor EndUser as End User
-    participant Browser as Browser Window
+    participant DashboardUI as Dashboard UI (Browser)
     box Dashboard Pod
-    participant OAuthProxy
-    participant Dashboard
+    participant OAuthProxy as OAuth Proxy Container
+    participant Dashboard as Dashboard Container
     end
 
-    EndUser->>Browser: https://dashboard-route/*
-    Browser--xOAuthProxy: (Not logged in)
-    OAuthProxy-->>Browser: Return log in screen
-    Browser-->>OAuthProxy: (log in)
-    Browser<<->>Dashboard: (Logged in) Redirect to Dashboard
+    EndUser->>DashboardUI: https://dashboard-route/*
+    DashboardUI--xOAuthProxy: (Not logged in)
+    OAuthProxy-->>DashboardUI: Return log in screen
+    EndUser->>DashboardUI: (log in)
+    DashboardUI->>OAuthProxy: (successful log in)
+    OAuthProxy->>Dashboard: Redirect to Dashboard
+    Dashboard->>DashboardUI: Return HTML Page
 ```
 
-#### 2. Dashboard UI Initialization 
-
-After authentication, the Dashboard UI initializes by requesting necessary HTML content and assets.
-
-```mermaid
-sequenceDiagram
-    participant DashboardUI as Dashboard UI (Browser)
-    participant Dashboard as Dashboard (Container)
-
-    DashboardUI->>Dashboard: Request Dashboard HTML
-    Dashboard->>DashboardUI: Return HTML
-    DashboardUI->>Dashboard: Request HTML Assets (js, css, img, etc.)
-    Dashboard->>DashboardUI: Return Assets
-```
-
-#### 3. Data Fetching and Integration
+#### 2. Data Fetching and Integration
 The Dashboard retrieves infrastructure data by interacting with the OpenShift Console Kubernetes API.
 
 ```mermaid
 sequenceDiagram
     participant DashboardUI as Dashboard UI (Browser)
-    participant Dashboard as Dashboard (Container)
+    box Dashboard Pod
+    participant OAuth Proxy Container
+    participant Dashboard as Dashboard Container
+    end
     participant OpenShift as OpenShift Console K8s
 
+    %% Corresponds to routes in backend/src/routes/api/k8s
     DashboardUI->>Dashboard: Request Infrastructure Data
+    
+    %% Corresponds to routes in backend/src/routes/api/dashboardConfig and backend/src/routes/api/groups-config
     Dashboard->>OpenShift: Request K8s Data
     OpenShift->>Dashboard: Return OdhDashboardConfig
     OpenShift->>Dashboard: Return Roles
