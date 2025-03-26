@@ -50,21 +50,28 @@ The Dashboard retrieves infrastructure data by interacting with the OpenShift Co
 sequenceDiagram
     participant DashboardUI as Dashboard UI (Browser)
     box Dashboard Pod
-    participant OAuth Proxy Container
+    participant OAuth as OAuth Proxy Container
     participant Dashboard as Dashboard Container
     end
     participant OpenShift as OpenShift Console K8s
 
-    %% Corresponds to routes in backend/src/routes/api/k8s
-    DashboardUI->>Dashboard: Request Infrastructure Data
-    
-    %% Corresponds to routes in backend/src/routes/api/dashboardConfig and backend/src/routes/api/groups-config
-    Dashboard->>OpenShift: Request K8s Data
-    OpenShift->>Dashboard: Return OdhDashboardConfig
-    OpenShift->>Dashboard: Return Roles
-    OpenShift->>Dashboard: Return Groups
-    Dashboard->>DashboardUI: Return "/config"
-    Dashboard->>DashboardUI: Return "/status"
+    %% All requests go through the OAuth Proxy
+    DashboardUI--xOAuth: GET /dsc/status
+    OAuth->>Dashboard: (forwarded) GET /dsc/status
+    Dashboard->>OpenShift: GET DSC resource (as Service Account)
+    OpenShift->>Dashboard: Return DSC
+    Dashboard->>DashboardUI: Trim out status & return DSC.status
+    DashboardUI--xOAuth: ...(other calls)...
+    OAuth->>Dashboard: (forwarded) ...(forwarded)...
+    DashboardUI--xOAuth: GET /status
+    OAuth->>Dashboard: (forwarded) GET /status
+    Dashboard->>OpenShift: GET Group resources (as Service Account)
+    OpenShift->>Dashboard: Return Group resources
+    Dashboard->>OpenShift: GET User resources (as Service Account)
+    OpenShift->>Dashboard: Return User resources
+    Dashboard->>OpenShift: GET ...(other stuff)... (as Service Account)
+    OpenShift->>Dashboard: Return ...
+    Dashboard->>DashboardUI: Return "who am I" like structure
 ```
 
 
