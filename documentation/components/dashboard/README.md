@@ -30,17 +30,18 @@ sequenceDiagram
     actor EndUser as End User
     participant DashboardUI as Dashboard UI (Browser)
     box Dashboard Pod
-    participant OAuthProxy as OAuth Proxy Container
+    participant OAuth as OAuth Proxy Container
     participant Dashboard as Dashboard Container
     end
 
     EndUser->>DashboardUI: https://dashboard-route/*
-    DashboardUI--xOAuthProxy: (Not logged in)
-    OAuthProxy-->>DashboardUI: Return log in screen
+    DashboardUI-xOAuth: (Not logged in)
+    OAuth-->>DashboardUI: Return log in screen
     EndUser->>DashboardUI: (log in)
-    DashboardUI->>OAuthProxy: (successful log in)
-    OAuthProxy->>Dashboard: Redirect to Dashboard
-    Dashboard->>DashboardUI: Return HTML Page
+    DashboardUI->>OAuth: (successful log in)
+    OAuth->>Dashboard: Redirect to Dashboard
+    Dashboard->>OAuth: Return HTML Page
+    OAuth->>DashboardUI: (forwarded)<br/>Return HTML Page
 ```
 
 #### 2. Data Fetching and Integration
@@ -56,22 +57,24 @@ sequenceDiagram
     participant OpenShift as OpenShift Console K8s
 
     %% All requests go through the OAuth Proxy
-    DashboardUI--xOAuth: GET /dsc/status
-    OAuth->>Dashboard: (forwarded) GET /dsc/status
-    Dashboard->>OpenShift: GET DSC resource (as Service Account)
-    OpenShift->>Dashboard: Return DSC
-    Dashboard->>DashboardUI: Trim out status & return DSC.status
-    DashboardUI--xOAuth: ...(other calls)...
-    OAuth->>Dashboard: (forwarded) ...(forwarded)...
-    DashboardUI--xOAuth: GET /status
-    OAuth->>Dashboard: (forwarded) GET /status
-    Dashboard->>OpenShift: GET Group resources (as Service Account)
+    DashboardUI-xOAuth: GET /dsc/status
+    OAuth->>Dashboard: (forwarded)<br/>GET /dsc/status
+    Note right of Dashboard: This uses the Dashboard Service Account
+    Dashboard->>OpenShift: GET DSC resource
+    OpenShift->>Dashboard: Return full DSC
+    Dashboard->>OAuth: Return DSC.status
+    OAuth->>DashboardUI: (forwarded)<br/>Return DSC.status
+    Note left of DashboardUI: More calls are<br/>made as part of setup
+    DashboardUI-xOAuth: GET /status
+    OAuth->>Dashboard: (forwarded)<br/>GET /status
+    Note right of Dashboard: These all use the Dashboard Service Account
+    Dashboard->>OpenShift: GET Group resources
     OpenShift->>Dashboard: Return Group resources
-    Dashboard->>OpenShift: GET User resources (as Service Account)
+    Dashboard->>OpenShift: GET User resources
     OpenShift->>Dashboard: Return User resources
-    Dashboard->>OpenShift: GET ...(other stuff)... (as Service Account)
-    OpenShift->>Dashboard: Return ...
-    Dashboard->>DashboardUI: Return "who am I" like structure
+    Note right of Dashboard: More GET resources are made
+    Dashboard-xOAuth: Return "who am I" like response
+    OAuth->>DashboardUI: (forwarded)<br/>Return "who am I" like response
 ```
 
 
