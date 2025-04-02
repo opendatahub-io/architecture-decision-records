@@ -113,7 +113,7 @@ Management
 
     -   Meta-operator for all RHOAI components and sub-operators. Responsible for deploying and maintaining all components.
   
-    ![Operator Architecture Overview](images/RHOAI%20Architecture%20-%20D3%20-%20Workbenches.png) 
+    ![Operator Architecture Overview](images/RHOAI%20Architecture%20-%20D1%20-%20Operator.png) 
 
 
 -   Prometheus
