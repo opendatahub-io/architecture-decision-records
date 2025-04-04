@@ -181,6 +181,7 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * [`opendatahub.io/accelerator-name`]
   * `opendatahub.io/template-name` - the runtime used
   * `opendatahub.io/template-display-name` - the display name shown for the runtime
+  * `opendatahub.io/serving-runtime-scope` - This annotation is used to identify whether a serving runtime template is project-scoped or global-scoped. 
 
 ### Storage Classes
 
