@@ -187,6 +187,38 @@ Operators > OperatorHub page.
 ![](images%2FRHODS%20Architecture%20-%20Network%20Diagram.png)
 
 
+#### Components
+
+##### Distributed Workloads
+
+![](images%2Fnetwork%2FDistributedWorkloads_KubeRay.png)
+![](images%2Fnetwork%2FDistributedWorkloads_KubeFlow_Training_Operator.png)
+
+##### Workbenches
+
+![](images%2Fnetwork%2FWorkbenches.png)
+
+##### Data Sciene Pipelines
+
+![](images%2Fnetwork%2FDataScienePipelines.png)
+
+##### Dashboard
+
+![](images%2Fnetwork%2FDashboard.png)
+
+##### Model Serving
+
+![](images%2Fnetwork%2FModelServing.png)
+
+##### TrustyAI
+
+![](images%2Fnetwork%2FTrustyAI.png)
+
+##### Model Registry
+
+![](images%2Fnetwork%2FModelRegistry.png)
+
+
 ### Storage and Data
 
 Persistent data for RHOAI includes both user data and system data:
