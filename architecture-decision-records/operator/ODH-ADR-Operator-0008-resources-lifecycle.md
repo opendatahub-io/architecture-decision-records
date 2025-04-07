@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR defines how the opendatahub-operator manages the lifecycle of the Kubernetes resources it provisions using component-defined manifests and the opendatahub.io/managed annotation.
+This ADR defines how the opendatahub-operator manages the lifecycle of the Kubernetes resources it provisions using component-defined manifests and the `opendatahub.io/managed` annotation.
 
 ## Why
 
