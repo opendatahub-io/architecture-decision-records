@@ -18,7 +18,7 @@ This ADR defines how the opendatahub-operator manages the lifecycle of the Kuber
 ## Why
 
 The operator provisions and reconciles resources defined by components. 
-To support a variety of use cases—including user-customizable objects and create-only behavior—there needs to be a clear contract regarding how resources are managed over time, especially in the presence of manual modifications or evolving manifests.
+To support a variety of use cases—including user-customizable objects and create-only behavior. There needs to be a clear contract regarding how resources are managed over time, especially in the presence of manual modifications or evolving manifests.
 
 ## Goals
 
