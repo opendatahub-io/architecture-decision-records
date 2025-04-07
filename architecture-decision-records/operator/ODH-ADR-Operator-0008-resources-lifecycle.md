@@ -47,6 +47,7 @@ The operator evaluates the presence and value of the `opendatahub.io/managed` an
 ### Additional Behavior
 
 - The opendatahub.io/managed` annotation defined in Kustomized Manifests is **not propagated** to the resulting Kubernetes Objects to avoid misleading users into thinking they can control lifecycle via the cluster object.
+- For Kustomized Manifests with `opendatahub.io/managed: "false"`, the operator does not set an owner reference on the created Kubernetes Objects. This means that these objects will remain in the cluster rather than being garbage-collected when the component/service the objects are part of get removed/disabled.
 - **In all cases**, if the Kubernetes Object is deleted from the cluster (either accidentally or manually), the operator will **recreate it** during the next reconciliation loop. This ensures declared state is always realized, regardless of whether the object is fully managed or marked as create-only.
 
 
