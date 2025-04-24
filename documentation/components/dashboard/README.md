@@ -85,7 +85,30 @@ There are a couple ways features work today, through a k8s direct backend or a R
 
 K8s API based features are things that make use of custom resources (aka CRs, backed by CRDs) or K8s resources. These are features that have likely a controller managing the resources and/or it makes use of other K8s based resource concepts. Security is provided by K8s RBAC.
 
-![CRUD_K8s.png](assets/CRUD_K8s.png)
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    box Dashboard Pod
+    participant OAuthProxy as OAuth Proxy Container
+    participant Dashboard as Dashboard Container
+    end
+    participant OpenShift as OpenShift Console K8s
+
+    Note over Browser,OpenShift: K8s API Based Feature Flow
+    
+    User->>Browser: Initiates K8s Resource Action
+    Browser->>OAuthProxy: Request with Bearer Token
+    OAuthProxy->>Dashboard: Forward Authenticated Request
+    
+    Note right of Dashboard: Dashboard acts as<br/>pass-through for K8s<br/>operations
+    
+    Dashboard->>OpenShift: Forward K8s API Request<br/>(with user context)
+    OpenShift->>Dashboard: Return K8s Resource Data
+    Dashboard->>OAuthProxy: Process and Format Response
+    OAuthProxy->>Browser: Return Formatted Data
+    Browser->>User: Display Updated UI
+```
 
 Features that use this model are (some examples):
 * DS Projects
@@ -97,7 +120,31 @@ Features that use this model are (some examples):
 
 Rest API based features are features that rely on a custom REST endpoint usually shared via an internal `Service` (or an external `Route` object) provided by the backend component. These services (and sometimes external routes) are usually created by a custom resource that is deployed in the Data Science Project. Security is provided by OAuth Containers.
 
-![CRUD_REST.png](assets/CRUD_REST.png)
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    box Dashboard Pod
+    participant OAuthProxy as OAuth Proxy Container
+    participant Dashboard as Dashboard Container
+    end
+    participant Service as Backend Service
+    
+    Note over Browser,Service: REST API Based Feature Flow
+    
+    User->>Browser: Initiates REST Action
+    Browser->>OAuthProxy: Request with Bearer Token
+    OAuthProxy->>Dashboard: Forward Authenticated Request
+    
+    Note right of Dashboard: Dashboard forwards to<br/>appropriate backend<br/>service
+    
+    Dashboard->>Service: Forward REST Request to Service
+    Note right of Service: Service processes<br/>request with its own<br/>OAuth container
+    Service->>Dashboard: Return REST Response
+    Dashboard->>OAuthProxy: Process and Format Response
+    OAuthProxy->>Browser: Return Formatted Data
+    Browser->>User: Display Updated UI
+```
 
 Features that use this model are (some examples):
 * Model Registry
