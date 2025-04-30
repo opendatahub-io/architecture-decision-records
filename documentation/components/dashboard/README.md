@@ -274,4 +274,14 @@ These resources provide access to have embedded quick starts, where the users ca
 
 > **Note:** This resource is fully configurable with in-app Admin flows
 
-These resources help provide information of your accelerators on your cluster and gives the admin the ability to configure or disable them as they see fit. In turn, the user can get access to "profiles" of how 
+These resources help provide information of your accelerators on your cluster and gives the admin the ability to configure or disable them as they see fit. In turn, the user can get access to "profiles" of how
+
+### HardwareProfiles
+
+**hardwareprofiles.dashboard.opendatahub.io/v1alpha1**
+
+> **Note:** This resource is fully configurable with in-app Admin flows
+
+The HardwareProfiles CRD provides a declarative way for administrators to define compute profiles that control the CPU, memory, and other resource constraints available for workloads in OpenShift AI. These profiles are surfaced to end users to select when launching workloads such as Workbenches.
+
+Admins can configure profiles directly within the Dashboard, enabling or disabling profiles, as well as setting minimums, maximums, and default values for CPU, memory, and other resources (e.g., GPUs).
