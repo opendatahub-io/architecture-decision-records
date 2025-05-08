@@ -140,7 +140,7 @@ sequenceDiagram
     Dashboard->>Service: Forward REST Request to Service
     Note right of Service: Service processes<br/>request with its own<br/>OAuth container
     Service->>Dashboard: Return REST Response
-    Dashboard->>OAuthProxy: Process and Format Response
+    Dashboard->>OAuthProxy: Return response as-is
     OAuthProxy->>Browser: Return Formatted Data
     Browser->>User: Display Updated UI
 ```
