@@ -103,7 +103,7 @@ sequenceDiagram
     
     Note right of Dashboard: Dashboard acts as<br/>pass-through for K8s<br/>operations
     
-    Dashboard->>OpenShift: Forward K8s API Request<br/>(with user context)
+    Dashboard->>OpenShift: Forward K8s API Request
     OpenShift->>Dashboard: Return K8s Resource Data
     Dashboard->>OAuthProxy: Process and Format Response
     OAuthProxy->>Browser: Return & display data in UI
