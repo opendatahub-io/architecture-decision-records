@@ -97,7 +97,7 @@ sequenceDiagram
 
     Note over Browser,OpenShift: K8s API Based Feature Flow
     
-    User->>Browser: Initiates K8s Resource Action
+    User->>Browser: Interacts with a K8s based feature
     Browser->>OAuthProxy: Request with Bearer Token
     OAuthProxy->>Dashboard: Forward Authenticated Request
     
