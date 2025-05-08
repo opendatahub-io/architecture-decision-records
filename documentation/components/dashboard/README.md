@@ -101,7 +101,7 @@ sequenceDiagram
     Browser->>OAuthProxy: Request with Browser Cookie
     OAuthProxy->>Dashboard: Bearer Token added into request header & forwarded
     
-    Note right of Dashboard: Dashboard acts as<br/>pass-through for K8s<br/>operations
+    Note right of Dashboard: Dashboard acts as<br/>pass-through for K8s<br/>operations using the<br/>user's bearer token
     
     Dashboard->>OpenShift: Forward K8s API Request
     OpenShift->>Dashboard: Return K8s Resource Data
@@ -131,9 +131,9 @@ sequenceDiagram
     
     Note over Browser,Service: REST API Based Feature Flow
     
-    User->>Browser: Initiates REST Action
-    Browser->>OAuthProxy: Request with Bearer Token
-    OAuthProxy->>Dashboard: Forward Authenticated Request
+    User->>Browser: Interacts with a REST based feature
+    Browser->>OAuthProxy: Request with Browser Cookie
+    OAuthProxy->>Dashboard: Bearer Token added into request header & forwarded
     
     Note right of Dashboard: Dashboard uses user<br/>bearer token to contact services
     
@@ -141,8 +141,7 @@ sequenceDiagram
     Note right of Service: Service processes<br/>request with its own<br/>OAuth container
     Service->>Dashboard: Return REST Response
     Dashboard->>OAuthProxy: Return response as-is
-    OAuthProxy->>Browser: Return Formatted Data
-    Browser->>User: Display Updated UI
+    OAuthProxy->>Browser: Return & display data in UI
 ```
 
 Features that use this model are (some examples):
