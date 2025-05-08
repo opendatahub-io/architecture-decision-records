@@ -99,7 +99,7 @@ sequenceDiagram
     
     User->>Browser: Interacts with a K8s based feature
     Browser->>OAuthProxy: Request with Browser Cookie
-    OAuthProxy->>Dashboard: Forward Authenticated Request
+    OAuthProxy->>Dashboard: Bearer Token added into request header & forwarded
     
     Note right of Dashboard: Dashboard acts as<br/>pass-through for K8s<br/>operations
     
