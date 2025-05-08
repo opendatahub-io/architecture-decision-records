@@ -135,7 +135,7 @@ sequenceDiagram
     Browser->>OAuthProxy: Request with Bearer Token
     OAuthProxy->>Dashboard: Forward Authenticated Request
     
-    Note right of Dashboard: Dashboard forwards to<br/>appropriate backend<br/>service
+    Note right of Dashboard: Dashboard uses user<br/>bearer token to contact services
     
     Dashboard->>Service: Forward REST Request to Service
     Note right of Service: Service processes<br/>request with its own<br/>OAuth container
