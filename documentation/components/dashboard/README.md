@@ -105,7 +105,7 @@ sequenceDiagram
     
     Dashboard->>OpenShift: Forward K8s API Request
     OpenShift->>Dashboard: Return K8s Resource Data
-    Dashboard->>OAuthProxy: Process and Format Response
+    Dashboard->>OAuthProxy: Returns data from K8s
     OAuthProxy->>Browser: Return & display data in UI
 ```
 
