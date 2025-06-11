@@ -163,6 +163,9 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * [`openshift.io/description`]
   * `opendatahub.io/username` - the actual username (related to the Label `opendatahub.io/user`)
   * [`opendatahub.io/accelerator-name`]
+  * `opendatahub.io/workbench-image-namespace` - This annotation is used to indicate the scope of a workbench image. If the workbench image is project-scoped, this annotation is added with the workbench image’s namespace. If it’s global-scoped, the annotation is omitted.
+  * `opendatahub.io/hardware-profile-namespace` - This annotation is used to indicate the scope of a hardware profile. If the hardware profile is project-scoped, this annotation is added with the hardware profile’s namespace. If it’s global-scoped, the annotation is omitted.
+  * `opendatahub.io/accelerator-profile-namespace` - This annotation is used to indicate the scope of a accelerator profile. If the accelerator profile is project-scoped, this annotation is added with the accelerator profile’s namespace. If it’s global-scoped, the annotation is omitted.
 
 ### ServingRuntime Templates
 
@@ -182,6 +185,8 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * `opendatahub.io/template-name` - the runtime used
   * `opendatahub.io/template-display-name` - the display name shown for the runtime
   * `opendatahub.io/serving-runtime-scope` - This annotation is used to identify whether a serving runtime template is project-scoped or global-scoped. 
+  * `opendatahub.io/hardware-profile-namespace` -  This annotation is used to indicate the scope of a hardware profile. If the hardware profile is project-scoped, this annotation is added with the hardware profile’s namespace. If it’s global-scoped, the annotation is omitted.
+  * `opendatahub.io/accelerator-profile-namespace` - This annotation is used to indicate the scope of a accelerator profile. If the accelerator profile is project-scoped, this annotation is added with the accelerator profile’s namespace. If it’s global-scoped, the annotation is omitted.
 
 ### Storage Classes
 
