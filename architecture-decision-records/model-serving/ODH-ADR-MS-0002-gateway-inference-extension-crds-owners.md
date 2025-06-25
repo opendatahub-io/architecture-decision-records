@@ -80,9 +80,11 @@ platform.
 
 ## Risks
 
-- If the InferencePool CRD evolves with breaking changes, a coordinated update process is required. OpenDataHub must
-  ensure the installed CRD version is compatible with the OCP version in use, while the OCP Networking team must ensure
-  their components can utilize the newer CRD version in future updates.
+- We need to work with upstream GIE community to prevent breaking changes in the subset of the API that is watched by
+  Istio.
+  If the InferencePool CRD evolves with breaking changes, a coordinated update process is required.
+  OpenDataHub must ensure the installed CRD version is compatible with the OCP version in
+  use, while the OCP Networking team must ensure their components can utilize the newer CRD version in future updates.
 - If the OCP Networking team's Istio implementation requires a different version of the InferencePool CRD than what
   OpenDataHub installs, it could lead to feature incompatibility or unexpected behavior. This risk is mitigated by clear
   communication channels between the teams and robust integration testing.
