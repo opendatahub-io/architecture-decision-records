@@ -65,7 +65,7 @@ CRD, while leaving the remaining CRDs to OpenDataHub.
 
 - Unstable CRD in the core platform
 - Potentially multiple midstream and downstream forks to maintain for GIE by different teams (ODH, RHOAI and OpenShift)
-- Timeline for TP at risk
+- The release lifecycle of llm-d components (like inference scheduler) is tied to ODH (released monthly) and not OCP (released quarterly) introducing limiting the possibility to evolve GIE CRDs quickly
 
 ## Risks
 
