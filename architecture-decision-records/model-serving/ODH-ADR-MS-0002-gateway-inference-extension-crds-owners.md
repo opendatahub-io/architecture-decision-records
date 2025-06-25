@@ -58,7 +58,7 @@ CRD, while leaving the remaining CRDs to OpenDataHub.
 
 #### Pros:
 
-- The InferencePool CRD is tightly coupled with their Envoy configuration. This would keep the CRD and its primary
+- The InferencePool CRD is tightly coupled with its Envoy configuration. This would keep the CRD and its primary
   consumer within the same domain.
 
 #### Cons:
