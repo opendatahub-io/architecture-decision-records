@@ -18,7 +18,7 @@ Extension (GIE) CRDs within Open Data Hub (ODH).
 
 ## Why
 
-The Gateway Inference Extension (GIE) introduces several CRDs. While most are leveraged by the GIE scheduler (
+The Gateway Inference Extension (GIE) introduces [several CRDs](https://gateway-api-inference-extension.sigs.k8s.io/concepts/api-overview/). While most are leveraged by the GIE scheduler (
 [llm-d-inference-scheduler](https://github.com/llm-d/llm-d-inference-scheduler)), which is owned by OpenDataHub, the InferencePool CRD presents a cross-team dependency. It is
 used by both the llm-d-inference-scheduler and the OpenShift Container Platform (OCP) Networking team's Gateway API
 implementation (Istio) to configure the Envoy ExtProc. This shared dependency necessitates a clear ownership model to
