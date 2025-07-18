@@ -1,16 +1,16 @@
 # Open Data Hub - Add test-only OpenTelemetry tracing instrumentation
 
 
-|                |                                                             |
-| -------------- |-------------------------------------------------------------|
+| Field          | Value                                                       |
+| -------------- | ----------------------------------------------------------- |
 | Date           | 2025-04-02                                                  |
 | Scope          | Open Data Hub                                               |
 | Status         | Draft                                                       |
 | Authors        | [Jiri Danek](@jiridanek)                                    |
 | Supersedes     | N/A                                                         |
-| Superseded by: | N/A                                                         |
-| Tickets        |                                                             |
-| Other docs:    |                                                             |
+| Superseded by  | N/A                                                         |
+| Tickets        | N/A                                                         |
+| Other docs     | N/A                                                         |
 
 ## What
 
