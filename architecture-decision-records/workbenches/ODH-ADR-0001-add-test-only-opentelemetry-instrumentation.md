@@ -44,7 +44,7 @@ Eventually, but not right now, we may even consider integrating with https://kub
 ## Stakeholder Impacts
 
 | Group                 | Key Contacts      | Date       | Impacted? |
-|-----------------------|-------------------| ---------- | --------- |
+|-----------------------|-------------------|------------|-----------|
 | IDE Team              | @harshad16        | 2025-05-14       | yes|
 
 ## Reviews
