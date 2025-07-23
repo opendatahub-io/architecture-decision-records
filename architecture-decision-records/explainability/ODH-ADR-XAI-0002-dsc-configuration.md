@@ -26,7 +26,7 @@ Currently, TrustyAI operator configuration requires direct manipulation of opera
 
 ## Goals
 
-1. **Unified Configuration**: Expose TrustyAI component settings through DSC interface
+1. **Unified Configuration**: Expose TrustyAI component settings through DSC interface. Although the main settings needed at the moment are LMEval ones, this mechanism would be the same for any future TrustyAI-wide deployment time settings.
 2. **Operator Integration**: Create complementary configuration that TrustyAI service operator can read alongside its default configuration
 3. **DevFlags Compatibility**: Ensure new configuration works alongside existing `devFlags`
 4. **Backward Compatibility**: Maintain compatibility with existing TrustyAI deployments
@@ -176,7 +176,6 @@ flowchart TD
 
 - **Name**: `trustyai-dsc-config` (avoids conflicts with TrustyAI operator's own `ConfigMap`)
 - **Namespace**: Applications namespace (e.g., `opendatahub`)
-- **Ownership**: Owned by TrustyAI CR for garbage collection
 - **Update Strategy**: has field ownership
 - **Integration**: TrustyAI service operator reads this `ConfigMap` alongside its default configuration
 
