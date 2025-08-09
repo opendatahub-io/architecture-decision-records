@@ -34,8 +34,8 @@ Eventually, but not right now, we may even consider integrating with https://kub
 ## How
 
 * https://github.com/opendatahub-io/kubeflow/pull/570
-* When a TraceProvider is not configured, the OpenTelemetry library in Go defaults to noop trace provider
-* TraceProvider is to be only set when running tests, which ensures that there is no active tracing in production deployments.
+* When a TracerProvider is not configured, the OpenTelemetry-Go library defaults to a no-op provider.
+* A TracerProvider is configured only during tests, ensuring no active tracing in production deployments.
 
 ## Alternatives
 
