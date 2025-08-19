@@ -103,7 +103,7 @@ spec:
 func createConfigMap(ctx context.Context, rr *odhtypes.ReconciliationRequest) error {
     trustyai, ok := rr.Instance.(*componentApi.TrustyAI)
     if !ok {
-        return fmt.Errorf("resource instance %v is not a componentApi.TrustyAI)", rr.Instance)
+        return fmt.Errorf("resource instance %v is not a componentApi.TrustyAI", rr.Instance)
     }
 
     // Skip ConfigMap creation if no configuration is specified
