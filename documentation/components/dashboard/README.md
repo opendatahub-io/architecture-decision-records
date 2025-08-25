@@ -239,7 +239,19 @@ There are fundamentally 3 types of users to understand.
 
 Admins today are determined by being in one of these groups:
 
-* The OdhDashboardConfig resource has a field for "admin_groups"; any valid OpenShift Group resource listed here is considered an admin group -- any users within should see the Settings navigation
+* Using the platform's `Auth` resource -- `adminGroups` specifies the groups of admins
+    ```yaml
+    apiVersion: services.platform.opendatahub.io/v1alpha1
+    kind: Auth
+    metadata:
+      name: auth
+    spec:
+      adminGroups:
+        - rhods-admins
+      allowedGroups:
+        - 'system:authenticated'
+    ```
+    * These groups get role bindings applied to them and granted access
 * The `cluster-admin` Role is granted in a RoleBinding to the user
 
 Note: Any other ways today, including comprehensive Role bindings or the initial kube:admin user do not inherently get the definition of an admin.
