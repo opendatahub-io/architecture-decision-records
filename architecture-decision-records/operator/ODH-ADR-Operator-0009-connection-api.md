@@ -9,7 +9,7 @@
 | Supersedes     | Data Connections (pre-2.16) |
 | Superseded by: | N/A |
 | Tickets        | [RHOAIENG-33699](https://issues.redhat.com/browse/RHOAIENG-33699) |
-| Other docs:    | [Dashboard Connection Documentation](../../../documentation/components/dashboard/features) |
+| Other docs:    | [Dashboard Connection Documentation](../../documentation/components/dashboard/features/connections.md) |
 
 ## What
 
@@ -146,6 +146,6 @@ N/A
 
 ## References
 
-- [Connection Labels & Annotations - Dashboard Docs](../../../documentation/components/dashboard/k8sLabelsAndAnnotations.md#connections)
+- [Connection Labels & Annotations - Dashboard Docs](../../documentation/components/dashboard/k8sLabelsAndAnnotations.md#connections)
 - [Webhook Implementation](https://github.com/opendatahub-io/opendatahub-operator/tree/main/internal/webhook/serving)
-- [Dashboard Storage Documentation](../../../documentation/components/dashboard/dashboardStorage.md)
+- [Dashboard Storage Documentation](../../documentation/components/dashboard/dashboardStorage.md)

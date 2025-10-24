@@ -2,7 +2,7 @@
 
 > Introduced in 2.16 -- Encompasses & replaces Data Connections
 
-> **Note**: For the official Connection API definition, including annotations and protocol specifications, see [ODH-ADR-Operator-0009-connection-api.md](../../../architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md). This document focuses on Dashboard-specific implementation details and Connection Types UI/UX.
+> **Note**: This document focuses on Dashboard-specific implementation details and Connection Types UI/UX. For the official Connection API definition, including annotations and protocol specifications, see [ODH-ADR-Operator-0009-connection-api.md](../../../../architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md).
 
 * [Introduction](#introduction)
 * [Connection Types & Corresponding Connections](#connection-types--corresponding-connections)
