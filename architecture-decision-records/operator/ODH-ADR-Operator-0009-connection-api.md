@@ -19,7 +19,7 @@ The 3.0 release introduces the `opendatahub.io/connection-type-protocol` annotat
 
 ## Why
 
-Prior to 2.16, OpenShift AI only supported S3-compatible "Data Connections" with a fixed schema and single annotation (`opendatahub.io/connection-type: s3`). This limitation prevented proper validation and routing for different connection protocols.
+Before 2.16, OpenShift AI only supported S3-compatible "Data Connections" with a fixed schema and single annotation (`opendatahub.io/connection-type: s3`, not supported in 3.0). This limitation prevented proper validation and routing for different connection protocols.
 
 The Connection API annotations were introduced in 2.16 to:
 - Support multiple connection protocols (initially S3 and URI, with OCI registries added later)
@@ -27,7 +27,9 @@ The Connection API annotations were introduced in 2.16 to:
 - Provide a consistent interface across components
 - Enable future protocol extensibility without API changes
 
-The 3.0 redefinition adds the `opendatahub.io/connection-type-protocol` annotation to enable webhook validation and protocol-specific handling for multiple protocols (s3, uri, oci) across components, addressing limitations discovered in production usage.
+The 2.16 release introduced the `opendatahub.io/connection-type-ref` annotation to reference connection schema definitions and enabled support for protocols using versioned names (s3, uri-v1, oci-v1), replacing the legacy `opendatahub.io/connection-type` annotation (which is not supported in 3.0).
+
+The 3.0 redefinition adds the `opendatahub.io/connection-type-protocol` annotation to enable webhook validation and standardizes protocol naming to s3, uri, and oci (removing the `-v1` suffix), addressing limitations discovered in production usage.
 
 ## Goals
 
@@ -36,6 +38,7 @@ The 3.0 redefinition adds the `opendatahub.io/connection-type-protocol` annotati
 - Support protocol-specific routing across components
 - Maintain backward compatibility with pre-2.16 Data Connections
 - Enable custom protocol definitions
+- Support GitOps workflows with consistent validation whether connections are created via Dashboard or declaratively
 
 ## Non-Goals
 
@@ -58,7 +61,8 @@ metadata:
   name: my-s3-connection
   namespace: <user-project>
   annotations:
-    opendatahub.io/connection-type-protocol: "s3"  # NEW in 3.0
+    opendatahub.io/connection-type-protocol: "s3"  # NEW in 3.0 
+    # opendatahub.io/connection-type-ref: "s3"  replaced
 type: Opaque
 data:
   AWS_S3_ENDPOINT: <base64-encoded>
@@ -83,11 +87,57 @@ The `opendatahub.io/connection-type-protocol` annotation enables:
 
 ### Webhook Integration
 
-The operator's serving webhook validates connections based on the protocol annotation with precedence handling. The webhook determines the protocol by checking annotations in order of precedence (protocol → ref → legacy), then applies protocol-specific validation rules to ensure the connection Secret contains the required fields for that protocol type.
+The operator's serving webhook validates connections based on the protocol annotation with precedence handling. The webhook determines the protocol by checking annotations in order of precedence:
+
+1. `opendatahub.io/connection-type-protocol` (highest priority - 3.0+)
+2. `opendatahub.io/connection-type-ref` (2.16+, deprecated in 3.0 but still supported for backward compatibility)
+
+Once the protocol is determined, the webhook applies protocol-specific validation rules to ensure the connection Secret contains the required fields for that protocol type.
 
 ### Consumption Patterns
 
-Components consume connections based on their specific requirements. The protocol annotation allows components to identify and validate appropriate connections for their use case. Protocol-specific integration logic is implemented by each component according to their needs.
+Components consume connections by referencing them in their resource specifications. The operator and components use the `opendatahub.io/connections` annotation or field to establish the relationship between resources and connection Secrets.
+
+**Currently Supported Workloads (as of 3.0):**
+- `Notebook` (Workbenches)
+- `InferenceService` (Model Serving)
+- `LLMInferenceService` (LLM-D Model Serving)
+
+Additional workload types may be supported in future releases.
+
+The protocol annotation allows components to identify and validate appropriate connections for their use case. Protocol-specific integration logic is implemented by each component according to their needs.
+
+#### Examples
+
+For detailed usage examples and step-by-step guides, see [How to use Connection API](https://github.com/opendatahub-io/opendatahub-operator/wiki/6.-How-to-use-Connection-API) in the operator wiki.
+
+**Workbench consuming connections:**
+```yaml
+apiVersion: kubeflow.org/v1
+kind: Notebook
+metadata:
+  name: my-workbench
+  namespace: <user-project>
+  annotations:
+    # Notebooks support multiple connections via comma-separated list
+    opendatahub.io/connections: '<user-project>/my-s3-connection,<user-project>/my-uri-connection'
+spec:
+  # ... notebook spec
+```
+
+**Model Server consuming a connection:**
+```yaml
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: my-model
+  namespace: <user-project>
+  annotations:
+    # Serving resources support a single connection
+    opendatahub.io/connections: '["my-s3-connection"]'
+spec:
+  # ... inference service spec
+```
 
 ### Security and Access Control
 
@@ -108,20 +158,21 @@ The operator's webhook validation is **advisory, not restrictive**:
 
 ### Annotation Evolution and Precedence
 
-**Pre-2.16 (Legacy Data Connections):**
+**Pre-2.16 (Legacy Data Connections, not supported in 3.0):**
 - `opendatahub.io/connection-type: s3` - Legacy annotation for S3 data connections
 
 **2.16 (Connection API):**
 - `opendatahub.io/connection-type-ref` - References the connection schema name (e.g., "s3", "uri")
 
-**3.0 (Protocol Support):**
+**3.0 (Enhanced Connection API):**
 - `opendatahub.io/connection-type-protocol` - Explicitly identifies the connection protocol (s3, uri, oci) for validation and routing
 
 **Annotation Precedence:**
 When both annotations are present, the operator uses the following precedence for protocol determination:
 1. `opendatahub.io/connection-type-protocol` (highest priority - explicit protocol, 3.0+)
-2. `opendatahub.io/connection-type-ref` (backward compatibility fallback, 2.16+)
-3. `opendatahub.io/connection-type` (legacy pre-2.16 support)
+2. `opendatahub.io/connection-type-ref` (backward compatibility fallback, 2.16+, deprecated in 3.0 but still supported)
+
+Note: `opendatahub.io/connection-type` (legacy pre-2.16) is not supported in 3.0.
 
 This precedence ensures that new connections explicitly define their protocol while maintaining backward compatibility with existing 2.16+ connections that only have `connection-type-ref`.
 
