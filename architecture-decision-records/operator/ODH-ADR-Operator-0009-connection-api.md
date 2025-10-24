@@ -134,7 +134,7 @@ metadata:
   namespace: <user-project>
   annotations:
     # Serving resources support a single connection
-    opendatahub.io/connections: '["my-s3-connection"]'
+    opendatahub.io/connections: 'my-s3-connection'
 spec:
   # ... inference service spec
 ```
