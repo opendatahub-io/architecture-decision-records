@@ -126,6 +126,7 @@ spec:
 ```
 
 **Model Server consuming a connection:**
+> **Note:** Unlike with Notebooks, the `opendatahub.io/connections` annotation for InferenceServices does not require you specify the namespace that the Secret is in. The connection Secret must be in the same namespace as the InferenceService.
 ```yaml
 apiVersion: serving.kserve.io/v1beta1
 kind: InferenceService
