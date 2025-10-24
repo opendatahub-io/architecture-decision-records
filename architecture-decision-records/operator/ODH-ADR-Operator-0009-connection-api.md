@@ -27,7 +27,7 @@ The Connection API annotations were introduced in 2.16 to:
 - Provide a consistent interface across components
 - Enable future protocol extensibility without API changes
 
-The 2.16 release introduced the `opendatahub.io/connection-type-ref` annotation to reference connection schema definitions and enabled support for protocols using versioned names (s3, uri-v1, oci-v1), replacing the legacy `opendatahub.io/connection-type` annotation (which is not supported in 3.0).
+The 2.16 release introduced the `opendatahub.io/connection-type-ref` annotation to reference connection schema definitions and enabled support for protocols using versioned names (`s3`, `uri-v1`, `oci-v1`), replacing the legacy `opendatahub.io/connection-type` annotation (which is not supported in 3.0).
 
 The 3.0 redefinition adds the `opendatahub.io/connection-type-protocol` annotation to enable webhook validation and standardizes protocol naming to s3, uri, and oci (removing the `-v1` suffix), addressing limitations discovered in production usage.
 
