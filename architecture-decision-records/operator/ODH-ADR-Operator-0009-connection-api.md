@@ -112,6 +112,7 @@ The protocol annotation allows components to identify and validate appropriate c
 For detailed usage examples and step-by-step guides, see [How to use Connection API](https://github.com/opendatahub-io/opendatahub-operator/wiki/6.-How-to-use-Connection-API) in the operator wiki.
 
 **Workbench consuming connections:**
+> **Note:** The `opendatahub.io/connections` annotation for Notebooks requires you to specify the namespace in the format `<namespace>/<secret-name>`. This allows the system to perform a SubjectAccessReview to verify that the user creating or updating the workload has permission to get the Secret. The connection Secret must be in the same namespace as the Notebook.
 ```yaml
 apiVersion: kubeflow.org/v1
 kind: Notebook
