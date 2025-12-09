@@ -14,6 +14,7 @@
 /documentation/components/distributed-workloads/ @opendatahub-io/architects @opendatahub-io/training-experimentation
 /documentation/components/edge/ @opendatahub-io/architects @opendatahub-io/platform
 /documentation/components/explainability/ @opendatahub-io/architects @opendatahub-io/model-serving
+/documentation/components/llama-stack/ @opendatahub-io/architects @opendatahub-io/llama-team
 /documentation/components/model-registry/ @opendatahub-io/architects @opendatahub-io/model-serving
 /documentation/components/pipelines/ @opendatahub-io/architects @opendatahub-io/training-experimentation
 /documentation/components/platform/ @opendatahub-io/architects @opendatahub-io/platform
