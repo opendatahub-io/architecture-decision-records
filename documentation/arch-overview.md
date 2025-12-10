@@ -100,10 +100,10 @@ Services
    - To be included yet
 
 - Feature Store 
-    
-    - Feature Store Controller - responsible for creation, management, and deployment of Feast Feature Servers (online store, offline store, registry).
-   
-    ![Feature Store Architecture Overview](images/RHOAI%20Architecture%20-%20D9%20-%20Feature%20Store.png)
+  - Feast Feature Store is a centralized repository for feature management within OpenShift AI. It is responsible for storing and serving features for model training and serving.
+  - Feature Store Controller - responsible for creation, management, and deployment of Feast Feature Servers (online store, offline store, registry).
+
+  ![Feature Store Architecture Overview](images/RHOAI%20Architecture%20-%20D9%20-%20Feature%20Store.png)
 
                  
 
