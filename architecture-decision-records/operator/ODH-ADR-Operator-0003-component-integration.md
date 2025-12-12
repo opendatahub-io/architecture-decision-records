@@ -1,7 +1,7 @@
 # Open Data Hub - ODH component Integration with DataScienceCluster
 
 |                |                                  |
-| -------------- |----------------------------------|
+| -------------- | -------------------------------- |
 | Date           | 2023-09-18                       |
 | Scope          |                                  |
 | Status         | Draft                            |
@@ -28,7 +28,8 @@ However, this design introduced following drawbacks:
 
 - **Increased Component Customization:** Allowing the [DataScienceCluster](https://github.com/opendatahub-io/opendatahub-operator/blob/main/config/crd/bases/datasciencecluster.opendatahub.io_datascienceclusters.yaml) API to expose every integrated component will accord users the flexibility to directly configure component-specific fields via the CRD, thereby expanding customization scope.
 - **Improved Component Management:** As every component is tightly coupled with the operator, the controller is aware of the resources being deployed and only has the permissions to watch and manage those specific resources. This also allows operator to manage component lifecycle and upgrades.
-- **Informed Approach:** The goal is to ensure that the operator has knowledge of the components being deployed, and make intelligent decisions based on that knowledge. 
+- **Informed Approach:** The goal is to ensure that the operator has knowledge of the components being deployed, and make intelligent decisions based on that knowledge.
+
 ## Non-Goals
 
 - This ADR will not define transition of Tier 2 components into Tier 0/1.
@@ -41,8 +42,7 @@ However, this design introduced following drawbacks:
 ## Open Questions
 
 - **Quality Assurance for Components:** The component team is responsible for ensuring unit tests are added to any new component specific code and for update operator [e2e tests](https://github.com/opendatahub-io/opendatahub-operator/blob/main/tests/e2e/helper_test.go#L55) to include testing of the
-                                    new component.
-
+  new component.
 
 ## Alternatives
 
@@ -52,4 +52,3 @@ However, this design introduced following drawbacks:
 ## References
 
 N/A
-
