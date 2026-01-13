@@ -24,7 +24,7 @@ The optimization process typically involves:
     - [Optimization Configuration](#4-optimization-configuration)
       - [Optimization Settings](#optimization-settings)
       - [Search Space Constraints](#search-space-constraints)
-  - [Pipeline Invocation Example](#pipeline-invocation-example-kfp-sdk-v2---structured-types)
+  - [Pipeline Invocation Example](#pipeline-invocation-example)
   - [Required Parameters](#required-parameters)
   - [Components](#components)
     - [Document Loader](#document-loader)
@@ -234,7 +234,7 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 ]
 ```
 
-**Pipeline Invocation Example (KFP SDK v2 - Structured Types):**
+**Pipeline Invocation Example:**
 
 > ⚠️ **Warning:** This is a mocked example for demonstration purposes using KFP SDK v2. Actual implementation may vary based on the specific Kubeflow Pipelines SDK version and RHOAI configuration.
 
@@ -340,7 +340,6 @@ print(f"Pipeline run created: {run.run_id}")
 ```
 #### Required Parameters
 
-**Required Parameters:**
 - `name: str` - Experiment name (required)
 - `input_data_reference: Dict` - Document data source (required)
 - `test_data_reference: Dict` - Test data source (required)
