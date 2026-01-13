@@ -336,6 +336,7 @@ run = client.create_run_from_pipeline_func(
 
 print(f"Pipeline run created: {run.run_id}")
 ```
+#### Required vs Optional Parameters
 
 **Required Parameters:**
 - `name: str` - Experiment name (required)
@@ -347,6 +348,17 @@ print(f"Pipeline run created: {run.run_id}")
 
 
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
+
+#### Parameter Type Considerations
+
+**Current Approach (JSON Strings):**
+- All complex parameters are passed as JSON strings (`str` type)
+- Requires `json.dumps()` for serialization in Python
+- Requires `json.loads()` for deserialization in components
+- Works with both KFP SDK v1 and v2
+
+**Alternative Approach (Structured Types - KFP SDK v2):**
+For better type safety and developer experience, consider using structured types:
 
 ```python
 from kfp import dsl
@@ -454,3 +466,4 @@ The `ai4rag` project is open-source and available at: [https://github.com/IBM/ai
 
 - **API**: Programmatic access to AutoRAG functionality
 - **UI**: User interface for interacting with AutoRAG
+

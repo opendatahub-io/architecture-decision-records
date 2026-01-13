@@ -65,26 +65,26 @@ The following flowchart illustrates the AutoRAG optimization workflow:
 
 ```mermaid
 flowchart LR
-    Start([Pipeline Start]) --> DataIngestion[Data Ingestion]
-    DataIngestion --> DocProcessing[Document Processing]
-    DocProcessing --> SearchSpace[Search Space Definition]
-    SearchSpace --> ModelValidation[Model Validation]
-    ModelValidation --> OptLoop{Optimization Loop}
-    OptLoop --> SelectConfig[Select Config]
-    SelectConfig --> ExecuteRAG[Execute RAG]
-    ExecuteRAG --> Evaluate[Evaluate]
-    Evaluate --> UpdateLeaderboard[Update Leaderboard]
-    UpdateLeaderboard --> CheckMax{Max patterns?}
+    Start([Pipeline Start]) --> DataIngestion["Data Ingestion<br/>Load documents & test data"]
+    DataIngestion --> DocProcessing["Document Processing<br/>Sample & extract text"]
+    DocProcessing --> SearchSpace["Search Space Definition<br/>Define configurations"]
+    SearchSpace --> ModelValidation["Model Validation<br/>Preselect models"]
+    ModelValidation --> OptLoop{"Optimization<br/>Loop"}
+    OptLoop --> SelectConfig["Select Configuration<br/>GAM prediction"]
+    SelectConfig --> ExecuteRAG["Execute RAG Pipeline<br/>Run configuration"]
+    ExecuteRAG --> Evaluate["Evaluate Performance<br/>Test data metrics"]
+    Evaluate --> UpdateLeaderboard["Update Leaderboard<br/>Rank patterns"]
+    UpdateLeaderboard --> CheckMax{"Reached max<br/>patterns?"}
     CheckMax -->|No| OptLoop
-    CheckMax -->|Yes| PatternGen[Pattern Generation]
-    PatternGen --> ResultsStorage[Results Storage]
-    ResultsStorage --> End([Complete])
+    CheckMax -->|Yes| PatternGen["Pattern Generation<br/>Package top patterns"]
+    PatternGen --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
+    ResultsStorage --> End([Pipeline Complete])
     
-    style Start fill:#2d8659,color:#fff
-    style End fill:#2d8659,color:#fff
-    style OptLoop fill:#d97706,color:#fff
-    style CheckMax fill:#d97706,color:#fff
-    style PatternGen fill:#1e40af,color:#fff
+    style Start fill:#2d8659,color:#fff,stroke-width:3px
+    style End fill:#2d8659,color:#fff,stroke-width:3px
+    style OptLoop fill:#d97706,color:#fff,stroke-width:3px
+    style CheckMax fill:#d97706,color:#fff,stroke-width:3px
+    style PatternGen fill:#1e40af,color:#fff,stroke-width:3px
 ```
 
 **Workflow Steps:**
