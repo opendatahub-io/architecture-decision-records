@@ -346,9 +346,6 @@ print(f"Pipeline run created: {run.run_id}")
 - `test_data_reference: Dict` - Test data source (required)
 - `results_reference: Dict` - Results storage location (required)
 
-**Optional Parameters:**
-- `description: str` - Experiment description (optional)
-- `vector_database_id: str` - Vector database identifier (optional). If not provided, an in-memory database will be used.
 
 ```python
 run = client.create_run_from_pipeline_func(
@@ -358,8 +355,6 @@ run = client.create_run_from_pipeline_func(
         "input_data_reference": input_data_reference,
         "test_data_reference": test_data_reference,
         "results_reference": results_reference,
-        # vector_database_id is optional - if omitted, in-memory DB will be used
-        # "vector_database_id": "milvus-database",
     }
 )
 ```
