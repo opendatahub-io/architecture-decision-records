@@ -242,7 +242,7 @@ from kfp import Client
 client = Client(host='https://your-kfp-endpoint.com')
 
 # Prepare input data, optimization and constraint parameters as native Python types
-# No JSON serialization needed with structured types
+
 input_data_reference = {
     "connection_id": "s3-documents-connection",
     "bucket": "my-documents-bucket",
@@ -336,7 +336,6 @@ run = client.create_run_from_pipeline_func(
 
 print(f"Pipeline run created: {run.run_id}")
 ```
-#### Required vs Optional Parameters
 
 **Required Parameters:**
 - `name: str` - Experiment name (required)
@@ -348,17 +347,6 @@ print(f"Pipeline run created: {run.run_id}")
 
 
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
-
-#### Parameter Type Considerations
-
-**Current Approach (JSON Strings):**
-- All complex parameters are passed as JSON strings (`str` type)
-- Requires `json.dumps()` for serialization in Python
-- Requires `json.loads()` for deserialization in components
-- Works with both KFP SDK v1 and v2
-
-**Alternative Approach (Structured Types - KFP SDK v2):**
-For better type safety and developer experience, consider using structured types:
 
 ```python
 from kfp import dsl
