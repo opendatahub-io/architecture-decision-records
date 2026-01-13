@@ -104,8 +104,8 @@ Test data json file is supported only.
 
 ##### Vector Database
 
-**Required Parameter:**
-- `vector_database_id: str` - vector database id (e.g., registred in llama-stack Milvus database)
+**Optional Parameter:**
+- `vector_database_id: str` - Vector database id (e.g., registered in llama-stack Milvus database). If not provided, an in-memory database will be used.
 
 ##### Output results storage
 Results of the run to be stored (python code, log file, summary report)
@@ -342,10 +342,13 @@ print(f"Pipeline run created: {run.run_id}")
 
 **Required Parameters:**
 - `name: str` - Experiment name (required)
-- `input_data_reference: str` - Document data source (required)
-- `test_data_reference: str` - Test data source (required)
-- `vector_database_id: str` - Vector database identifier (required)
-- `results_reference: str` - Results storage location (required)
+- `input_data_reference: Dict` - Document data source (required)
+- `test_data_reference: Dict` - Test data source (required)
+- `results_reference: Dict` - Results storage location (required)
+
+**Optional Parameters:**
+- `description: str` - Experiment description (optional)
+- `vector_database_id: str` - Vector database identifier (optional). If not provided, an in-memory database will be used.
 
 ```python
 run = client.create_run_from_pipeline_func(
@@ -354,8 +357,9 @@ run = client.create_run_from_pipeline_func(
         "name": "AutoRAG Experiment 2",
         "input_data_reference": input_data_reference,
         "test_data_reference": test_data_reference,
-        "vector_database_id": "milvus-database",
         "results_reference": results_reference,
+        # vector_database_id is optional - if omitted, in-memory DB will be used
+        # "vector_database_id": "milvus-database",
     }
 )
 ```
