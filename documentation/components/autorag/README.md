@@ -349,41 +349,6 @@ print(f"Pipeline run created: {run.run_id}")
 
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
 
-#### Parameter Type Considerations
-
-**Current Approach (JSON Strings):**
-- All complex parameters are passed as JSON strings (`str` type)
-- Requires `json.dumps()` for serialization in Python
-- Requires `json.loads()` for deserialization in components
-- Works with both KFP SDK v1 and v2
-
-**Alternative Approach (Structured Types - KFP SDK v2):**
-For better type safety and developer experience, consider using structured types:
-
-```python
-from kfp import dsl
-from typing import Dict, List, Optional
-
-@dsl.pipeline(name='autorag-pipeline')
-def autorag_pipeline(
-    # Required parameters
-    name: str,
-    description: str,
-    input_data_reference: Dict,
-    test_data_reference: Dict,
-    vector_database_id: str,
-    results_reference: Dict,
-    
-    # Optional parameters with defaults
-    optimization: Optional[Dict] = None,
-    chunking_constraints: Optional[List[Dict]] = None,
-    embeddings_constraints: Optional[List[Dict]] = None,
-    generation_constraints: Optional[List[Dict]] = None,
-    retrieval_constraints: Optional[List[Dict]] = None,
-):
-    ...
-```
-
 ### Components
 #### Document Loader
 Reads unstructured data from data sources (S3, local filesystem). Supports S3 `connection`. Returns documents for processing. 
