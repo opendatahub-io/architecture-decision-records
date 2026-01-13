@@ -64,27 +64,27 @@ AutoRAG is implemented as a Kubeflow Pipeline that orchestrates the following wo
 The following flowchart illustrates the AutoRAG optimization workflow:
 
 ```mermaid
-flowchart TD
-    Start([Pipeline Start]) --> DataIngestion[Data Ingestion<br/>Load documents & test data]
-    DataIngestion --> DocProcessing[Document Processing<br/>Sample, extract text using docling]
-    DocProcessing --> SearchSpace[Search Space Definition<br/>Define RAG configurations<br/>from constraints or defaults]
-    SearchSpace --> ModelValidation[Model Validation<br/>Validate & preselect models<br/>using in-memory vector DB]
+flowchart LR
+    Start([Pipeline Start]) --> DataIngestion[Data Ingestion]
+    DataIngestion --> DocProcessing[Document Processing]
+    DocProcessing --> SearchSpace[Search Space Definition]
+    SearchSpace --> ModelValidation[Model Validation]
     ModelValidation --> OptLoop{Optimization Loop}
-    OptLoop --> SelectConfig[Select Configuration<br/>GAM-based prediction]
-    SelectConfig --> ExecuteRAG[Execute RAG Pipeline<br/>with selected configuration]
-    ExecuteRAG --> Evaluate[Evaluate Performance<br/>using test data]
-    Evaluate --> UpdateLeaderboard[Update Leaderboard<br/>with results]
-    UpdateLeaderboard --> CheckMax{Reached max<br/>patterns?}
+    OptLoop --> SelectConfig[Select Config]
+    SelectConfig --> ExecuteRAG[Execute RAG]
+    ExecuteRAG --> Evaluate[Evaluate]
+    Evaluate --> UpdateLeaderboard[Update Leaderboard]
+    UpdateLeaderboard --> CheckMax{Max patterns?}
     CheckMax -->|No| OptLoop
-    CheckMax -->|Yes| PatternGen[Pattern Generation<br/>Package top configurations<br/>as RAG Patterns]
-    PatternGen --> ResultsStorage[Results Storage<br/>Store artifacts, metrics, logs]
-    ResultsStorage --> End([Pipeline Complete])
+    CheckMax -->|Yes| PatternGen[Pattern Generation]
+    PatternGen --> ResultsStorage[Results Storage]
+    ResultsStorage --> End([Complete])
     
-    style Start fill:#e1f5e1
-    style End fill:#e1f5e1
-    style OptLoop fill:#fff4e1
-    style CheckMax fill:#fff4e1
-    style PatternGen fill:#e1f5ff
+    style Start fill:#2d8659,color:#fff
+    style End fill:#2d8659,color:#fff
+    style OptLoop fill:#d97706,color:#fff
+    style CheckMax fill:#d97706,color:#fff
+    style PatternGen fill:#1e40af,color:#fff
 ```
 
 **Workflow Steps:**
