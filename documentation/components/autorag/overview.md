@@ -16,9 +16,24 @@ The optimization process typically involves:
   - [Input parameters](#input-parameters)
     - [Experiment Metadata](#1-experiment-metadata)
     - [Input Data Sources](#2-input-data-sources)
+      - [Document Data](#document-data)
+      - [Test Data](#test-data)
     - [Infrastructure Configuration](#3-infrastructure-configuration)
+      - [Vector Database](#vector-database)
+      - [Output results storage](#output-results-storage)
     - [Optimization Configuration](#4-optimization-configuration)
+      - [Optimization Settings](#optimization-settings)
+      - [Search Space Constraints](#search-space-constraints)
+  - [Pipeline Invocation Example](#pipeline-invocation-example)
+  - [Required vs Optional Parameters](#required-vs-optional-parameters)
+  - [Parameter Type Considerations](#parameter-type-considerations)
   - [Components](#components)
+    - [Document Loader](#document-loader)
+    - [Test Data Loading (Tabular Data Loader)](#test-data-loading-tabular-data-loader)
+    - [Documents Sampling & Loading](#documents-sampling--loading)
+    - [Text Extraction](#text-extraction)
+    - [Search Space Preparation (Model Preselector)](#search-space-preparation-model-preselector)
+    - [RAG Settings Optimization](#rag-settings-optimization)
   - [Artifacts](#artifacts)
 - [Optimization engine `ai4rag`](#optimization-engine-ai4rag)
 - [Supported features](#supported-features)
@@ -149,10 +164,10 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 - `retrieval_constraints: str` - JSON string defining retrieval method configurations (optional):
   - List of retrieval configurations with `method`, `number_of_chunks`, optional `hybrid_ranker` (with `strategy`, `sparse_vectors`, `alpha`, `k`)
 
-Example values:
+**Example values:**
 
+**Chunking Constraints:**
 ```json
-// chunking_constraints
 [
   {
     "method": "recursive",
@@ -160,8 +175,10 @@ Example values:
     "chunk_size": 2048
   }
 ]
+```
 
-// embeddings_constraints
+**Embeddings Constraints:**
+```json
 [
   {
     "model": "ibm/slate-125m-english-rtrvr-v2"
@@ -170,8 +187,10 @@ Example values:
     "model": "intfloat/multilingual-e5-large"
   }
 ]
+```
 
-// generation_constraints
+**Generation Constraints:**
+```json
 [
   {"model": "mistralai/mixtral-8x7b-instruct-v01"},
   {"model": "ibm/granite-13b-instruct-v2"},
@@ -192,8 +211,10 @@ Example values:
     ]
   }
 ]
+```
 
-// retrieval_constraints
+**Retrieval Constraints:**
+```json
 [
   {
     "method": "simple",
@@ -210,55 +231,55 @@ Example values:
 ]
 ```
 
-**Pipeline Invocation Example:**
+**Pipeline Invocation Example (KFP SDK v2 - Structured Types):**
 
-> ⚠️ **Warning:** This is a mocked example for demonstration purposes. Actual implementation may vary based on the specific Kubeflow Pipelines SDK version and RHOAI configuration.
+> ⚠️ **Warning:** This is a mocked example for demonstration purposes using KFP SDK v2 structured types. Actual implementation may vary based on the specific Kubeflow Pipelines SDK version and RHOAI configuration.
 
 ```python
 from kfp import Client
-import json
 
 # Initialize KFP client
 client = Client(host='https://your-kfp-endpoint.com')
 
-# Prepare input data, optimization and constraint parameters as JSON strings
-input_data_reference = json.dumps({
+# Prepare input data, optimization and constraint parameters as native Python types
+# No JSON serialization needed with structured types
+input_data_reference = {
     "connection_id": "s3-documents-connection",
     "bucket": "my-documents-bucket",
     "path": "rh_documents/"
-})
+}
 
-test_data_reference = json.dumps({
+test_data_reference = {
     "connection_id": "s3-benchmarks-connection",
-    "bucket": "autorag_benhcmarks",
+    "bucket": "autorag_benchmarks",
     "path": "my-folder/test_data.json"
-})
+}
 
-results_reference = json.dumps({
+results_reference = {
     "connection_id": "s3-autorag-results-connection",
     "bucket": "results",
     "path": "autorag/"
-})
+}
 
-optimization = json.dumps({
+optimization = {
     "max_number_of_rag_patterns": 4,
     "metric": "answer_correctness"
-})
+}
 
-chunking_constraints = json.dumps([
+chunking_constraints = [
     {
         "method": "recursive",
         "chunk_overlap": 256,
         "chunk_size": 2048
     }
-])
+]
 
-embeddings_constraints = json.dumps([
+embeddings_constraints = [
     {"model": "ibm/slate-125m-english-rtrvr-v2"},
     {"model": "intfloat/multilingual-e5-large"}
-])
+]
 
-generation_constraints = json.dumps([
+generation_constraints = [
     {"model": "mistralai/mixtral-8x7b-instruct-v01"},
     {"model": "ibm/granite-13b-instruct-v2"},
     {
@@ -277,9 +298,9 @@ generation_constraints = json.dumps([
             }
         ]
     }
-])
+]
 
-retrieval_constraints = json.dumps([
+retrieval_constraints = [
     {
         "method": "simple",
         "number_of_chunks": 2,
@@ -292,9 +313,10 @@ retrieval_constraints = json.dumps([
         "method": "simple",
         "number_of_chunks": 2
     }
-])
+]
 
 # Create and submit pipeline run with constraints
+# Parameters are passed as native Python types (Dict, List) - no JSON serialization needed
 run = client.create_run_from_pipeline_func(
     autorag_pipeline,
     arguments={
@@ -314,9 +336,6 @@ run = client.create_run_from_pipeline_func(
 
 print(f"Pipeline run created: {run.run_id}")
 ```
-
-### Parameter Analysis and Best Practices
-
 #### Required vs Optional Parameters
 
 **Required Parameters:**
@@ -327,12 +346,6 @@ print(f"Pipeline run created: {run.run_id}")
 - `vector_database_id: str` - Vector database identifier (required)
 - `results_reference: str` - Results storage location (required)
 
-**Optional Parameters:**
-- `optimization: str` - Optimization settings (optional, defaults apply)
-- `chunking_constraints: str` - Chunking configurations (optional)
-- `embeddings_constraints: str` - Embedding models (optional)
-- `generation_constraints: str` - Generation models (optional)
-- `retrieval_constraints: str` - Retrieval configurations (optional)
 
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
 
@@ -371,55 +384,7 @@ def autorag_pipeline(
     ...
 ```
 
-**Benefits of Structured Types:**
-- ✅ Type safety and IDE autocomplete
-- ✅ No JSON serialization/deserialization needed
-- ✅ Automatic validation by KFP SDK
-- ✅ Better error messages
-
-**Trade-offs:**
-- ⚠️ Requires KFP SDK v2
-- ⚠️ May need component updates to handle native types
-
-#### Parameter Validation Recommendations
-
-1. **Connection IDs**: Should validate that the connection exists in the namespace
-2. **Paths**: Should validate path format and accessibility
-3. **Constraints Lists**: Should validate:
-   - Non-empty lists when provided
-   - Valid model IDs in embeddings/generation constraints
-   - Valid method names in chunking/retrieval constraints
-   - Numeric ranges (e.g., `chunk_size > 0`, `number_of_chunks > 0`)
-4. **Optimization Settings**: Should validate:
-   - `max_number_of_rag_patterns > 0`
-   - `metric` is one of the supported values
-
-#### Parameter Naming Consistency
-
-✅ **Good Practices Observed:**
-- Consistent use of snake_case
-- Descriptive names that indicate purpose
-- Clear distinction between `_reference` (dict) and `_id` (string) parameters
-
-#### Documentation Improvements
-
-1. **Default Values**: Document default values for optional parameters explicitly
-2. **Validation Rules**: Add validation constraints for each parameter
-3. **Parameter Dependencies**: Document if parameters depend on each other
-4. **Examples**: Provide both minimal and complete examples
-
-#### Recommendations Summary
-
-1. ✅ **Keep JSON string approach** for current implementation (works with both SDK versions)
-2. ✅ **Fix documentation error** in `results_reference` description (already fixed)
-3. ✅ **Add explicit required/optional markers** to parameter definitions
-4. ✅ **Consider structured types** for future KFP SDK v2 migration
-5. ✅ **Add validation documentation** for parameter constraints
-6. ✅ **Document default values** for optional parameters explicitly
-
 ### Components
-
-
 #### Document Loader
 Reads unstructured data from data sources (S3, local filesystem). Supports S3 `connection`. Returns documents for processing. 
 
