@@ -26,7 +26,6 @@ The optimization process typically involves:
       - [Search Space Constraints](#search-space-constraints)
   - [Pipeline Invocation Example](#pipeline-invocation-example)
   - [Required vs Optional Parameters](#required-vs-optional-parameters)
-  - [Parameter Type Considerations](#parameter-type-considerations)
   - [Components](#components)
     - [Document Loader](#document-loader)
     - [Test Data Loading (Tabular Data Loader)](#test-data-loading-tabular-data-loader)
@@ -53,10 +52,14 @@ The AutoRAG pipeline parameters are organized into the following logical groups:
 
 > ℹ️ **Info:** Optimization settings and constraints (chunking, embeddings, generation, retrieval) are **optional** parameters. If not provided, AutoRAG will use default values or explore the full search space.
 
+> 📘 **Note:** This documentation uses Kubeflow Pipelines v2 structured types (`Dict`, `List`) for complex parameters. KFP v2 natively supports Python dictionary and list types, eliminating the need for JSON string serialization. Parameters are passed as native Python objects, making the pipeline definition more readable and type-safe.
+
 #### 1. Experiment Metadata
 
 **Required Parameters:**
 - `name: str` - Name of the AutoRAG experiment run (e.g., "AutoRAG run")
+
+**Optional Parameters:**
 - `description: str` - Description of the experiment (e.g., "RHOAI Kubeflow Pipelines Docs")
 
 #### 2. Input Data Sources
@@ -64,13 +67,13 @@ The AutoRAG pipeline parameters are organized into the following logical groups:
 ##### Document Data
 
 **Required Parameter:**
-- `input_data_reference: str` - JSON string defining document data source:
+- `input_data_reference: Dict` - Dictionary defining document data source:
   - `connection_id: str` - Connection ID for the data source (e.g., S3 connection ID)
   - `bucket: str` - Bucket name containing the documents
   - `path: str` - Path within the bucket/filesystem to the documents folder or single file
   
   Example:
-  ```json
+  ```python
   {
     "connection_id": "s3-documents-connection",
     "bucket": "my-documents-bucket",
@@ -83,13 +86,13 @@ The AutoRAG pipeline parameters are organized into the following logical groups:
 Test data json file is supported only.
 
 **Required Parameter:**
-- `test_data_reference: str` - JSON string defining test data source:
+- `test_data_reference: Dict` - Dictionary defining test data source:
   - `connection_id: str` - Connection ID for the test data source (e.g., S3 connection ID)
   - `bucket: str` - Bucket name containing the test data file
   - `path: str` - Path within the bucket/filesystem to the test data file
   
   Example:
-  ```json
+  ```python
   {
     "connection_id": "s3-benchmarks-connection",
     "bucket": "autorag_benchmarks",
@@ -108,14 +111,14 @@ Test data json file is supported only.
 Results of the run to be stored (python code, log file, summary report)
 
 **Required Parameter:**
-- `results_reference: str` - JSON string defining results storage location:
+- `results_reference: Dict` - Dictionary defining results storage location:
   - `connection_id: str` - Connection ID for the results storage (e.g., S3 connection ID)
   - `bucket: str` - Bucket name for storing results
   - `path: str` - Path where experiment results will be stored (e.g., "autorag/results")
   
   
   Example:
-  ```json
+  ```python
   {
     "connection_id": "s3-autorag-results-connection",
     "bucket": "results",
@@ -128,14 +131,14 @@ Results of the run to be stored (python code, log file, summary report)
 ##### Optimization Settings
 
 **Optional Parameter:**
-- `optimization: str` - JSON string defining optimization settings (optional, defaults apply if not provided):
+- `optimization: Dict` - Dictionary defining optimization settings (optional, defaults apply if not provided):
   - `max_number_of_rag_patterns: int` - Maximum number of RAG patterns to generate (default: 4)
   - `metric: str` - Metric to optimize (e.g., `"answer_correctness"` or `"faithfulness"`)
   
   Supported metrics are: `faithfulness` and `answer_correctness`. On top of those the `context_correctness` is automatically calculated measuring the retrieved chunks quality.
 
   Example:
-  ```json
+  ```python
   {
     "max_number_of_rag_patterns": 4,
     "metric": "answer_correctness"
@@ -144,30 +147,30 @@ Results of the run to be stored (python code, log file, summary report)
 
 ##### Search Space Constraints
 
-Constraints define the search space for RAG optimization. Each constraint section is provided as a JSON string parameter:
+Constraints define the search space for RAG optimization. Each constraint section is provided as a List parameter:
 
 **Optional Parameters:**
 
 **Chunking Constraints:**
-- `chunking_constraints: str` - JSON string defining chunking configurations (optional):
-  - List of chunking configurations with `method`, `chunk_overlap`, `chunk_size`
+- `chunking_constraints: List[Dict]` - List of dictionaries defining chunking configurations (optional):
+  - Each dictionary contains: `method: str`, `chunk_overlap: int`, `chunk_size: int`
 
 **Embeddings Constraints:**
-- `embeddings_constraints: str` - JSON string defining embedding models (optional):
-  - List of embedding models with `model`
+- `embeddings_constraints: List[Dict]` - List of dictionaries defining embedding models (optional):
+  - Each dictionary contains: `model: str`
 
 **Generation Constraints:**
-- `generation_constraints: str` - JSON string defining generation models (optional):
-  - List of foundation models with `model`, optional `context_template_text`, optional `messages` array
+- `generation_constraints: List[Dict]` - List of dictionaries defining generation models (optional):
+  - Each dictionary contains: `model: str`, optional `context_template_text: str`, optional `messages: List[Dict]` array
 
 **Retrieval Constraints:**
-- `retrieval_constraints: str` - JSON string defining retrieval method configurations (optional):
-  - List of retrieval configurations with `method`, `number_of_chunks`, optional `hybrid_ranker` (with `strategy`, `sparse_vectors`, `alpha`, `k`)
+- `retrieval_constraints: List[Dict]` - List of dictionaries defining retrieval method configurations (optional):
+  - Each dictionary contains: `method: str`, `number_of_chunks: int`, optional `hybrid_ranker: Dict` (with `strategy: str`, `sparse_vectors: str`, `alpha: float`, `k: int`)
 
 **Example values:**
 
 **Chunking Constraints:**
-```json
+```python
 [
   {
     "method": "recursive",
@@ -178,7 +181,7 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 ```
 
 **Embeddings Constraints:**
-```json
+```python
 [
   {
     "model": "ibm/slate-125m-english-rtrvr-v2"
@@ -190,7 +193,7 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 ```
 
 **Generation Constraints:**
-```json
+```python
 [
   {"model": "mistralai/mixtral-8x7b-instruct-v01"},
   {"model": "ibm/granite-13b-instruct-v2"},
@@ -214,7 +217,7 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 ```
 
 **Retrieval Constraints:**
-```json
+```python
 [
   {
     "method": "simple",
@@ -233,7 +236,7 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 
 **Pipeline Invocation Example (KFP SDK v2 - Structured Types):**
 
-> ⚠️ **Warning:** This is a mocked example for demonstration purposes using KFP SDK v2 structured types. Actual implementation may vary based on the specific Kubeflow Pipelines SDK version and RHOAI configuration.
+> ⚠️ **Warning:** This is a mocked example for demonstration purposes using KFP SDK v2. Actual implementation may vary based on the specific Kubeflow Pipelines SDK version and RHOAI configuration.
 
 ```python
 from kfp import Client
@@ -316,7 +319,6 @@ retrieval_constraints = [
 ]
 
 # Create and submit pipeline run with constraints
-# Parameters are passed as native Python types (Dict, List) - no JSON serialization needed
 run = client.create_run_from_pipeline_func(
     autorag_pipeline,
     arguments={
@@ -336,15 +338,27 @@ run = client.create_run_from_pipeline_func(
 
 print(f"Pipeline run created: {run.run_id}")
 ```
-#### Required vs Optional Parameters
+#### Required Parameters
 
 **Required Parameters:**
 - `name: str` - Experiment name (required)
-- `description: str` - Experiment description (required)
 - `input_data_reference: str` - Document data source (required)
 - `test_data_reference: str` - Test data source (required)
 - `vector_database_id: str` - Vector database identifier (required)
 - `results_reference: str` - Results storage location (required)
+
+```python
+run = client.create_run_from_pipeline_func(
+    autorag_pipeline,
+    arguments={
+        "name": "AutoRAG Experiment 2",
+        "input_data_reference": input_data_reference,
+        "test_data_reference": test_data_reference,
+        "vector_database_id": "milvus-database",
+        "results_reference": results_reference,
+    }
+)
+```
 
 
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
