@@ -770,6 +770,8 @@ For each run, AutoML generates:
   - Links to remaining artifacts
 - **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with TabularPredictor - fit and predict actions
 
+> 📘 **Details on artifacts:** See [Artifacts documentation](artifacts.md) for comprehensive information about artifact structure, naming conventions, and sample artifacts.
+
 ## Optimization engine AutoGluon
 
 The AutoGluon project is open-source and available at: [https://github.com/autogluon/autogluon](https://github.com/autogluon/autogluon).
