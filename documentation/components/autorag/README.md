@@ -52,7 +52,7 @@ The AutoRAG pipeline parameters are organized into the following logical groups:
 
 > ℹ️ **Info:** Optimization settings and constraints (chunking, embeddings, generation, retrieval) are **optional** parameters. If not provided, AutoRAG will use default values or explore the full search space.
 
-> 📘 **Note:** This documentation uses Kubeflow Pipelines v2 structured types (`Dict`, `List`) for complex parameters. KFP v2 natively supports Python dictionary and list types, eliminating the need for JSON string serialization. Parameters are passed as native Python objects, making the pipeline definition more readable and type-safe.
+> 📘 **Note:** This documentation uses Kubeflow Pipelines v2 structured types (`Dict`, `List`) for complex parameters.
 
 #### 1. Experiment Metadata
 
@@ -238,6 +238,9 @@ Constraints define the search space for RAG optimization. Each constraint sectio
 
 > ⚠️ **Warning:** This is a mocked example for demonstration purposes using KFP SDK v2. Actual implementation may vary based on the specific Kubeflow Pipelines SDK version and RHOAI configuration.
 
+<details>
+<summary>Click to expand Python SDK example with all parameters</summary>
+
 ```python
 from kfp import Client
 
@@ -338,6 +341,106 @@ run = client.create_run_from_pipeline_func(
 
 print(f"Pipeline run created: {run.run_id}")
 ```
+
+</details>
+
+**REST API Invocation Example:**
+
+<details>
+<summary>Click to expand REST API example with all parameters</summary>
+
+```bash
+# Set your KFP endpoint and authentication token
+KFP_ENDPOINT="https://your-kfp-endpoint.com"
+AUTH_TOKEN="your-auth-token-here"
+PIPELINE_ID="autorag-pipeline-id"
+
+# Create a pipeline run using REST API
+curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -d '{
+    "name": "AutoRAG Experiment 1",
+    "description": "RHOAI Kubeflow Pipelines Docs",
+    "pipeline_spec": {
+      "pipeline_id": "'"${PIPELINE_ID}"'"
+    },
+    "runtime_config": {
+      "parameters": {
+        "name": "AutoRAG Experiment 1",
+        "description": "RHOAI Kubeflow Pipelines Docs",
+        "input_data_reference": {
+          "connection_id": "s3-documents-connection",
+          "bucket": "my-documents-bucket",
+          "path": "rh_documents/"
+        },
+        "test_data_reference": {
+          "connection_id": "s3-benchmarks-connection",
+          "bucket": "autorag_benchmarks",
+          "path": "my-folder/test_data.json"
+        },
+        "vector_database_id": "milvus-database",
+        "results_reference": {
+          "connection_id": "s3-autorag-results-connection",
+          "bucket": "results",
+          "path": "autorag/"
+        },
+        "optimization": {
+          "max_number_of_rag_patterns": 4,
+          "metric": "answer_correctness"
+        },
+        "chunking_constraints": [
+          {
+            "method": "recursive",
+            "chunk_overlap": 256,
+            "chunk_size": 2048
+          }
+        ],
+        "embeddings_constraints": [
+          {"model": "ibm/slate-125m-english-rtrvr-v2"},
+          {"model": "intfloat/multilingual-e5-large"}
+        ],
+        "generation_constraints": [
+          {"model": "mistralai/mixtral-8x7b-instruct-v01"},
+          {"model": "ibm/granite-13b-instruct-v2"},
+          {
+            "model": "ibm/granite-3-8b-instruct",
+            "context_template_text": "\n[Document]\n{document}",
+            "messages": [
+              {
+                "role": "system",
+                "content": "system-message-content",
+                "name": "system-message-name"
+              },
+              {
+                "role": "user",
+                "content": "user-message-content",
+                "name": "user-message-name"
+              }
+            ]
+          }
+        ],
+        "retrieval_constraints": [
+          {
+            "method": "simple",
+            "number_of_chunks": 2,
+            "hybrid_ranker": {
+              "strategy": "weighted",
+              "alpha": 0.6
+            }
+          },
+          {
+            "method": "simple",
+            "number_of_chunks": 2
+          }
+        ]
+      }
+    }
+  }'
+```
+
+</details>
+
 #### Required Parameters
 
 - `name: str` - Experiment name (required)
@@ -345,7 +448,7 @@ print(f"Pipeline run created: {run.run_id}")
 - `test_data_reference: Dict` - Test data source (required)
 - `results_reference: Dict` - Results storage location (required)
 
-
+**Python SDK Example:**
 ```python
 run = client.create_run_from_pipeline_func(
     autorag_pipeline,
@@ -358,6 +461,39 @@ run = client.create_run_from_pipeline_func(
 )
 ```
 
+**REST API Example:**
+
+```bash
+curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -d '{
+    "name": "AutoRAG Experiment 2",
+    "pipeline_spec": {
+      "pipeline_id": "'"${PIPELINE_ID}"'"
+    },
+    "runtime_config": {
+      "parameters": {
+        "name": "AutoRAG Experiment 2",
+        "input_data_reference": {
+          "connection_id": "s3-documents-connection",
+          "bucket": "my-documents-bucket",
+          "path": "rh_documents/"
+        },
+        "test_data_reference": {
+          "connection_id": "s3-benchmarks-connection",
+          "bucket": "autorag_benchmarks",
+          "path": "my-folder/test_data.json"
+        },
+        "results_reference": {
+          "connection_id": "s3-autorag-results-connection",
+          "bucket": "results",
+          "path": "autorag/"
+        }
+      }
+    }
+  }'
+```
 
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
 
