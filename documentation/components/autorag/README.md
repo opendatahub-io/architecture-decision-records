@@ -498,6 +498,9 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
 > 💡 **Note:** When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
 
 ### Components
+
+For detailed information about AutoRAG component structure and organization, see [Components Documentation](components.md).
+
 #### Document Loader
 Reads unstructured data from data sources (S3, local filesystem). Supports S3 `connection`. Returns documents for processing. 
 
