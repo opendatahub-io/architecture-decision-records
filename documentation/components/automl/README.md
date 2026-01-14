@@ -456,7 +456,6 @@ Results of the run to be stored (model artifacts, log files, summary report)
   - `n_samples: int` - The number of samples to use for initial model building (optional, default: 500)
   - `sampling_method: str` - Sampling method (optional):
     - `"random"` - Random sampling for general use cases
-    - `"stratified"` - Stratified sampling for classification tasks to maintain class distribution
     - `"truncate"` - Sampling last n records for time-series forecasting tasks
 
 **Data Splitting:**
@@ -487,7 +486,7 @@ Results of the run to be stored (model artifacts, log files, summary report)
 - `time_series_config: Dict` - Dictionary defining time-series specific configuration (required):
   - `timestamp_column: str` - Column name containing timestamps (required)
   - `prediction_length: int` - Number of time steps to forecast into the future (required)
-  - `label_column: str` - Name of the target/label column containing time series values (required)
+  - `target: str` - Name of the target/label column containing time series values (required)
 
 **Optional Parameters:**
 - `time_series_config: Dict` - Additional optional time-series configuration fields (all fields below are optional):
@@ -512,7 +511,7 @@ Results of the run to be stored (model artifacts, log files, summary report)
   {
     "timestamp_column": "timestamp",
     "prediction_length": 24,
-    "label_column": "value",
+    "target": "income",
     "id_column": "series_id",
     "freq": "H",
     "context_length": 48,
@@ -529,26 +528,6 @@ Results of the run to be stored (model artifacts, log files, summary report)
     "presets": "best_quality"
   }
   ```
-
-##### Training Constraints
-
-**Optional Parameters:**
-
-**Data Splitting:**
-- `split_config: Dict` - Dictionary defining train/test split configuration for time-series:
-  - `n_last_rows: int` - Number of last rows to use as test set (alternative to `test_size`)
-  - `test_size: float` - Proportion of dataset to include in test split (alternative to `n_last_rows`, default: 0.2)
-  
-  > ⚠️ **Note:** Time-series data must be split chronologically to preserve temporal ordering. Random or stratified sampling is not applicable. Use `sampling_method: "truncate"` in `sampling_config` for time-series tasks.
-
-**Example values:**
-
-**Split Configuration:**
-```python
-{
-  "n_last_rows": 100  # Use last 100 rows as test set
-}
-```
 
 ### Pipeline Invocation Example
 
@@ -589,7 +568,7 @@ split_config = {
 time_series_config = {
     "timestamp_column": "timestamp",
     "prediction_length": 24,
-    "label_column": "value",
+    "target": "value",
     "id_column": "series_id",
     "freq": "H",
     "context_length": 48,
@@ -670,7 +649,7 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
         "time_series_config": {
           "timestamp_column": "timestamp",
           "prediction_length": 24,
-          "label_column": "value",
+          "target": "value",
           "id_column": "series_id",
           "freq": "H",
           "context_length": 48,
