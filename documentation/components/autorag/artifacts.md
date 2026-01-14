@@ -2,6 +2,19 @@
 
 AutoRAG Pipeline run produces the following artifacts.
 
+## Table of Contents
+
+- [Naming Convention](#naming-convention)
+- [RAG Pattern](#rag-pattern)
+  - [Sample artifact](#sample-artifact)
+- [AutoRAG Run Output Artifact](#autorag-run-output-artifact)
+  - [Sample artifact](#sample-artifact-1)
+- [Metrics](#metrics)
+  - [Example of artifact](#example-of-artifact)
+- [Experiment summary](#experiment-summary)
+  - [Example of artifact](#example-of-artifact-1)
+  - [Proposed Summary Report Structure](#proposed-summary-report-structure)
+
 ## Naming Convention
 
 Artifact names follow these conventions:
