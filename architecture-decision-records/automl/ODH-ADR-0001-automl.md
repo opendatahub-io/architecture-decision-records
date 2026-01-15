@@ -85,20 +85,23 @@ flowchart LR
     DataSplit --> ModelBuild["Model Building & Selection<br/>Build on sampled data"]
     ModelBuild --> ModelRefit["Model Refit<br/>Refit on full training data"]
     ModelRefit --> Leaderboard["Leaderboard Evaluation<br/>Evaluate & rank models"]
-    Leaderboard --> CheckRegistry{"Auto Register<br/>enabled?"}
+    Leaderboard --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
+    ResultsStorage --> CheckRegistry{"Auto Register<br/>enabled?"}
+    ResultsStorage --> CheckDeploy{"Auto Deploy<br/>enabled?"}
     CheckRegistry -->|Yes| Registry["Model Registry<br/>Register best model"]
-    CheckRegistry -->|No| CheckDeploy{"Auto Deploy<br/>enabled?"}
-    Registry --> CheckDeploy
+    CheckRegistry -->|No| End([Pipeline Complete])
     CheckDeploy -->|Yes| Deploy["KServe Deployment<br/>Deploy model"]
-    CheckDeploy -->|No| ResultsStorage["Results Storage<br/>Artifacts & logs"]
-    Deploy --> ResultsStorage
-    ResultsStorage --> End([Pipeline Complete])
+    CheckDeploy -->|No| End
+    Registry --> Deploy
+    Registry --> End
+    Deploy --> End
     
     style Start fill:#2d8659,color:#fff,stroke-width:3px
     style End fill:#2d8659,color:#fff,stroke-width:3px
     style ModelBuild fill:#d97706,color:#fff,stroke-width:3px
     style ModelRefit fill:#d97706,color:#fff,stroke-width:3px
     style Leaderboard fill:#1e40af,color:#fff,stroke-width:3px
+    style ResultsStorage fill:#059669,color:#fff,stroke-width:3px
     style Registry fill:#7c3aed,color:#fff,stroke-width:3px
     style Deploy fill:#7c3aed,color:#fff,stroke-width:3px
 ```
@@ -110,8 +113,9 @@ flowchart LR
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
 4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Explores Kubeflow Katib for distributed computing and experiment/trials logging.
 5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models.
-6. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata for deployment purposes.
-7. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). Contribution to KServe with new runtime to be considered.
+6. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location. This includes model artifacts, run artifacts, metrics, and experiment summary.
+7. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata for deployment purposes. This step can run in parallel with KServe deployment.
+8. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry. Contribution to KServe with new runtime to be considered.
 
 ### Input Parameters
 
