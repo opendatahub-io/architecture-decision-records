@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | [AutoRAG Overview Documentation](../../documentation/components/autorag/overview.md) |
+| Other docs:    | [AutoRAG Documentation](/documentation/components/autorag/README.md) |
 
 ## What
 
@@ -200,11 +200,12 @@ For each pipeline run, AutoRAG generates:
 
 ## References
 
-* [AutoRAG Overview Documentation](../../documentation/components/autorag/overview.md)
-* [AutoRAG Artifacts Documentation](../../documentation/components/autorag/artifacts.md)
+* [AutoRAG Documentation](/documentation/components/autorag/README.md)
+* [AutoRAG Artifacts Documentation](/documentation/components/autorag/artifacts.md)
+* [AutoRAG Components Documentation](/documentation/components/autorag/components.md)
 * [ai4rag GitHub Repository](https://github.com/IBM/ai4rag)
 * [Kubeflow Pipelines Components](https://github.com/kubeflow/pipelines-components)
-* [RHOAI Connections API ADR](../operator/ODH-ADR-Operator-0009-connection-api.md)
+* [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
 
 ## Reviews
 
