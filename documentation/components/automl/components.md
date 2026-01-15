@@ -366,24 +366,6 @@ def automl_time_series_pipeline(
         )
 ```
 
-## Quality Standards
-
-Following KFP Components repository standards, each component must:
-
-- ✅ Pass linting and formatting checks (Black, pydocstyle)
-- ✅ Include comprehensive docstrings
-- ✅ Compile successfully with `kfp.compiler`
-- ✅ Include metadata with fresh `lastVerified` date
-- ✅ Pass automated CI/CD checks
-- ✅ Include unit tests with >80% coverage
-- ✅ Provide usage examples in `example_pipelines.py`
-
-## Maintenance
-
-- **Verification**: Components flagged when `lastVerified` is older than 9 months
-- **Ownership**: Each component has designated owners in `OWNERS` file
-- **Removal Process**: Components not verified within 12 months are proposed for removal
-
 ## References
 
 - [Kubeflow Pipelines Components Repository](https://github.com/kubeflow/pipelines-components)
