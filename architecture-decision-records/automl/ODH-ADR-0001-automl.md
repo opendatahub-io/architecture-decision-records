@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | [AutoML Documentation](../../documentation/components/automl/README.md) |
+| Other docs:    | [AutoML Documentation](/documentation/components/automl/README.md) |
 
 ## What
 
@@ -241,12 +241,12 @@ For each pipeline run, AutoML generates:
 
 ## References
 
-* [AutoML Documentation](../../documentation/components/automl/README.md)
-* [AutoML Artifacts Documentation](../../documentation/components/automl/artifacts.md)
-* [AutoML Components Documentation](../../documentation/components/automl/components.md)
+* [AutoML Documentation](/documentation/components/automl/README.md)
+* [AutoML Artifacts Documentation](/documentation/components/automl/artifacts.md)
+* [AutoML Components Documentation](/documentation/components/automl/components.md)
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
 * [Kubeflow Pipelines Components](https://github.com/kubeflow/pipelines-components)
-* [RHOAI Connections API ADR](../operator/ODH-ADR-Operator-0009-connection-api.md)
+* [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
 
 ## Reviews
 
