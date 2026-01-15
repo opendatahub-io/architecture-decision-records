@@ -59,18 +59,17 @@ The optimization process typically involves:
   - [Model Types](#model-types)
   - [Interfaces](#interfaces)
 
-## Classification & Regression Pipeline
-
+## AutoML Pipeline
 KubeFlow Pipelines are used to build out capability for RHOAI (https://github.com/kubeflow/pipelines-components)
 ![AutoML Pipeline Architecture](images/AutoML.drawio.png)
+
+## Classification & Regression Pipeline
 
 This pipeline is designed for traditional tabular machine learning tasks: **classification** (binary and multiclass) and **regression**.
 
 ### Input parameters
 
 The Classification & Regression pipeline parameters are organized into the following logical groups:
-
-> ℹ️ **Info:** Model settings and training constraints are **optional** parameters. If not provided, AutoML will use AutoGluon default values.
 
 > 📘 **Note:** This documentation uses Kubeflow Pipelines v2 structured types (`Dict`, `List`) for complex parameters.
 
@@ -162,7 +161,7 @@ Results of the run to be stored (model artifacts, log files, summary report)
 }
 ```
 
-#### 5. Model Configuration
+#### 5. Model Selection Configuration
 
 ##### Required Parameters
 
@@ -172,7 +171,7 @@ Results of the run to be stored (model artifacts, log files, summary report)
 - `label_column: str` - Name of the target/label column (required)
 
 **Optional Parameter:**
-- `selection_config: Dict` - Dictionary defining model settings (optional, defaults apply if not provided):
+- `selection_config: Dict` - Dictionary defining optimization settings (optional, defaults apply if not provided):
   - `time_limit: int` - Time limit in seconds for model training (optional)
   - `preset: str` - AutoGluon presets (e.g., `"best_quality"`, `"high_quality"`, `"good_quality_faster_inference"`)
   - `eval_metric: str` - Evaluation metric for validation data (optional, AutoGluon selects appropriate default):
@@ -388,8 +387,6 @@ This pipeline is specifically designed for **time-series forecasting** tasks. It
 
 The Time-Series pipeline parameters are organized into the following logical groups:
 
-> ℹ️ **Info:** Model settings and training constraints are **optional** parameters. If not provided, AutoML will use AutoGluon default values for time-series tasks.
-
 
 #### 1. Experiment Metadata
 
@@ -405,7 +402,7 @@ The Time-Series pipeline parameters are organized into the following logical gro
 - `input_data_reference: Dict` - Dictionary defining tabular data source:
   - `connection_id: str` - Connection ID for the data source (e.g., S3 connection ID)
   - `bucket: str` - Bucket name containing the data
-  - `path: str` - Path within the bucket/filesystem to the data file or folder
+  - `path: str` - Path within the bucket/filesystem to the data file (csv)
   
   Example:
   ```python
@@ -480,41 +477,31 @@ Results of the run to be stored (model artifacts, log files, summary report)
 }
 ```
 
-##### Model Settings
+##### Model Selection Settings
 
 **Required Parameters:**
-- `time_series_config: Dict` - Dictionary defining time-series specific configuration (required):
-  - `timestamp_column: str` - Column name containing timestamps (required)
-  - `prediction_length: int` - Number of time steps to forecast into the future (required)
-  - `target: str` - Name of the target/label column containing time series values (required)
+- `timestamp_column: str` - Column name containing timestamps (required)
+- `target: str` - Name of the target/label column containing time series values (required)
 
 **Optional Parameters:**
+- `forecast_config: Dict` - Additional optional time-series configuration fields (all fields below are optional):
+  - `prediction_length: int` - Number of time steps to forecast into the future (required)
+
 - `time_series_config: Dict` - Additional optional time-series configuration fields (all fields below are optional):
   - `id_column: str` - Column name identifying different time series (for multi-series datasets). Optional for single time series.
-  - `freq: str` - Frequency of the time series data (e.g., `"D"` for daily, `"H"` for hourly, `"W"` for weekly). If not specified, AutoGluon attempts to infer from the data.
-  - `context_length: int` - Number of past time steps the model uses to make predictions (optional, default: 2 × `prediction_length`)
   - `known_covariates_names: List[str]` - List of column names representing known covariates available for the entire forecast horizon (e.g., holidays, promotions). These must be present in training data and provided during prediction.
   - `past_covariates_names: List[str]` - List of column names representing past covariates only known up to the start of the forecast horizon (e.g., sales of other products, weather conditions).
   - `static_features: List[str]` - List of column names representing static features that don't change over time (e.g., product category, store location). Integer/float columns are treated as continuous, object/string as categorical.
-  - `lags: List[int]` - Lags of the target variable to use as features for predictions (optional). If not specified, AutoGluon determines automatically based on data frequency.
-  - `date_features: List[str]` - Features computed from dates (e.g., `["day_of_week", "month"]`). If not specified, AutoGluon determines automatically based on data frequency.
-  - `target_scaler: str` - Scaling applied to each time series (optional, default: `"mean_abs"`). Options: `"standard"`, `"mean_abs"`, `"min_max"`, `"robust"`, `None`
-  - `differences: List[int]` - Differences to take of the target before computing features (optional, default: no differencing). Used for making time series stationary.
 
 - `selection_config: Dict` - Dictionary defining model settings:
   - `eval_metric: str` - Evaluation metric for time-series (default: `"MAPE"`). Options: `"MAPE"`, `"sMAPE"`, `"MASE"`, `"RMSE"`, `"MAE"`, `"WQL"` (Weighted Quantile Loss)
   - `time_limit: int` - Time limit in seconds for model training (optional)
-  - `presets: str` - AutoGluon presets (e.g., `"best_quality"`, `"high_quality"`, `"good_quality_faster_inference"`)
+  - `preset: str` - AutoGluon preset (e.g., `"best_quality"`, `"high_quality"`, `"good_quality_faster_inference"`)
   
   **Example:**
   ```python
   {
-    "timestamp_column": "timestamp",
-    "prediction_length": 24,
-    "target": "income",
     "id_column": "series_id",
-    "freq": "H",
-    "context_length": 48,
     "known_covariates_names": ["holiday", "promotion"],
     "static_features": ["store_id", "product_category"]
   }
@@ -566,13 +553,8 @@ split_config = {
 }
 
 time_series_config = {
-    "timestamp_column": "timestamp",
     "prediction_length": 24,
-    "target": "value",
     "id_column": "series_id",
-    "freq": "H",
-    "context_length": 48,
-    "known_covariates_names": ["holiday", "promotion"],
     "static_features": ["store_id", "product_category"]
 }
 
@@ -592,6 +574,8 @@ run = client.create_run_from_pipeline_func(
         "results_reference": results_reference,
         "sampling_config": sampling_config,
         "split_config": split_config,
+        "timestamp_column": "timestamp",
+        "target": "invoice",
         "time_series_config": time_series_config,
         "selection_config": selection_config,
         "auto_register": True,
@@ -646,13 +630,11 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
         "split_config": {
           "n_last_rows": 100
         },
+        "timestamp_column": "timestamp",
+        "target": "value",
         "time_series_config": {
-          "timestamp_column": "timestamp",
           "prediction_length": 24,
-          "target": "value",
           "id_column": "series_id",
-          "freq": "H",
-          "context_length": 48,
           "known_covariates_names": ["holiday", "promotion"],
           "static_features": ["store_id", "product_category"]
         },
@@ -675,7 +657,8 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
 - `name: str` - Experiment name (required)
 - `input_data_reference: Dict` - Tabular data source (required)
 - `results_reference: Dict` - Results storage location (required)
-- `time_series_config: Dict` - Time-series configuration with `timestamp_column`, `prediction_length`, and `label_column` (required)
+- `timestamp_column` - timestamp column name
+- `target` - the target column name
 
 **Python SDK Example:**
 ```python
@@ -685,10 +668,8 @@ run = client.create_run_from_pipeline_func(
         "name": "AutoML Time-Series Experiment",
         "input_data_reference": input_data_reference,
         "results_reference": results_reference,
-        "time_series_config": {
-            "timestamp_column": "timestamp",
-            "prediction_length": 24,
-            "label_column": "value"
+        "timestamp_column": "timestamp",
+        "target": "income"
         }
     }
 )
@@ -718,10 +699,8 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
           "bucket": "results",
           "path": "automl/"
         },
-        "time_series_config": {
-          "timestamp_column": "timestamp",
-          "prediction_length": 24,
-          "label_column": "value"
+        "timestamp_column": "timestamp",
+        "target": "income"
         }
       }
     }
@@ -763,6 +742,11 @@ For each run, AutoML generates:
    - Performance metrics
    - Leaderboard rankings
 - **AutoML Run Artifact**: Run status properties and URI to log file with messages
+- **Metrics Artifacts** (optional): Evaluation metrics for model performance:
+  - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
+  - **Metrics**: Scalar metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression; MAPE, sMAPE, MASE for time-series)
+  
+  > ⚠️ **Warning:** Metrics artifacts are optional and may not be generated in all pipeline runs depending on configuration.
 - **AutoML Experiment Summary Markdown Artifact** including:
   - Data preparation details
   - Model building and selection process
@@ -798,9 +782,8 @@ AutoGluon does not recommend traditional hyperparameter optimization (HPO); inst
   - S3 (Amazon S3)
   - Local filesystem (FS)
 - **Supported Task Types**: 
-  - Classification
+  - Classification (Multiclass, Binary)
   - Regression
-  - Multiclass classification
   - Time-series forecasting
 
 ### Infrastructure Components
