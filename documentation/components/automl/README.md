@@ -452,7 +452,6 @@ Results of the run to be stored (model artifacts, log files, summary report)
 - `sampling_config: Dict` - Dictionary defining sampling technique:
   - `n_samples: int` - The number of samples to use for initial model building (optional, default: 500)
   - `sampling_method: str` - Sampling method (optional):
-    - `"random"` - Random sampling for general use cases
     - `"truncate"` - Sampling last n records for time-series forecasting tasks
 
 **Data Splitting:**
