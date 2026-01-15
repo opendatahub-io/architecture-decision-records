@@ -57,16 +57,8 @@ kubeflow/pipelines-components/
 │
 └── pipelines/
     └── autorag/
-        ├── autorag-pipeline/
-        │   ├── pipeline.py               # Complete AutoRAG pipeline
-        │   ├── metadata.yaml
-        │   ├── README.md
-        │   ├── OWNERS
-        │   ├── tests/
-        │   └── example_usage.py
-        │
-        └── autorag-minimal-pipeline/
-            ├── pipeline.py                # Minimal pipeline (required params only)
+        └── autorag-pipeline/
+            ├── pipeline.py               # Complete AutoRAG pipeline
             ├── metadata.yaml
             ├── README.md
             ├── OWNERS

@@ -83,24 +83,8 @@ kubeflow/pipelines-components/
         │   ├── tests/
         │   └── example_usage.py
         │
-        ├── automl-classification-regression-minimal-pipeline/
-        │   ├── pipeline.py                # Minimal Classification & Regression pipeline (required params only)
-        │   ├── metadata.yaml
-        │   ├── README.md
-        │   ├── OWNERS
-        │   ├── tests/
-        │   └── example_usage.py
-        │
-        ├── automl-time-series-pipeline/
-        │   ├── pipeline.py                # Time-Series pipeline
-        │   ├── metadata.yaml
-        │   ├── README.md
-        │   ├── OWNERS
-        │   ├── tests/
-        │   └── example_usage.py
-        │
-        └── automl-time-series-minimal-pipeline/
-            ├── pipeline.py                # Minimal Time-Series pipeline (required params only)
+        └── automl-time-series-pipeline/
+            ├── pipeline.py                # Time-Series pipeline
             ├── metadata.yaml
             ├── README.md
             ├── OWNERS
