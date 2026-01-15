@@ -151,9 +151,126 @@ Run Output `dsl.Artifact` consisting of:
 
 ## Metrics
 
-Metrics artifact of type `dsl.Metrics` to keep evaluation metrics for the trained models.
+AutoML uses Kubeflow Pipelines Metrics artifacts to visualize and track model performance. Two types of metrics artifacts are used:
 
-### Example of artifact
+1. **`dsl.ClassificationMetrics`** - For classification-specific visualizations (confusion matrix, ROC curve)
+2. **`dsl.Metrics`** - For scalar metrics (accuracy, precision, recall, F1, etc.)
+
+### Using ClassificationMetrics for Visual Metrics
+
+The `ClassificationMetrics` artifact enables the Kubeflow Pipelines UI to render interactive visualizations:
+
+#### Confusion Matrix
+
+The confusion matrix is logged using `log_confusion_matrix()` method, which enables the KFP UI to display an interactive confusion matrix heatmap.
+
+**Example code:**
+```python
+from kfp.dsl import component, Output, ClassificationMetrics
+from sklearn.metrics import confusion_matrix
+
+@component
+def evaluate_classification_model(
+    y_true: list,
+    y_pred: list,
+    class_labels: list,
+    classification_metrics: Output[ClassificationMetrics]
+):
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred, labels=class_labels)
+    
+    # Log confusion matrix for KFP UI visualization
+    classification_metrics.log_confusion_matrix(
+        categories=class_labels,  # e.g., ['Class 0', 'Class 1'] or ['Negative', 'Positive']
+        matrix=cm.tolist()
+    )
+```
+
+#### ROC Curve
+
+The ROC curve is logged using `log_roc_curve()` method, which enables the KFP UI to display an interactive ROC curve plot.
+
+**Example code:**
+```python
+from sklearn.metrics import roc_curve
+
+@component
+def evaluate_binary_classification(
+    y_true: list,
+    y_scores: list,  # Predicted probabilities for positive class
+    classification_metrics: Output[ClassificationMetrics]
+):
+    # Compute ROC curve
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+    
+    # Log ROC curve for KFP UI visualization
+    classification_metrics.log_roc_curve(
+        fpr=fpr.tolist(),
+        tpr=tpr.tolist(),
+        threshold=thresholds.tolist()
+    )
+```
+
+### Using Metrics for Scalar Values
+
+The `Metrics` artifact is used to log scalar performance metrics that are displayed in the KFP UI metrics tab.
+
+**Example code:**
+```python
+from kfp.dsl import component, Output, Metrics
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+@component
+def log_scalar_metrics(
+    y_true: list,
+    y_pred: list,
+    y_scores: list,
+    metrics: Output[Metrics]
+):
+    # Compute scalar metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, average='weighted')
+    recall = recall_score(y_true, y_pred, average='weighted')
+    f1 = f1_score(y_true, y_pred, average='weighted')
+    roc_auc = roc_auc_score(y_true, y_scores)
+    
+    # Log scalar metrics for KFP UI display
+    metrics.log_metric('accuracy', accuracy)
+    metrics.log_metric('precision', precision)
+    metrics.log_metric('recall', recall)
+    metrics.log_metric('f1_score', f1)
+    metrics.log_metric('roc_auc', roc_auc)
+```
+
+### Example Artifacts
+
+#### ClassificationMetrics Artifact
+
+```json
+{  
+  "name": "AutoML_<run_name>_classification_metrics",  
+  "uri": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/classification_metrics.json",  
+  "metadata": {  
+    "context": {  
+      "model_artifact_name": "Predictor1",  
+      "model_artifact_id": "---id---",
+      "task_type": "classification",
+      "eval_metric": "roc_auc"
+    },
+    "confusion_matrix": {
+      "categories": ["Class 0", "Class 1"],
+      "matrix": [[450, 35], [28, 487]]
+    },
+    "roc_curve": {
+      "fpr": [0.0, 0.01, 0.02, 0.03, 0.05, ...],
+      "tpr": [0.0, 0.15, 0.28, 0.42, 0.58, ...],
+      "thresholds": [1.0, 0.95, 0.90, 0.85, 0.80, ...]
+    }
+  }  
+}
+```
+
+#### Metrics Artifact (Scalar Values)
 
 ```json
 {  
@@ -165,41 +282,69 @@ Metrics artifact of type `dsl.Metrics` to keep evaluation metrics for the traine
       "model_artifact_id": "---id---",
       "task_type": "classification",
       "eval_metric": "roc_auc"
-    },  
-    "best_model": {
-      "name": "WeightedEnsemble_L3",
-      "roc_auc": 0.9123,
+    },
+    "metrics": {
       "accuracy": 0.8765,
-      "f1": 0.8543,
       "precision": 0.8891,
-      "recall": 0.8321
+      "recall": 0.8321,
+      "f1_score": 0.8543,
+      "roc_auc": 0.9123
     },
     "leaderboard_summary": {
       "total_models": 15,
       "top_3_avg_score": 0.9104,
       "ensemble_improvement": 0.0022
-    },
-    "confusion_matrix": {
-      "true_negatives": 450,
-      "false_positives": 35,
-      "false_negatives": 28,
-      "true_positives": 487
-    },
-    "roc_curve": {
-      "fpr": [0.0, 0.01, 0.02, ...],
-      "tpr": [0.0, 0.15, 0.28, ...],
-      "thresholds": [1.0, 0.95, 0.90, ...]
-    },
-    "feature_importances": {
-      "top_10": [
-        {"feature": "feature_1", "importance": 0.234},
-        {"feature": "feature_2", "importance": 0.189},
-        {"feature": "feature_3", "importance": 0.156}
-      ]
     }
   }  
 }
 ```
+
+### Supported Features by Task Type
+
+#### Classification Tasks
+
+**ClassificationMetrics supports:**
+- ✅ Confusion Matrix (binary and multiclass)
+- ✅ ROC Curve (binary classification)
+- ✅ Precision-Recall Curve (via custom logging)
+
+**Metrics supports:**
+- ✅ Accuracy
+- ✅ Precision (macro, micro, weighted)
+- ✅ Recall (macro, micro, weighted)
+- ✅ F1 Score (macro, micro, weighted)
+- ✅ ROC-AUC (binary)
+- ✅ Log Loss
+- ✅ Custom metrics
+
+#### Regression Tasks
+
+**Metrics supports:**
+- ✅ R² Score
+- ✅ Root Mean Squared Error (RMSE)
+- ✅ Mean Absolute Error (MAE)
+- ✅ Mean Squared Error (MSE)
+- ✅ Mean Absolute Percentage Error (MAPE)
+- ✅ Custom metrics
+
+#### Time-Series Forecasting Tasks
+
+**Metrics supports:**
+- ✅ MAPE (Mean Absolute Percentage Error)
+- ✅ sMAPE (Symmetric MAPE)
+- ✅ MASE (Mean Absolute Scaled Error)
+- ✅ RMSE (Root Mean Squared Error)
+- ✅ MAE (Mean Absolute Error)
+- ✅ WQL (Weighted Quantile Loss)
+- ✅ Custom metrics
+
+### Best Practices
+
+1. **Use ClassificationMetrics for Visual Metrics**: Always use `ClassificationMetrics` for confusion matrix and ROC curve to enable UI visualization
+2. **Use Metrics for Scalars**: Use `Metrics` for all scalar values that should appear in the metrics tab
+3. **Log Per-Model Metrics**: Create separate metrics artifacts for each predictor (Predictor1, Predictor2, etc.) to enable comparison
+4. **Include Context**: Always include context metadata linking metrics to the corresponding model artifact
+5. **Consistent Naming**: Use consistent metric names across runs for easy comparison in the KFP UI
 
 ## Experiment summary
 
