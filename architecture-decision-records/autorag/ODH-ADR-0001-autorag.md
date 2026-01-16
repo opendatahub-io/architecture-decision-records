@@ -57,7 +57,7 @@ AutoRAG is implemented as a Kubeflow Pipeline that orchestrates the following wo
 2. **ai4rag Engine**: Core optimization engine (open-source from IBM) that explores configurations and selects optimal parameters
 3. **llama-stack API**: Provides LLM inference capabilities and vector database management
 4. **Vector Databases**: Stores and manages document embeddings (supports Milvus and Milvus Lite)
-5. **MLFlow** (optional): Provides experiment tracking, metrics logging, and artifact management for optimization runs
+5. **MLFlow**: Provides experiment tracking, metrics logging, and artifact management for optimization runs
 6. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
 
 ### Pipeline Workflow
@@ -74,18 +74,22 @@ flowchart LR
     OptLoop --> SelectConfig["Select Configuration<br/>GAM prediction"]
     SelectConfig --> ExecuteRAG["Execute RAG Pipeline<br/>Run configuration"]
     ExecuteRAG --> Evaluate["Evaluate Performance<br/>Test data metrics"]
-    Evaluate --> UpdateLeaderboard["Update Leaderboard<br/>Rank patterns"]
+    Evaluate --> MLFlowLog["MLFlow Logging<br/>Log metrics & config"]
+    MLFlowLog --> UpdateLeaderboard["Update Leaderboard<br/>Rank patterns"]
     UpdateLeaderboard --> CheckMax{"Reached max<br/>patterns?"}
     CheckMax -->|No| OptLoop
     CheckMax -->|Yes| PatternGen["Pattern Generation<br/>Package top patterns"]
     PatternGen --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
-    ResultsStorage --> End([Pipeline Complete])
+    ResultsStorage --> MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
+    MLFlowFinal --> End([Pipeline Complete])
     
     style Start fill:#2d8659,color:#fff,stroke-width:3px
     style End fill:#2d8659,color:#fff,stroke-width:3px
     style OptLoop fill:#d97706,color:#fff,stroke-width:3px
     style CheckMax fill:#d97706,color:#fff,stroke-width:3px
     style PatternGen fill:#1e40af,color:#fff,stroke-width:3px
+    style MLFlowLog fill:#9333ea,color:#fff,stroke-width:2px
+    style MLFlowFinal fill:#9333ea,color:#fff,stroke-width:2px
 ```
 
 **Workflow Steps:**
@@ -96,11 +100,13 @@ flowchart LR
 4. **Model Validation**: Available models are validated and preselected based on performance criteria using in-memory vector database
 5. **Optimization Loop**: The system iteratively:
    - Selects promising configurations using GAM-based prediction
-   - Executes RAG pipeline with selected configuration
+   - Executes RAG Pattern with selected configuration
    - Evaluates performance using test data
+   - Logs metrics and configuration to MLFlow (if enabled)
    - Updates the leaderboard with results
 6. **Pattern Generation**: Top-performing configurations are packaged as RAG Patterns with executable notebooks
 7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
+8. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled)
 
 ### Input Parameters
 
@@ -131,8 +137,9 @@ For each pipeline run, AutoRAG generates:
 
 3. **AutoRAG Experiment Summary** (Markdown): Comprehensive report including data preparation details, search space, explored configurations, and leaderboard
 
-### Supported Features (Tech Preview - MVP)
+### Supported Features
 
+Status: Tech Preview
 - **RAG Type**: Documents (documents provided as input)
 - **Languages**: English
 - **Document Types**: PDF, DOCX, PPTX, Markdown, HTML, Plain text

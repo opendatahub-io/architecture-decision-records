@@ -59,8 +59,9 @@ AutoML automates this process, enabling users to:
 * Traditional hyperparameter optimization (AutoGluon uses ensembling approach)
 * Distributed training with Kubeflow Katib (to be explored post-MVP)
 * Notebook generation for TabularPredictor interaction (not in scope for MVP)
-* Data caching support (to be explored in next stage)
-* Torch compatible data loader (to be explored)
+* Large tabular data support (1GB +)
+
+
 
 ## How
 
@@ -86,16 +87,18 @@ flowchart LR
     DataSplit --> ModelBuild["Model Building & Selection<br/>Build on sampled data"]
     ModelBuild --> ModelRefit["Model Refit<br/>Refit on full training data"]
     ModelRefit --> Leaderboard["Leaderboard Evaluation<br/>Evaluate & rank models"]
-    Leaderboard --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
+    Leaderboard --> MLFlowLog["MLFlow Logging<br/>Log metrics & models"]
+    MLFlowLog --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
     ResultsStorage --> CheckRegistry{"Auto Register<br/>enabled?"}
     ResultsStorage --> CheckDeploy{"Auto Deploy<br/>enabled?"}
     CheckRegistry -->|Yes| Registry["Model Registry<br/>Register best model"]
-    CheckRegistry -->|No| End([Pipeline Complete])
+    CheckRegistry -->|No| MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
     CheckDeploy -->|Yes| Deploy["KServe Deployment<br/>Deploy model"]
-    CheckDeploy -->|No| End
+    CheckDeploy -->|No| MLFlowFinal
     Registry --> Deploy
-    Registry --> End
-    Deploy --> End
+    Registry --> MLFlowFinal
+    Deploy --> MLFlowFinal
+    MLFlowFinal --> End([Pipeline Complete])
     
     style Start fill:#2d8659,color:#fff,stroke-width:3px
     style End fill:#2d8659,color:#fff,stroke-width:3px
@@ -105,6 +108,8 @@ flowchart LR
     style ResultsStorage fill:#059669,color:#fff,stroke-width:3px
     style Registry fill:#7c3aed,color:#fff,stroke-width:3px
     style Deploy fill:#7c3aed,color:#fff,stroke-width:3px
+    style MLFlowLog fill:#9333ea,color:#fff,stroke-width:2px
+    style MLFlowFinal fill:#9333ea,color:#fff,stroke-width:2px
 ```
 
 **Workflow Steps:**
@@ -114,9 +119,11 @@ flowchart LR
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
 4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Explores Kubeflow Katib for distributed computing and experiment/trials logging.
 5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models.
-6. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location. This includes model artifacts, run artifacts, metrics, and experiment summary.
-7. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata for deployment purposes. This step can run in parallel with KServe deployment.
-8. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry. Contribution to KServe with new runtime to be considered.
+6. **MLFlow Logging**: Model metrics, configurations, and leaderboard rankings are logged to MLFlow (if enabled) for experiment tracking and comparison.
+7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location. This includes model artifacts, run artifacts, metrics, and experiment summary.
+8. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata.
+9. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry. Contribution to KServe with new runtime to be considered.
+10. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled) before pipeline completion.
 
 ### Input Parameters
 
@@ -177,9 +184,9 @@ For each pipeline run, AutoML generates:
 - **Model Training**: AutoGluon library
 - **Model Types**: Neural networks, tree-based models (XGBoost, LightGBM, CatBoost), linear models, and more
 - **Ensembling**: Stacking and bagging approaches
-- **Experiment Tracking**: MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
-- **Model Registry**: RHOAI Model Registry (optional)
-- **Model Serving**: KServe with AutoGluon runtime (optional, custom runtime)
+- **Experiment Tracking**: MLFlow - For experiment tracking, metrics logging, and artifact management
+- **Model Registry**: MlFlow Model Registry
+- **Model Serving**: KServe with AutoGluon runtime (custom runtime)
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
 
 ## Alternatives
@@ -234,7 +241,7 @@ For each pipeline run, AutoML generates:
 * **Performance**: Model training can take significant time depending on dataset size, model complexity, and time limits
 * **Resource Consumption**: Large datasets and complex models may require substantial compute resources or incremental learning approach
 * **KServe Dependency**: Model deployment depends on KServe availability and custom AutoGluon runtime support. Changes to KServe API or runtime requirements may impact deployment functionality
-* **Model Registry Dependency**: Model registration depends on Model Registry availability. If Model Registry is unavailable when `auto_register=True`, registration will fail but the training pipeline will continue to execute
+* **Model Registry Dependency**: Model registration depends on Model Registry availability
 * **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
 
 
