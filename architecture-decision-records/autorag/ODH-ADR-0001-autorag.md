@@ -57,7 +57,8 @@ AutoRAG is implemented as a Kubeflow Pipeline that orchestrates the following wo
 2. **ai4rag Engine**: Core optimization engine (open-source from IBM) that explores configurations and selects optimal parameters
 3. **llama-stack API**: Provides LLM inference capabilities and vector database management
 4. **Vector Databases**: Stores and manages document embeddings (supports Milvus and Milvus Lite)
-5. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
+5. **MLFlow** (optional): Provides experiment tracking, metrics logging, and artifact management for optimization runs
+6. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
 
 ### Pipeline Workflow
 
@@ -113,6 +114,7 @@ The pipeline accepts parameters organized into logical groups:
 **Optional Parameters:**
 - Optimization settings (max patterns, metric to optimize)
 - Search space constraints (chunking, embeddings, generation, retrieval)
+- MLFlow configuration (tracking_uri, experiment_name, enabled) for experiment tracking
 
 When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
 
@@ -137,6 +139,7 @@ For each pipeline run, AutoRAG generates:
 - **Data Sources**: S3 (Amazon S3), Local filesystem (FS)
 - **Vector Databases**: Milvus, Milvus Lite
 - **LLM Provider**: Llama-stack
+- **Experiment Tracking**: MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
 - **Chunking Method**: Recursive
 - **Retrieval Methods**: Simple, Simple with hybrid ranker
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
@@ -188,6 +191,7 @@ For each pipeline run, AutoRAG generates:
 * **Resource Consumption**: Large document sets and extensive search spaces may require substantial compute resources
 * **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results
 * **Search Space Complexity**: Very large or poorly constrained search spaces may not converge to optimal solutions efficiently
+* **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
 
 ## Stakeholder Impacts
 

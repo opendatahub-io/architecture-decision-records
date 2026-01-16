@@ -126,6 +126,33 @@ Results of the run to be stored (python code, log file, summary report)
   }
   ```
 
+##### MLFlow Integration (Experiment Tracking)
+
+**Optional Parameter:**
+- `mlflow_config: Dict` - Dictionary defining MLFlow configuration for experiment tracking (optional):
+  - `tracking_uri: str` - MLFlow tracking server URI (e.g., "http://mlflow-server:5000" or S3 path)
+  - `experiment_name: str` - MLFlow experiment name (default: uses pipeline `name` parameter)
+  - `enabled: bool` - Enable/disable MLFlow tracking (default: `True` if `mlflow_config` is provided)
+  
+  When enabled, AutoRAG will automatically log:
+  - Experiment metadata (name, description, run parameters)
+  - Optimization metrics (answer_correctness, faithfulness, context_correctness)
+  - Configuration parameters (chunking, embeddings, generation, retrieval settings)
+  - Leaderboard rankings and best pattern information
+  - Artifact references (RAG Pattern artifacts, summary reports)
+  - Execution timestamps and duration
+  
+  Example:
+  ```python
+  {
+    "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+    "experiment_name": "AutoRAG Experiments",
+    "enabled": True
+  }
+  ```
+  
+  > 💡 **Note:** If `mlflow_config` is not provided, MLFlow tracking will be disabled. To use MLFlow, ensure the MLFlow server is accessible from the pipeline execution environment.
+
 #### 4. Optimization Configuration
 
 ##### Optimization Settings
@@ -267,6 +294,12 @@ results_reference = {
     "path": "autorag/"
 }
 
+mlflow_config = {
+    "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+    "experiment_name": "AutoRAG Experiments",
+    "enabled": True
+}
+
 optimization = {
     "max_number_of_rag_patterns": 4,
     "metric": "answer_correctness"
@@ -331,6 +364,7 @@ run = client.create_run_from_pipeline_func(
         "test_data_reference": test_data_reference,
         "vector_database_id": "milvus-database",
         "results_reference": results_reference,
+        "mlflow_config": mlflow_config,
         "optimization": optimization,
         "chunking_constraints": chunking_constraints,
         "embeddings_constraints": embeddings_constraints,
@@ -384,6 +418,11 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
           "connection_id": "s3-autorag-results-connection",
           "bucket": "results",
           "path": "autorag/"
+        },
+        "mlflow_config": {
+          "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+          "experiment_name": "AutoRAG Experiments",
+          "enabled": true
         },
         "optimization": {
           "max_number_of_rag_patterns": 4,
@@ -571,6 +610,8 @@ The `ai4rag` project is open-source and available at: [https://github.com/IBM/ai
   - Milvus
   - Milvus Lite
 - **LLM Provider**: Llama-stack
+- **Experiment Tracking**: 
+  - MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
 
 
 ### Processing Methods

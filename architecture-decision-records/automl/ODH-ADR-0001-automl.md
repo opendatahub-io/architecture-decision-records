@@ -70,9 +70,10 @@ AutoML is implemented as Kubeflow Pipelines that orchestrate the following workf
 
 1. **Kubeflow Pipelines**: Orchestrates the model training workflow as a pipeline of containerized components
 2. **AutoGluon Library**: Core ML optimization engine (open-source) that automatically builds, evaluates, and selects optimal models
-3. **RHOAI Model Registry**: Manages model versioning and metadata (optional)
-4. **KServe**: Provides model serving capabilities with custom AutoGluon runtime (optional)
-5. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
+3. **MLFlow** (optional): Provides experiment tracking, metrics logging, and artifact management for training runs
+4. **RHOAI Model Registry**: Manages model versioning and metadata (optional)
+5. **KServe**: Provides model serving capabilities with custom AutoGluon runtime (optional)
+6. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
 
 ### Pipeline Workflow
 
@@ -132,6 +133,7 @@ The pipelines accept parameters organized into logical groups:
 **Optional Parameters:**
 - Experiment description
 - Test data reference (external test data for evaluation)
+- MLFlow configuration (tracking_uri, experiment_name, enabled) for experiment tracking
 - Data preparation (sampling_config, split_config)
 - Model configuration (selection_config with time_limit, preset, eval_metric, top_n)
 - Time-series specific (prediction_length, time_series_config with covariates, static features, etc.)
@@ -175,6 +177,7 @@ For each pipeline run, AutoML generates:
 - **Model Training**: AutoGluon library
 - **Model Types**: Neural networks, tree-based models (XGBoost, LightGBM, CatBoost), linear models, and more
 - **Ensembling**: Stacking and bagging approaches
+- **Experiment Tracking**: MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
 - **Model Registry**: RHOAI Model Registry (optional)
 - **Model Serving**: KServe with AutoGluon runtime (optional, custom runtime)
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
@@ -231,6 +234,8 @@ For each pipeline run, AutoML generates:
 * **Performance**: Model training can take significant time depending on dataset size, model complexity, and time limits
 * **Resource Consumption**: Large datasets and complex models may require substantial compute resources or incremental learning approach
 * **KServe Dependency**: Model deployment depends on KServe availability and custom AutoGluon runtime support. Changes to KServe API or runtime requirements may impact deployment functionality
+* **Model Registry Dependency**: Model registration depends on Model Registry availability. If Model Registry is unavailable when `auto_register=True`, registration will fail but the training pipeline will continue to execute
+* **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
 
 
 ## Stakeholder Impacts

@@ -127,6 +127,35 @@ Results of the run to be stored (model artifacts, log files, summary report)
     "path": "automl/"
   }
   ```
+
+##### MLFlow Integration (Experiment Tracking)
+
+**Optional Parameter:**
+- `mlflow_config: Dict` - Dictionary defining MLFlow configuration for experiment tracking (optional):
+  - `tracking_uri: str` - MLFlow tracking server URI (e.g., "http://mlflow-server:5000" or S3 path)
+  - `experiment_name: str` - MLFlow experiment name (default: uses pipeline `name` parameter)
+  - `enabled: bool` - Enable/disable MLFlow tracking (default: `True` if `mlflow_config` is provided)
+  
+  When enabled, AutoML will automatically log:
+  - Experiment metadata (name, description, run parameters)
+  - Model training metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression)
+  - Model configuration (task type, label column, preset, eval_metric, time_limit)
+  - Data preparation settings (sampling method, split configuration)
+  - Leaderboard rankings and best model information
+  - Model artifacts references (Predictor models, summary reports)
+  - Execution timestamps and duration
+  
+  Example:
+  ```python
+  {
+    "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+    "experiment_name": "AutoML Experiments",
+    "enabled": True
+  }
+  ```
+  
+  > 💡 **Note:** If `mlflow_config` is not provided, MLFlow tracking will be disabled. To use MLFlow, ensure the MLFlow server is accessible from the pipeline execution environment.
+
 ##### Data Prep Configuration
 
 **Optional Parameters:**
@@ -228,6 +257,12 @@ results_reference = {
     "path": "automl/"
 }
 
+mlflow_config = {
+    "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+    "experiment_name": "AutoML Experiments",
+    "enabled": True
+}
+
 task_type = "classification"
 label_column = "target"
 
@@ -254,6 +289,7 @@ run = client.create_run_from_pipeline_func(
         "description": "Customer churn prediction",
         "input_data_reference": input_data_reference,
         "results_reference": results_reference,
+        "mlflow_config": mlflow_config,
         "task_type": task_type,
         "label_column": label_column,
         "sampling_config": sampling_config,
@@ -302,6 +338,11 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
           "connection_id": "s3-automl-results-connection",
           "bucket": "results",
           "path": "automl/"
+        },
+        "mlflow_config": {
+          "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+          "experiment_name": "AutoML Experiments",
+          "enabled": true
         },
         "task_type": "classification",
         "label_column": "target",
@@ -443,6 +484,35 @@ Results of the run to be stored (model artifacts, log files, summary report)
   }
   ```
 
+##### MLFlow Integration (Experiment Tracking)
+
+**Optional Parameter:**
+- `mlflow_config: Dict` - Dictionary defining MLFlow configuration for experiment tracking (optional):
+  - `tracking_uri: str` - MLFlow tracking server URI (e.g., "http://mlflow-server:5000" or S3 path)
+  - `experiment_name: str` - MLFlow experiment name (default: uses pipeline `name` parameter)
+  - `enabled: bool` - Enable/disable MLFlow tracking (default: `True` if `mlflow_config` is provided)
+  
+  When enabled, AutoML will automatically log:
+  - Experiment metadata (name, description, run parameters)
+  - Model training metrics (MAPE, sMAPE, MASE, RMSE, MAE, WQL for time-series)
+  - Time-series configuration (timestamp column, target, prediction_length, covariates)
+  - Model configuration (preset, eval_metric, time_limit)
+  - Data preparation settings (sampling method, split configuration)
+  - Leaderboard rankings and best model information
+  - Model artifacts references (Predictor models, summary reports)
+  - Execution timestamps and duration
+  
+  Example:
+  ```python
+  {
+    "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+    "experiment_name": "AutoML Time-Series Experiments",
+    "enabled": True
+  }
+  ```
+  
+  > 💡 **Note:** If `mlflow_config` is not provided, MLFlow tracking will be disabled. To use MLFlow, ensure the MLFlow server is accessible from the pipeline execution environment.
+
 #### 4. Time-Series Configuration
 ##### Data Prep Configuration
 
@@ -542,6 +612,12 @@ results_reference = {
     "path": "automl/"
 }
 
+mlflow_config = {
+    "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+    "experiment_name": "AutoML Time-Series Experiments",
+    "enabled": True
+}
+
 sampling_config = {
     "n_samples": 500,
     "sampling_method": "truncate"
@@ -571,6 +647,7 @@ run = client.create_run_from_pipeline_func(
         "description": "Sales forecasting",
         "input_data_reference": input_data_reference,
         "results_reference": results_reference,
+        "mlflow_config": mlflow_config,
         "sampling_config": sampling_config,
         "split_config": split_config,
         "timestamp_column": "timestamp",
@@ -621,6 +698,11 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
           "connection_id": "s3-automl-results-connection",
           "bucket": "results",
           "path": "automl/"
+        },
+        "mlflow_config": {
+          "tracking_uri": "http://mlflow-server.redhat-ods-applications.svc.cluster.local:5000",
+          "experiment_name": "AutoML Time-Series Experiments",
+          "enabled": true
         },
         "sampling_config": {
           "n_samples": 500,
@@ -789,6 +871,7 @@ AutoGluon does not recommend traditional hyperparameter optimization (HPO); inst
 
 - **Model Training**: AutoGluon library
 - **Distributed Computing**: Kubeflow Katib (to be explored for distributed training)
+- **Experiment Tracking**: MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
 - **Model Registry**: RHOAI Model Registry (optional)
 - **Model Serving**: KServe with AutoGluon runtime (optional, custom runtime)
 
