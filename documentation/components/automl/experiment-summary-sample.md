@@ -18,7 +18,7 @@
 
 ## 📋 Table of Contents
 
-- [Executive Summary](#executive-summary)
+- [Execution Summary](#execution-summary)
 - [Experiment Configuration](#experiment-configuration)
 - [Data Preparation](#data-preparation)
 - [Model Building Process](#model-building-process)
@@ -31,7 +31,7 @@
 
 ---
 
-## 🎯 Executive Summary
+## 🎯 Execution Summary {#execution-summary}
 
 This experiment trained **15** models using AutoGluon and selected the best performing ensemble model. The optimization focused on maximizing **roc_auc** metric. The best performing model achieved a ROC-AUC score of **0.9123** with accuracy of **0.8765**.
 
@@ -48,7 +48,7 @@ This experiment trained **15** models using AutoGluon and selected the best perf
 
 ---
 
-## ⚙️ Experiment Configuration
+## ⚙️ Experiment Configuration {#experiment-configuration}
 
 <details>
 <summary><b>Click to expand configuration details</b></summary>
@@ -99,7 +99,7 @@ This experiment trained **15** models using AutoGluon and selected the best perf
 
 ---
 
-## 📊 Data Preparation
+## 📊 Data Preparation {#data-preparation}
 
 ### Data Statistics
 
@@ -123,44 +123,93 @@ This experiment trained **15** models using AutoGluon and selected the best perf
 
 ---
 
-## 🔄 Model Building Process
+## 🔄 Model Building Process {#model-building-process}
 
 ```mermaid
-flowchart LR
-    A[Phase 1: Initial Model Building<br/>📊 Sample Size: 500 rows<br/>🤖 Models Trained: 12<br/>⏱️ Duration: 45s<br/>⭐ Top Models: 3] -->|Promote Best| B[Phase 2: Model Refit<br/>📊 Training Set: 8,000 rows<br/>🔄 Models Refit: 3<br/>⏱️ Duration: 98s]
-    B -->|Evaluate All| C[Phase 3: Leaderboard Evaluation<br/>📊 Models Evaluated: 15<br/>📈 Metric: ROC-AUC<br/>⏱️ Duration: 2.5s]
+flowchart TD
+    Start([Start]) --> Phase1[Phase 1: Initial Model Building]
     
-    style A fill:#e3f2fd,stroke:#2196F3,stroke-width:3px,color:#212529
-    style B fill:#f3e5f5,stroke:#9C27B0,stroke-width:3px,color:#212529
-    style C fill:#e8f5e9,stroke:#4CAF50,stroke-width:3px,color:#212529
+    Phase1 -->|Sample Data| Sample[📊 Sample Data<br/>500 rows]
+    Sample -->|Train Models| Train[🤖 Train 12 Models<br/>⏱️ 45 seconds]
+    Train -->|Select Best| Select[⭐ Select Top 3 Models]
+    
+    Select --> Phase2[Phase 2: Model Refit]
+    Phase2 -->|Full Dataset| FullData[📊 Full Training Data<br/>8,000 rows]
+    FullData -->|Refit Best Models| Refit[🔄 Refit 3 Models<br/>⏱️ 98 seconds]
+    
+    Refit --> Phase3[Phase 3: Leaderboard Evaluation]
+    Phase3 -->|Evaluate All| Eval[📈 Evaluate 15 Models<br/>Metric: ROC-AUC<br/>⏱️ 2.5 seconds]
+    Eval -->|Rank Models| Leaderboard[🏆 Generate Leaderboard]
+    Leaderboard --> End([Complete])
+    
+    style Phase1 fill:#e3f2fd,stroke:#2196F3,stroke-width:3px,color:#212529
+    style Sample fill:#bbdefb,stroke:#1976D2,stroke-width:2px,color:#212529
+    style Train fill:#bbdefb,stroke:#1976D2,stroke-width:2px,color:#212529
+    style Select fill:#bbdefb,stroke:#1976D2,stroke-width:2px,color:#212529
+    
+    style Phase2 fill:#f3e5f5,stroke:#9C27B0,stroke-width:3px,color:#212529
+    style FullData fill:#e1bee7,stroke:#7B1FA2,stroke-width:2px,color:#212529
+    style Refit fill:#e1bee7,stroke:#7B1FA2,stroke-width:2px,color:#212529
+    
+    style Phase3 fill:#e8f5e9,stroke:#4CAF50,stroke-width:3px,color:#212529
+    style Eval fill:#c8e6c9,stroke:#388E3C,stroke-width:2px,color:#212529
+    style Leaderboard fill:#c8e6c9,stroke:#388E3C,stroke-width:2px,color:#212529
+    
+    style Start fill:#fff9c4,stroke:#F57F17,stroke-width:2px,color:#212529
+    style End fill:#fff9c4,stroke:#F57F17,stroke-width:2px,color:#212529
 ```
 
-### Phase Details
+### Process Overview
 
-<details>
-<summary><b>View detailed phase information</b></summary>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin: 20px 0;">
 
-#### Phase 1: Initial Model Building (Sampled Data)
-- **Sample Size:** 500 rows
-- **Models Trained:** 12
-- **Duration:** 45 seconds
-- **Top Models Selected:** 3
+<div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 20px; border-radius: 8px; border-left: 5px solid #2196F3; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
 
-#### Phase 2: Model Refit (Full Training Data)
-- **Training Set Size:** 8,000 rows
-- **Models Refit:** 3
-- **Duration:** 98 seconds
+#### 🔵 Phase 1: Initial Model Building
+**Purpose:** Quick exploration on sampled data
 
-#### Phase 3: Leaderboard Evaluation
-- **Models Evaluated:** 15 (3 refit models + 12 initial models)
-- **Evaluation Metric:** ROC-AUC
-- **Duration:** 2.5 seconds
+| Metric | Value |
+|--------|-------|
+| **Sample Size** | 500 rows |
+| **Models Trained** | 12 |
+| **Duration** | 45 seconds |
+| **Output** | Top 3 models selected |
 
-</details>
+</div>
+
+<div style="background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); padding: 20px; border-radius: 8px; border-left: 5px solid #9C27B0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+
+#### 🟣 Phase 2: Model Refit
+**Purpose:** Train best models on full dataset
+
+| Metric | Value |
+|--------|-------|
+| **Training Set** | 8,000 rows |
+| **Models Refit** | 3 |
+| **Duration** | 98 seconds |
+| **Output** | Fully trained models |
+
+</div>
+
+<div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 20px; border-radius: 8px; border-left: 5px solid #4CAF50; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+
+#### 🟢 Phase 3: Leaderboard Evaluation
+**Purpose:** Rank all models by performance
+
+| Metric | Value |
+|--------|-------|
+| **Models Evaluated** | 15 total |
+| **Evaluation Metric** | ROC-AUC |
+| **Duration** | 2.5 seconds |
+| **Output** | Ranked leaderboard |
+
+</div>
+
+</div>
 
 ---
 
-## 🏆 Leaderboard
+## 🏆 Leaderboard {#leaderboard}
 
 ### Top Models
 
@@ -199,7 +248,7 @@ flowchart LR
 
 ---
 
-## 🎯 Best Model Details
+## 🎯 Best Model Details {#best-model-details}
 
 ### WeightedEnsemble_L3 (Best Performing)
 
@@ -264,7 +313,7 @@ Actual Class 1    28     487
 
 ---
 
-## 💡 Model Insights
+## 💡 Model Insights {#model-insights}
 
 ### Key Findings
 
@@ -289,7 +338,7 @@ Actual Class 1    28     487
 
 ---
 
-## 📦 Artifacts and Resources
+## 📦 Artifacts and Resources {#artifacts-and-resources}
 
 ### Generated Artifacts
 
@@ -307,7 +356,7 @@ Actual Class 1    28     487
 
 ---
 
-## 🚀 Next Steps
+## 🚀 Next Steps {#next-steps}
 
 ### Recommended Actions
 
@@ -322,7 +371,7 @@ Actual Class 1    28     487
 
 ---
 
-## 🔧 Technical Details
+## 🔧 Technical Details {#technical-details}
 
 <details>
 <summary><b>View technical details</b></summary>

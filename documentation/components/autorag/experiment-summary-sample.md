@@ -18,7 +18,7 @@
 
 ## 📋 Table of Contents
 
-- [Executive Summary](#executive-summary)
+- [Execution Summary](#execution-summary)
 - [Experiment Configuration](#experiment-configuration)
 - [Data Preparation](#data-preparation)
 - [Search Space Definition](#search-space-definition)
@@ -32,7 +32,7 @@
 
 ---
 
-## 🎯 Executive Summary
+## 🎯 Execution Summary {#execution-summary}
 
 This experiment explored **24** RAG configurations and generated **4** optimized RAG Patterns. The optimization focused on maximizing **answer_correctness** metric. The best performing pattern achieved an answer_correctness score of **0.612** with faithfulness of **0.789**.
 
@@ -48,7 +48,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## ⚙️ Experiment Configuration
+## ⚙️ Experiment Configuration {#experiment-configuration}
 
 <details>
 <summary><b>Click to expand configuration details</b></summary>
@@ -89,7 +89,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 📊 Data Preparation
+## 📊 Data Preparation {#data-preparation}
 
 ### Document Processing
 
@@ -113,7 +113,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 🔍 Search Space Definition
+## 🔍 Search Space Definition {#search-space-definition}
 
 <details>
 <summary><b>Click to expand search space details</b></summary>
@@ -162,7 +162,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 🔬 Explored Configurations
+## 🔬 Explored Configurations {#explored-configurations}
 
 | Iteration | Configuration ID | Chunking | Embeddings | Generation | Retrieval | Answer Correctness | Faithfulness | Context Correctness |
 |:---------:|------------------|----------|------------|------------|-----------|:------------------:|:------------:|:-------------------:|
@@ -174,7 +174,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 🏆 Leaderboard
+## 🏆 Leaderboard {#leaderboard}
 
 ### Top RAG Patterns
 
@@ -212,7 +212,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 🎯 Pattern Details
+## 🎯 Pattern Details {#pattern-details}
 
 ### RAGPattern1 (Best Performing)
 
@@ -242,7 +242,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 💡 Optimization Insights
+## 💡 Optimization Insights {#optimization-insights}
 
 ### Key Findings
 
@@ -262,7 +262,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 📦 Artifacts and Resources
+## 📦 Artifacts and Resources {#artifacts-and-resources}
 
 ### Generated Artifacts
 
@@ -278,7 +278,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 🚀 Next Steps
+## 🚀 Next Steps {#next-steps}
 
 ### Recommended Actions
 
@@ -292,7 +292,7 @@ This experiment explored **24** RAG configurations and generated **4** optimized
 
 ---
 
-## 🔧 Technical Details
+## 🔧 Technical Details {#technical-details}
 
 <details>
 <summary><b>View technical details</b></summary>
