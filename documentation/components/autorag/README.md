@@ -41,7 +41,7 @@ The optimization process typically involves:
   - [Infrastructure Components](#infrastructure-components)
   - [Processing Methods](#processing-methods)
   - [Interfaces](#interfaces)
-- [Glossary][#glossary]
+- [Glossary](#glossary)
 
 ## Kubeflow Pipeline
 
@@ -623,10 +623,37 @@ The `ai4rag` project is open-source and available at: [https://github.com/IBM/ai
 - **UI**: User interface for interacting with AutoRAG
 
 
-## Glossary  
+## Glossary
 
-- Rag configurations
+### RAG Configuration
 
-- Rag pattern 
+A **RAG Configuration** is a specific set of parameter values that define how a Retrieval-Augmented Generation system operates. It includes settings for:
 
-- Rag template
+- **Chunking**: Method and parameters for splitting documents into smaller pieces (e.g., recursive method with chunk_size=2048, chunk_overlap=256)
+- **Embeddings**: The embedding model used to convert text into vector representations (e.g., `intfloat/multilingual-e5-large`)
+- **Generation**: The language model used for generating responses (e.g., `ibm/granite-13b-instruct-v2`) along with its parameters
+- **Retrieval**: The method for retrieving relevant document chunks (e.g., simple retrieval or hybrid ranker with specific parameters)
+
+During AutoRAG optimization, multiple RAG configurations are explored to find the best performing combination of these parameters.
+
+### RAG Pattern
+
+A **RAG Pattern** is an optimized RAG configuration that has been evaluated and ranked by AutoRAG. It represents a complete, deployable RAG system with:
+
+- Validated parameter settings that have been tested and evaluated
+- Performance metrics (e.g., answer_correctness, faithfulness, context_correctness)
+- Executable notebooks for indexing and inference operations
+- A position in the leaderboard based on performance
+
+RAG Patterns are the final output artifacts from AutoRAG experiments and can be directly deployed for production use.
+
+### RAG Template
+
+A **RAG Template** is a reusable blueprint or framework that defines the structure and workflow of a RAG system. It specifies:
+
+- The overall architecture and flow of the RAG pipeline
+- The types of components required (chunking, embeddings, retrieval, generation)
+- How these components interact with each other
+- The framework used (e.g., LangGraph for sequential processing)
+
+Templates are parameterized, meaning they accept different configuration values. AutoRAG uses templates as the foundation and optimizes the parameter values to create RAG Patterns.
