@@ -480,10 +480,10 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
 
 #### Required Parameters
 
-- `name: str` - Experiment name (required)
-- `input_data_reference: dict` - Document data source (required)
-- `test_data_reference: dict` - Test data source (required)
-- `results_reference: dict` - Results storage location (required)
+- `name: str` - Experiment name
+- `input_data_reference: dict` - Document data source
+- `test_data_reference: dict` - Test data source
+- `results_reference: dict` - Results storage location
 
 **Python SDK Example:**
 ```python
@@ -565,10 +565,10 @@ Produces a leaderboard with RAG Patterns ranked by performance ([see Artifacts s
 
 #### Artifacts
 
-For run, AutoRAG generates:
+AutoRAG generates per each experiment execution:
 
 - RAG Pattern Artifact(s) (multiple) consisting of properties and uri to tar archive with notebooks:
-   - **Index building notebook**: For building the vector index/collection
+   - **Index building notebook**: For building the vector index/collection in case of an in-memory database. When dealing with persistent vector stores the notebook populates the already existing index/collection (created during exeriment) with all of the user's documents (please remember the documents sampling step at the very start of an experiment).
    - **Retrieval/generation notebook**: For performing retrieval and generation operations
 - AutoRAG Run Artifact (single) with status properties and uri to log file with messages
 - AutoRAG experiment summary Markdown Artifact including:
@@ -628,3 +628,5 @@ The `ai4rag` project is open-source and available at: [https://github.com/IBM/ai
 - Rag configurations
 
 - Rag pattern 
+
+- Rag template
