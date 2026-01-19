@@ -1,13 +1,14 @@
 # AutoRAG
 
-AutoRAG is an automated system for building and optimizing Retrieval-Augmented Generation (RAG) applications within Red Hat OpenShift AI. It leverages Kubeflow Pipelines to orchestrate the optimization workflow, using the `ai4rag` optimization engine to systematically explore RAG configurations and identify optimal parameter settings. The system integrates with llama-stack API for inference and vector database operations, producing optimized RAG Patterns as artifacts that can be deployed and used for production RAG applications.
+AutoRAG is an automated system for building and optimizing Retrieval-Augmented Generation (RAG) applications within Red Hat OpenShift AI. It leverages __Kubeflow Pipelines__ to orchestrate the optimization workflow, using the __ai4rag__ optimization engine to systematically explore RAG configurations and identify the best performing parameter settings based on an upfront-specified quality metric.  
+The system integrates with __llama-stack__ API for inference and vector database operations, producing optimized RAG Patterns as artifacts that can be deployed and used for production RAG applications. It can also communicate with externally provided __MLFlow__ server in order to support advanced experiment tracking features.  
 
 The optimization process typically involves:
 
 1. **Search Space Preparation**: Builds and validates the search space of RAG configurations, including model preselection and validation using in-memory vector databases
-2. **Configuration Exploration**: Systematically tests different RAG configurations from the defined search space
+2. **Configurations Exploration**: Systematically tests different RAG configurations from the defined search space
 3. **Evaluation**: Assesses each configuration's performance using test data
-4. **Pattern Generation**: Produces optimized RAG Patterns with associated metrics and logs
+4. **Pattern Generation**: Produces artifacts including, among others, the RAG Pattern, associated metrics, logs and notebooks
 5. **Leaderboard**: Maintains a leaderboard of RAG Patterns ranked by performance
 
 ## Table of Contents
@@ -40,6 +41,7 @@ The optimization process typically involves:
   - [Infrastructure Components](#infrastructure-components)
   - [Processing Methods](#processing-methods)
   - [Interfaces](#interfaces)
+- [Glossary][#glossary]
 
 ## Kubeflow Pipeline
 
@@ -49,10 +51,6 @@ KubeFlow Pipelines are used to build out capability for RHOAI (https://github.co
 ### Input parameters
 
 The AutoRAG pipeline parameters are organized into the following logical groups:
-
-> ℹ️ **Info:** Optimization settings and constraints (chunking, embeddings, generation, retrieval) are **optional** parameters. If not provided, AutoRAG will use default values or explore the full search space.
-
-> 📘 **Note:** This documentation uses Kubeflow Pipelines v2 structured types (`Dict`, `List`) for complex parameters.
 
 #### 1. Experiment Metadata
 
@@ -67,7 +65,7 @@ The AutoRAG pipeline parameters are organized into the following logical groups:
 ##### Document Data
 
 **Required Parameter:**
-- `input_data_reference: Dict` - Dictionary defining document data source:
+- `input_data_reference: dict` - Dictionary defining document data source:
   - `connection_id: str` - Connection ID for the data source (e.g., S3 connection ID)
   - `bucket: str` - Bucket name containing the documents
   - `path: str` - Path within the bucket/filesystem to the documents folder or single file
@@ -86,7 +84,7 @@ The AutoRAG pipeline parameters are organized into the following logical groups:
 Test data json file is supported only.
 
 **Required Parameter:**
-- `test_data_reference: Dict` - Dictionary defining test data source:
+- `test_data_reference: dict` - Dictionary defining test data source:
   - `connection_id: str` - Connection ID for the test data source (e.g., S3 connection ID)
   - `bucket: str` - Bucket name containing the test data file
   - `path: str` - Path within the bucket/filesystem to the test data file
@@ -111,7 +109,7 @@ Test data json file is supported only.
 Results of the run to be stored (python code, log file, summary report)
 
 **Required Parameter:**
-- `results_reference: Dict` - Dictionary defining results storage location:
+- `results_reference: dict` - Dictionary defining results storage location:
   - `connection_id: str` - Connection ID for the results storage (e.g., S3 connection ID)
   - `bucket: str` - Bucket name for storing results
   - `path: str` - Path where experiment results will be stored (e.g., "autorag/results")
@@ -129,7 +127,7 @@ Results of the run to be stored (python code, log file, summary report)
 ##### MLFlow Integration (Experiment Tracking)
 
 **Optional Parameter:**
-- `mlflow_config: Dict` - Dictionary defining MLFlow configuration for experiment tracking (optional):
+- `mlflow_config: dict` - Dictionary defining MLFlow configuration for experiment tracking (optional):
   - `tracking_uri: str` - MLFlow tracking server URI (e.g., "http://mlflow-server:5000" or S3 path)
   - `experiment_name: str` - MLFlow experiment name (default: uses pipeline `name` parameter)
   - `enabled: bool` - Enable/disable MLFlow tracking (default: `True` if `mlflow_config` is provided)
@@ -158,7 +156,7 @@ Results of the run to be stored (python code, log file, summary report)
 ##### Optimization Settings
 
 **Optional Parameter:**
-- `optimization: Dict` - Dictionary defining optimization settings (optional, defaults apply if not provided):
+- `optimization: dict` - Dictionary defining optimization settings:
   - `max_number_of_rag_patterns: int` - Maximum number of RAG patterns to generate (default: 4)
   - `metric: str` - Metric to optimize (e.g., `"answer_correctness"` or `"faithfulness"`)
   
@@ -174,25 +172,25 @@ Results of the run to be stored (python code, log file, summary report)
 
 ##### Search Space Constraints
 
-Constraints define the search space for RAG optimization. Each constraint section is provided as a List parameter:
+Constraints define the search space for RAG optimization. Each constraint section is provided as a list parameter:
 
 **Optional Parameters:**
 
 **Chunking Constraints:**
-- `chunking_constraints: List[Dict]` - List of dictionaries defining chunking configurations (optional):
+- `chunking_constraints: list[dict]` - List of dictionaries defining chunking configurations:
   - Each dictionary contains: `method: str`, `chunk_overlap: int`, `chunk_size: int`
 
 **Embeddings Constraints:**
-- `embeddings_constraints: List[Dict]` - List of dictionaries defining embedding models (optional):
+- `embeddings_constraints: list[dict]` - List of dictionaries defining embedding models:
   - Each dictionary contains: `model: str`
 
 **Generation Constraints:**
-- `generation_constraints: List[Dict]` - List of dictionaries defining generation models (optional):
-  - Each dictionary contains: `model: str`, optional `context_template_text: str`, optional `messages: List[Dict]` array
+- `generation_constraints: list[dict]` - List of dictionaries defining generation models:
+  - Each dictionary contains: `model: str`, optional `context_template_text: str`, optional `messages: list[dict]` array
 
 **Retrieval Constraints:**
-- `retrieval_constraints: List[Dict]` - List of dictionaries defining retrieval method configurations (optional):
-  - Each dictionary contains: `method: str`, `number_of_chunks: int`, optional `hybrid_ranker: Dict` (with `strategy: str`, `sparse_vectors: str`, `alpha: float`, `k: int`)
+- `retrieval_constraints: list[dict]` - List of dictionaries defining retrieval method configurations:
+  - Each dictionary contains: `method: str`, `number_of_chunks: int`, optional `hybrid_ranker: dict` (with `strategy: str`, `sparse_vectors: str`, `alpha: float`, `k: int`)
 
 **Example values:**
 
@@ -483,9 +481,9 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
 #### Required Parameters
 
 - `name: str` - Experiment name (required)
-- `input_data_reference: Dict` - Document data source (required)
-- `test_data_reference: Dict` - Test data source (required)
-- `results_reference: Dict` - Results storage location (required)
+- `input_data_reference: dict` - Document data source (required)
+- `test_data_reference: dict` - Test data source (required)
+- `results_reference: dict` - Results storage location (required)
 
 **Python SDK Example:**
 ```python
@@ -561,7 +559,7 @@ Extracts text from provided documents using the `docling` library. Returns extra
 Builds and validates the search space of RAG configurations. Validates available models and their performance using in-memory vector database. Adjusts the search space as needed. Outputs a series of valid configurations and data for optimization. Uses `ai4rag` library.
 
 #### RAG Settings Optimization
-Based on `ai4rag` core optimization component that explores configurations to build optimized RAG Pattern(s)Based. Uses Generalized Additive Models (GAM) to select next configuration by predicting the evaluation score before execution. Uses Vector Database to create collection operations and retrieval requests during the optimization process (supports both Milvus and Milvus Lite). 
+Is based on `ai4rag` core optimization component that explores configurations to build optimized RAG Pattern(s). Uses Generalized Additive Models (GAM) to select next configuration by predicting the evaluation score before execution. Uses Vector Database to create collection operations and retrieval requests during the optimization process (supports both Milvus and Milvus Lite). 
 
 Produces a leaderboard with RAG Patterns ranked by performance ([see Artifacts section for details](#artifacts)).
 
@@ -609,7 +607,7 @@ The `ai4rag` project is open-source and available at: [https://github.com/IBM/ai
 - **Vector Databases**: 
   - Milvus
   - Milvus Lite
-- **LLM Provider**: Llama-stack
+- **LLM Provider**: Llama-stack-supported models and vendors
 - **Experiment Tracking**: 
   - MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
 
@@ -624,3 +622,9 @@ The `ai4rag` project is open-source and available at: [https://github.com/IBM/ai
 - **API**: Programmatic access to AutoRAG functionality
 - **UI**: User interface for interacting with AutoRAG
 
+
+## Glossary  
+
+- Rag configurations
+
+- Rag pattern 
