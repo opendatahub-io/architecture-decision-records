@@ -132,7 +132,7 @@ Results of the run to be stored (model artifacts, log files, summary report)
 
 **Optional Parameter:**
 - `mlflow_config: Dict` - Dictionary defining MLFlow configuration for experiment tracking (optional):
-  - `tracking_uri: str` - MLFlow tracking server URI (e.g., "http://mlflow-server:5000" or S3 path)
+  - `tracking_uri: str` - MLFlow tracking server URI (e.g., "http://mlflow-server:5000")
   - `experiment_name: str` - MLFlow experiment name (default: uses pipeline `name` parameter)
   - `enabled: bool` - Enable/disable MLFlow tracking (default: `True` if `mlflow_config` is provided)
   
