@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 1796 100" style="enable-background:new 0 0 1796 100;" xml:space="preserve">
+<style type="text/css">
+	.st0{fill-rule:evenodd;clip-rule:evenodd;fill:url(#SVGID_1_);}
+	.st1{fill:none;stroke:#FFFFFF;stroke-width:2;stroke-miterlimit:10;}
+	.st2{fill:none;stroke:#FFFFFF;stroke-width:1.5;stroke-miterlimit:10;}
+	.st3{fill:#FFFFFF;}
+	.st4{font-family:'Helvetica Neue', Arial, sans-serif;}
+	.st5{font-size:32px;}
+	.st6{fill:#3D3D3D;}
+	.st7{fill:#939598;}
+	.st8{opacity:0.2;fill:url(#SVGID_2_);enable-background:new;}
+	.st9{font-weight:500;}
+</style>
+<rect width="1796" height="100" fill="#161616"/>
+<linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="42.86" y1="50" x2="79.71" y2="50">
+	<stop offset="0" style="stop-color:#FF6B6B"/>
+	<stop offset="0.21" style="stop-color:#EE0000"/>
+	<stop offset="0.75" style="stop-color:#CC0000"/>
+	<stop offset="1" style="stop-color:#AA0000"/>
+</linearGradient>
+<!-- AutoML Icon/Logo placeholder - simplified geometric shape -->
+<path class="st0" d="M52.4,45.9c0-2.3,1.8-4.1,4.1-4.1s4.1,1.8,4.1,4.1S58.8,50,56.5,50l0,0c-2.2,0.1-4-1.7-4.1-3.9
+	C52.4,46,52.4,46,52.4,45.9z M77.5,52.5c-0.8-1.1-1.4-2.3-1.9-3.5c1.2-4.5,0.7-8.6-1.8-11.9c-2.9-3.8-8.2-6-14.5-6.1
+	c-4.5-0.1-8.8,1.7-12,4.8c-3,3-4.6,7.2-4.5,11.5c-0.1,2.9,0.9,5.8,2.7,8.1c0.8,0.8,1.3,1.9,1.4,3v4.5c-0.8,0.5-1.4,1.3-1.4,2.3
+	c0.2,1.5,1.5,2.6,3,2.4c1.2-0.2,2.2-1.1,2.4-2.4c0-1-0.5-1.9-1.4-2.3v-4.5c0-2-1-3.3-1.9-4.6c-1.5-1.9-2.2-4.2-2.1-6.5
+	c0-3.5,1.4-6.9,3.8-9.4c2.7-2.7,6.3-4.1,10-4.1c5.5,0,9.8,1.9,12.1,5c2,2.8,2.5,6.3,1.4,9.6c-0.4,1.2,0.6,2.7,2.3,5.6
+	c0.6,0.9,1.2,1.9,1.6,2.9c-0.9,0.7-2,1.2-3.1,1.5c-0.5,0.4-0.7,0.9-0.8,1.5V65c0,0.4-0.1,0.8-0.4,1.1c-0.3,0.2-0.7,0.3-1.1,0.3
+	c-1.6-0.3-3.4-0.7-5.2-1.1v-4.8c0.8-0.5,1.4-1.4,1.4-2.3c0-1.5-1.2-2.7-2.7-2.7s-2.7,1.2-2.7,2.7c0,1,0.5,1.9,1.4,2.3v4.1
+	c-0.4-0.1-0.7-0.1-1.1-0.3c-4.5-1.1-4.5-2.6-4.5-3.4v-8.3c3.2-0.7,5.4-3.5,5.5-6.7c-0.1-3.8-3.3-6.7-7.1-6.6c-3.6,0.1-6.4,3-6.6,6.6
+	c0,3.2,2.3,6,5.5,6.7v8.3c0,2,0.7,4.6,6.6,6.1c3,0.8,6,1.5,9.1,1.9c0.3,0,0.6,0.1,0.8,0.1c1,0,1.9-0.3,2.6-1
+	c0.9-0.8,1.4-1.9,1.4-3.1v-4.5c2-0.8,4.1-2,4.1-3.7C79.7,55.9,79,54.6,77.5,52.5z"/>
+<circle class="st1" cx="56.5" cy="45.9" r="5.4"/>
+<circle class="st2" cx="48.3" cy="65" r="1.6"/>
+<circle class="st2" cx="64.8" cy="58.2" r="1.6"/>
+<text transform="matrix(1 0 0 1 101.02 59.33)" class="st3 st4 st5">AutoML</text>
+<rect x="231.1" y="34" class="st6" width="1" height="32"/>
+<text transform="matrix(1 0 0 1 256.29 59.66)" class="st7 st4 st5">Part of Red Hat OpenShift AI</text>
+<linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="773.8" y1="50" x2="1796" y2="50">
+	<stop offset="0" style="stop-color:#161616"/>
+	<stop offset="0.52" style="stop-color:#FF6B6B"/>
+	<stop offset="0.62" style="stop-color:#EE0000"/>
+	<stop offset="0.88" style="stop-color:#CC0000"/>
+	<stop offset="1" style="stop-color:#AA0000"/>
+</linearGradient>
+<rect x="773.8" class="st8" width="1022.2" height="100"/>
+<text transform="matrix(1 0 0 1 1448.1641 59.46)" class="st3 st4 st5 st9">Experiment Summary</text>
+</svg>
