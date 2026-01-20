@@ -31,7 +31,9 @@
 
 ---
 
-## 🎯 Execution Summary {#execution-summary}
+## 🎯 Execution Summary
+
+<a id="execution-summary"></a>
 
 This experiment trained **15** models using AutoGluon and selected the best performing ensemble model. The optimization focused on maximizing **roc_auc** metric. The best performing model achieved a ROC-AUC score of **0.9123** with accuracy of **0.8765**.
 
@@ -48,7 +50,9 @@ This experiment trained **15** models using AutoGluon and selected the best perf
 
 ---
 
-## ⚙️ Experiment Configuration {#experiment-configuration}
+## ⚙️ Experiment Configuration
+
+<a id="experiment-configuration"></a>
 
 <details>
 <summary><b>Click to expand configuration details</b></summary>
@@ -99,7 +103,9 @@ This experiment trained **15** models using AutoGluon and selected the best perf
 
 ---
 
-## 📊 Data Preparation {#data-preparation}
+## 📊 Data Preparation
+
+<a id="data-preparation"></a>
 
 ### Data Statistics
 
@@ -123,7 +129,9 @@ This experiment trained **15** models using AutoGluon and selected the best perf
 
 ---
 
-## 🔄 Model Building Process {#model-building-process}
+## 🔄 Model Building Process
+
+<a id="model-building-process"></a>
 
 ```mermaid
 flowchart TD
@@ -209,7 +217,9 @@ flowchart TD
 
 ---
 
-## 🏆 Leaderboard {#leaderboard}
+## 🏆 Leaderboard
+
+<a id="leaderboard"></a>
 
 ### Top Models
 
@@ -248,7 +258,9 @@ flowchart TD
 
 ---
 
-## 🎯 Best Model Details {#best-model-details}
+## 🎯 Best Model Details
+
+<a id="best-model-details"></a>
 
 ### WeightedEnsemble_L3 (Best Performing)
 
@@ -313,7 +325,9 @@ Actual Class 1    28     487
 
 ---
 
-## 💡 Model Insights {#model-insights}
+## 💡 Model Insights
+
+<a id="model-insights"></a>
 
 ### Key Findings
 
@@ -338,7 +352,9 @@ Actual Class 1    28     487
 
 ---
 
-## 📦 Artifacts and Resources {#artifacts-and-resources}
+## 📦 Artifacts and Resources
+
+<a id="artifacts-and-resources"></a>
 
 ### Generated Artifacts
 
@@ -356,7 +372,9 @@ Actual Class 1    28     487
 
 ---
 
-## 🚀 Next Steps {#next-steps}
+## 🚀 Next Steps
+
+<a id="next-steps"></a>
 
 ### Recommended Actions
 
@@ -371,7 +389,9 @@ Actual Class 1    28     487
 
 ---
 
-## 🔧 Technical Details {#technical-details}
+## 🔧 Technical Details
+
+<a id="technical-details"></a>
 
 <details>
 <summary><b>View technical details</b></summary>

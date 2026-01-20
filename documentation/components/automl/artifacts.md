@@ -5,42 +5,52 @@ AutoML Pipeline run produces the following artifacts.
 ## Table of Contents
 
 - [Naming Convention](#naming-convention)
-- [Model Artifact](#model-artifact)
+- [Model Artifact(s)](#model-artifact)
   - [Sample artifact](#sample-artifact)
 - [AutoML Run Output Artifact](#automl-run-output-artifact)
   - [Sample artifact](#sample-artifact-1)
-- [Metrics](#metrics)
-  - [Example of artifact](#example-of-artifact)
+- [Leaderboard](#leaderboard)
+  - [Sample artifact](#sample-artifact-2)
 - [Experiment summary](#experiment-summary)
   - [Example of artifact](#example-of-artifact-1)
   - [Proposed Summary Report Structure](#proposed-summary-report-structure)
 
 ## Naming Convention
 
-Artifact names follow these conventions:
-- **Model artifacts**: Simple predictor identifiers (e.g., `Predictor1`, `Predictor2`, `Predictor3`)
-- **Run-level artifacts**: Use `AutoML_<run_name>_` prefix followed by artifact type suffix:
-  - Run Output: `AutoML_<run_name>_output`
-  - Experiment Summary: `AutoML_<run_name>_summary`
-- **Metrics artifacts**: `AutoML_<run_name>_metrics`
+<a id="naming-convention"></a>
 
-## Model Artifact
+Artifact names follow these conventions:
+- **Model artifacts**: Simple predictor identifiers based on models names (e.g., `WeightedEnsemble_L3`, `CatBoost_BAG_L2`)
+- **Run-level artifacts**: Use `automl_` prefix followed by artifact type suffix:
+  - Run Output: `automl_run_output`
+  - Experiment Summary: `automl_run_summary`
+  - Leaderboard: `automl_leaderboard`
+
+
+## Model Artifact(s)
+
+<a id="model-artifact"></a>
 
 Model `dsl.Model` artifact consisting of:
-- Model `name` following the template `Predictor1`, `Predictor2`, `Predictor3`, etc.
+- Model `name` following the template `WeightedEnsemble_L3`, `CatBoost_BAG_L2`, etc.
 - `uri` to trained AutoGluon Predictor model directory (tar.gz archive)
 - `metadata` describing model configuration, performance metrics, and leaderboard rankings
 
-📝 **Note:** There will be multiple Model artifacts per single AutoML run. Each artifact represents a trained AutoGluon Predictor, which includes all trained models (ensemble) and the best model selected for deployment. The artifacts are numbered sequentially (Predictor1, Predictor2, etc.) based on their creation order or performance ranking.
+📝 **Note:** There will be multiple Model artifacts per single AutoML run. Each artifact represents a trained AutoGluon Model (part of the Predictor). The final predictor includes all trained models and uses the best model for prediction.
+
+📝 **Note:** The models and predictor binaries are stored under specified location at the end of experiment run. The intermediate models cannot be used before run completion.
+The limitation can be removed based on feedback and RFEs opened.
 
 ### Sample artifact
+
+<a id="sample-artifact"></a>
 
 📝 **Note:** this is just a draft version - changes can be made
 
 ```json
 {  
-  "uri": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/Predictor1/model.tar.gz",  
-  "name": "Predictor1",  
+  "name": "CatBoost_BAG_L2",  
+  "uri": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/autogluon.tar.gz",
   "metadata": {  
     "context": {  
       "task_type": "classification",
@@ -63,71 +73,51 @@ Model `dsl.Model` artifact consisting of:
         }
       },
       "location": {  
-        "model_directory": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/models/",
-        "leaderboard": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/leaderboard.csv",
-        "model_summary": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/model_summary.json"
+        "model_directory": "autogluon/models/CatBoost_BAG_L2",
+        "predictor": "autogluon/predictor.pkl"
       }
     },  
     "metrics": {  
+      "val_data": {  
+        "roc_auc": 0.9456,
+        "accuracy": 0.9012,
+        "f1": 0.8823,
+        "precision": 0.9105,
+        "recall": 0.8567
+      },
       "test_data": {  
         "roc_auc": 0.9123,
         "accuracy": 0.8765,
         "f1": 0.8543,
         "precision": 0.8891,
         "recall": 0.8321
-      },
-      "train_data": {  
-        "roc_auc": 0.9456,
-        "accuracy": 0.9012,
-        "f1": 0.8823,
-        "precision": 0.9105,
-        "recall": 0.8567
       }
-    },
-    "leaderboard": {
-      "top_models": [
-        {
-          "model_name": "WeightedEnsemble_L3",
-          "score_val": 0.9123,
-          "score_test": 0.9123,
-          "fit_time": 125.45,
-          "pred_time": 0.12
-        },
-        {
-          "model_name": "LightGBM_BAG_L2",
-          "score_val": 0.9101,
-          "score_test": 0.9101,
-          "fit_time": 89.23,
-          "pred_time": 0.08
-        },
-        {
-          "model_name": "CatBoost_BAG_L2",
-          "score_val": 0.9087,
-          "score_test": 0.9087,
-          "fit_time": 156.78,
-          "pred_time": 0.15
-        }
-      ]
     }
   }  
 }
 ```
 
+📝 **Note:** confusion matrix, ROC curve data to be added to `metrics` based on the feedback.
+
 ## AutoML Run Output Artifact
 
+<a id="automl-run-output-artifact"></a>
+
 Run Output `dsl.Artifact` consisting of:
-- Run Output `name` `AutoML_<run_name>_output`
+- Run Output `name` `automl_output`
 - `uri` to log file persisted in result directory
 - `metadata` describing the run status
 
 ### Sample artifact
 
+<a id="sample-artifact-1"></a>
+
 📝 **Note:** this is just a draft version - changes can be made
 
 ```json
 {  
-  "name": "AutoML_<run_name>_output",  
-  "uri": "/path/run_output.log",  
+  "name": "automl_output",  
+  "uri": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/run_output.log",  
   "metadata": {  
     "status": {  
       "completed_at": "2025-12-11T11:42:40.380Z",  
@@ -149,208 +139,95 @@ Run Output `dsl.Artifact` consisting of:
 }
 ```
 
-## Metrics
+## Leaderboard
 
-AutoML uses Kubeflow Pipelines Metrics artifacts to visualize and track model performance. Two types of metrics artifacts are used:
+<a id="leaderboard"></a>
 
-1. **`dsl.ClassificationMetrics`** - For classification-specific visualizations (confusion matrix, ROC curve)
-2. **`dsl.Metrics`** - For scalar metrics (accuracy, precision, recall, F1, etc.)
+Leaderboard `dsl.HTML` consisting of:
+- Leaderboard `name` `automl_leaderboard`
+- `uri` to html file persisted in result directory
+- `metadata` contains serialized leaderboard data
 
-### Using ClassificationMetrics for Visual Metrics
+### Sample artifact
 
-The `ClassificationMetrics` artifact enables the Kubeflow Pipelines UI to render interactive visualizations:
+<a id="sample-artifact-2"></a>
 
-#### Confusion Matrix
-
-The confusion matrix is logged using `log_confusion_matrix()` method, which enables the KFP UI to display an interactive confusion matrix heatmap.
-
-**Example code:**
-```python
-from kfp.dsl import component, Output, ClassificationMetrics
-from sklearn.metrics import confusion_matrix
-
-@component
-def evaluate_classification_model(
-    y_true: list,
-    y_pred: list,
-    class_labels: list,
-    classification_metrics: Output[ClassificationMetrics]
-):
-    # Compute confusion matrix
-    cm = confusion_matrix(y_true, y_pred, labels=class_labels)
-    
-    # Log confusion matrix for KFP UI visualization
-    classification_metrics.log_confusion_matrix(
-        categories=class_labels,  # e.g., ['Class 0', 'Class 1'] or ['Negative', 'Positive']
-        matrix=cm.tolist()
-    )
-```
-
-#### ROC Curve
-
-The ROC curve is logged using `log_roc_curve()` method, which enables the KFP UI to display an interactive ROC curve plot.
-
-**Example code:**
-```python
-from sklearn.metrics import roc_curve
-
-@component
-def evaluate_binary_classification(
-    y_true: list,
-    y_scores: list,  # Predicted probabilities for positive class
-    classification_metrics: Output[ClassificationMetrics]
-):
-    # Compute ROC curve
-    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-    
-    # Log ROC curve for KFP UI visualization
-    classification_metrics.log_roc_curve(
-        fpr=fpr.tolist(),
-        tpr=tpr.tolist(),
-        threshold=thresholds.tolist()
-    )
-```
-
-### Using Metrics for Scalar Values
-
-The `Metrics` artifact is used to log scalar performance metrics that are displayed in the KFP UI metrics tab.
-
-**Example code:**
-```python
-from kfp.dsl import component, Output, Metrics
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
-
-@component
-def log_scalar_metrics(
-    y_true: list,
-    y_pred: list,
-    y_scores: list,
-    metrics: Output[Metrics]
-):
-    # Compute scalar metrics
-    accuracy = accuracy_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred, average='weighted')
-    recall = recall_score(y_true, y_pred, average='weighted')
-    f1 = f1_score(y_true, y_pred, average='weighted')
-    roc_auc = roc_auc_score(y_true, y_scores)
-    
-    # Log scalar metrics for KFP UI display
-    metrics.log_metric('accuracy', accuracy)
-    metrics.log_metric('precision', precision)
-    metrics.log_metric('recall', recall)
-    metrics.log_metric('f1_score', f1)
-    metrics.log_metric('roc_auc', roc_auc)
-```
-
-### Example Artifacts
-
-#### ClassificationMetrics Artifact
+📝 **Note:** this is just a draft version - changes can be made
 
 ```json
-{  
-  "name": "AutoML_<run_name>_classification_metrics",  
-  "uri": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/classification_metrics.json",  
-  "metadata": {  
-    "context": {  
-      "model_artifact_name": "Predictor1",  
-      "model_artifact_id": "---id---",
-      "task_type": "classification",
-      "eval_metric": "roc_auc"
-    },
-    "confusion_matrix": {
-      "categories": ["Class 0", "Class 1"],
-      "matrix": [[450, 35], [28, 487]]
-    },
-    "roc_curve": {
-      "fpr": [0.0, 0.01, 0.02, 0.03, 0.05, ...],
-      "tpr": [0.0, 0.15, 0.28, 0.42, 0.58, ...],
-      "thresholds": [1.0, 0.95, 0.90, 0.85, 0.80, ...]
-    }
-  }  
+{
+   "name":"automl_leaderboard",
+   "uri":"automl/results/71c46718-8faa-4a0e-a018-073edfdca527/leaderboard.html",
+   "metadata":{
+      "model":{
+         "0":"LightGBMXT_FULL",
+         "1":"CatBoost",
+         "2":"RandomForestGini",
+         "3":"RandomForestEntr",
+         "4":"XGBoost"
+      },
+      "score_test":{
+         "0":0.8426655748,
+         "1":0.8424608455,
+         "2":0.8424608455,
+         "3":0.8409253762,
+         "4":0.83990173
+      },
+      "score_val":{
+         "0":null,
+         "1":0.85,
+         "2":0.84,
+         "3":0.83,
+         "4":0.85
+      },
+      "eval_metric":{
+         "0":"accuracy",
+         "1":"accuracy",
+         "2":"accuracy",
+         "3":"accuracy",
+         "4":"accuracy"
+      },
+      "pred_time_test":{
+         "0":0.0056340694,
+         "1":0.0067238808,
+         "2":0.0481259823,
+         "3":0.0558469296,
+         "4":0.0198101997
+      },
+      "pred_time_val":{
+         "0":null,
+         "1":0.0015211105,
+         "2":0.0292029381,
+         "3":0.0137529373,
+         "4":0.0025968552
+      },
+      "fit_time":{
+         "0":0.2220532894,
+         "1":1.2829272747,
+         "2":0.6016447544,
+         "3":0.2239229679,
+         "4":0.6792140007
+      },
+      "fit_order":{
+         "0":12,
+         "1":5,
+         "2":3,
+         "3":4,
+         "4":9
+      }
+   }
 }
 ```
-
-#### Metrics Artifact (Scalar Values)
-
-```json
-{  
-  "name": "AutoML_<run_name>_metrics",  
-  "uri": "automl/results/71c46718-8faa-4a0e-a018-073edfdca527/metrics.json",  
-  "metadata": {  
-    "context": {  
-      "model_artifact_name": "Predictor1",  
-      "model_artifact_id": "---id---",
-      "task_type": "classification",
-      "eval_metric": "roc_auc"
-    },
-    "metrics": {
-      "accuracy": 0.8765,
-      "precision": 0.8891,
-      "recall": 0.8321,
-      "f1_score": 0.8543,
-      "roc_auc": 0.9123
-    },
-    "leaderboard_summary": {
-      "total_models": 15,
-      "top_3_avg_score": 0.9104,
-      "ensemble_improvement": 0.0022
-    }
-  }  
-}
-```
-
-### Supported Features by Task Type
-
-#### Classification Tasks
-
-**ClassificationMetrics supports:**
-- ✅ Confusion Matrix (binary and multiclass)
-- ✅ ROC Curve (binary classification)
-- ✅ Precision-Recall Curve (via custom logging)
-
-**Metrics supports:**
-- ✅ Accuracy
-- ✅ Precision (macro, micro, weighted)
-- ✅ Recall (macro, micro, weighted)
-- ✅ F1 Score (macro, micro, weighted)
-- ✅ ROC-AUC (binary)
-- ✅ Log Loss
-- ✅ Custom metrics
-
-#### Regression Tasks
-
-**Metrics supports:**
-- ✅ R² Score
-- ✅ Root Mean Squared Error (RMSE)
-- ✅ Mean Absolute Error (MAE)
-- ✅ Mean Squared Error (MSE)
-- ✅ Mean Absolute Percentage Error (MAPE)
-- ✅ Custom metrics
-
-#### Time-Series Forecasting Tasks
-
-**Metrics supports:**
-- ✅ MAPE (Mean Absolute Percentage Error)
-- ✅ sMAPE (Symmetric MAPE)
-- ✅ MASE (Mean Absolute Scaled Error)
-- ✅ RMSE (Root Mean Squared Error)
-- ✅ MAE (Mean Absolute Error)
-- ✅ WQL (Weighted Quantile Loss)
-- ✅ Custom metrics
-
-### Best Practices
-
-1. **Use ClassificationMetrics for Visual Metrics**: Always use `ClassificationMetrics` for confusion matrix and ROC curve to enable UI visualization
-2. **Use Metrics for Scalars**: Use `Metrics` for all scalar values that should appear in the metrics tab
-3. **Log Per-Model Metrics**: Create separate metrics artifacts for each predictor (Predictor1, Predictor2, etc.) to enable comparison
-4. **Include Context**: Always include context metadata linking metrics to the corresponding model artifact
-5. **Consistent Naming**: Use consistent metric names across runs for easy comparison in the KFP UI
 
 ## Experiment summary
+
+<a id="experiment-summary"></a>
 
 The `dsl.Markdown` Artifact describing the experiment details. This is a comprehensive report that provides an overview of the AutoML optimization run, including data preparation, model building, selection process, and results.
 
 ### Example of artifact
+
+<a id="example-of-artifact-1"></a>
 
 ```json
 {  
@@ -368,6 +245,8 @@ The `dsl.Markdown` Artifact describing the experiment details. This is a compreh
 ```
 
 ### Proposed Summary Report Structure
+
+<a id="proposed-summary-report-structure"></a>
 
 Based on AutoGluon's approach and best practices, the experiment summary Markdown report should include the following sections:
 
