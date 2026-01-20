@@ -792,6 +792,8 @@ curl -X POST "${KFP_ENDPOINT}/apis/v1beta1/runs" \
 
 ### Components
 
+> 📘 **Note:** For detailed component information, see [Components documentation](components.md).
+
 #### Data Loader
 Reads tabular data from data sources (S3, local filesystem). Supports S3 `connection`. Returns tabular data for processing. Torch compatible data loader to be explored. Data cache support to be explored in next stage.
 
@@ -817,20 +819,10 @@ Performs final evaluation of fully trained models and intermediate models. Gener
 
 For each run, AutoML generates:
 
-- **Model Artifact(s)**: Trained AutoGluon Predictor models with associated metadata:
-   - Model files and weights
-   - Model configuration
-   - Performance metrics
-   - Leaderboard rankings
+- **Model Artifact(s)**: Trained AutoGluon Predictor models with associated metadata
 - **AutoML Run Artifact**: Run status properties and URI to log file with messages
 - **Leaderboard Artifact**: Leaderboard with models and eval scores 
-  
-  > ⚠️ **Warning:** Metrics artifacts are optional and may not be generated in all pipeline runs depending on configuration.
-- **AutoML Experiment Summary Markdown Artifact** including:
-  - Data preparation details
-  - Model building and selection process
-  - Leaderboard of models ranked by performance
-  - Links to remaining artifacts
+- **AutoML Experiment Summary Markdown Artifact** experiment run report 
 - **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with TabularPredictor - fit and predict actions
 
 > 📘 **Details on artifacts:** See [Artifacts documentation](artifacts.md) for comprehensive information about artifact structure, naming conventions, and sample artifacts.
@@ -889,4 +881,4 @@ AutoGluon does not recommend traditional hyperparameter optimization (HPO); inst
 - **Notebook Generation**: Notebook experience for interacting with TabularPredictor (not in scope for MVP)
 - **Model HPO**: Traditional hyperparameter optimization (not in scope, AutoGluon uses ensembling instead)
 - **Data Caching**: Data cache support to be explored in next stage
-- **Torch Data Loader**: Torch compatible data loader to be explored
+- **Large tabular data support**: support up to 100GB tab data
