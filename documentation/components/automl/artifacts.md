@@ -34,7 +34,7 @@ Artifact names follow these conventions:
 Model `dsl.Model` artifact consisting of:
 - Model `name` following the template `WeightedEnsemble_L3`, `CatBoost_BAG_L2`, etc.
 - `uri` to trained AutoGluon Predictor model directory (tar.gz archive)
-- `metadata` describing model configuration, performance metrics, and leaderboard rankings
+- `metadata` describing model configuration, and performance metrics.
 
 📝 **Note:** There will be multiple Model artifacts per single AutoML run. Each artifact represents a trained AutoGluon Model (part of the Predictor). The final predictor includes all trained models and uses the best model for prediction.
 

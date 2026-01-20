@@ -58,7 +58,6 @@ AutoML automates this process, enabling users to:
 * Support for non-tabular data (images, text, audio)
 * Traditional hyperparameter optimization (AutoGluon uses ensembling approach)
 * Distributed training with Kubeflow Katib (to be explored post-MVP)
-* Notebook generation for TabularPredictor interaction (not in scope for MVP)
 * Large tabular data support (1GB +)
 
 
@@ -71,9 +70,9 @@ AutoML is implemented as Kubeflow Pipelines that orchestrate the following workf
 
 1. **Kubeflow Pipelines**: Orchestrates the model training workflow as a pipeline of containerized components
 2. **AutoGluon Library**: Core ML optimization engine (open-source) that automatically builds, evaluates, and selects optimal models
-3. **MLFlow** (optional): Provides experiment tracking, metrics logging, and artifact management for training runs
-4. **RHOAI Model Registry**: Manages model versioning and metadata (optional)
-5. **KServe**: Provides model serving capabilities with custom AutoGluon runtime (optional)
+3. **MLFlow**: Provides experiment tracking, metrics logging, and artifact management for training runs
+4. **RHOAI Model Registry**: Manages model versioning and metadata
+5. **KServe**: Provides model serving capabilities with custom AutoGluon runtime
 6. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
 
 ### Pipeline Workflow
@@ -90,13 +89,11 @@ flowchart LR
     Leaderboard --> MLFlowLog["MLFlow Logging<br/>Log metrics & models"]
     MLFlowLog --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
     ResultsStorage --> CheckRegistry{"Auto Register<br/>enabled?"}
-    ResultsStorage --> CheckDeploy{"Auto Deploy<br/>enabled?"}
     CheckRegistry -->|Yes| Registry["Model Registry<br/>Register best model"]
-    CheckRegistry -->|No| MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
+    CheckRegistry -->|No| CheckDeploy{"Auto Deploy<br/>enabled?"}
+    Registry --> CheckDeploy
     CheckDeploy -->|Yes| Deploy["KServe Deployment<br/>Deploy model"]
-    CheckDeploy -->|No| MLFlowFinal
-    Registry --> Deploy
-    Registry --> MLFlowFinal
+    CheckDeploy -->|No| MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
     Deploy --> MLFlowFinal
     MLFlowFinal --> End([Pipeline Complete])
     
@@ -160,7 +157,7 @@ For each pipeline run, AutoML generates:
 
 2. **AutoML Run Output Artifact** (single): Run-level artifact named `automl_output` with status properties and URI to log file with messages
 
-3. **Leaderboard Artifact** (single): HTML artifact named `automl_leaderboard` containing serialized leaderboard data with models ranked by performance metrics
+3. **Leaderboard Artifact** (single): `dsl.HTML` artifact named `automl_leaderboard` with URI to HTML file persisted in result directory and metadata containing serialized leaderboard data with models ranked by performance metrics
 
 4. **Metrics Artifacts** (optional):
    - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
@@ -172,12 +169,12 @@ For each pipeline run, AutoML generates:
    - Leaderboard of models ranked by performance
    - Links to remaining artifacts
 
-6. **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with TabularPredictor
+6. **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with Predictor
 
 ### Supported Features (Tech Preview - MVP)
 
 - **Data Type**: Tabular data (CSV, Parquet, XLSX)
-- **Data Sources**: S3 (Amazon S3), Local filesystem (FS)
+- **Data Sources**: S3, Local filesystem (FS)
 - **Supported Task Types**: 
   - Classification (Binary, Multiclass)
   - Regression
