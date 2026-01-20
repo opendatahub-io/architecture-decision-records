@@ -823,9 +823,7 @@ For each run, AutoML generates:
    - Performance metrics
    - Leaderboard rankings
 - **AutoML Run Artifact**: Run status properties and URI to log file with messages
-- **Metrics Artifacts** (optional): Evaluation metrics for model performance:
-  - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
-  - **Metrics**: Scalar metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression; MAPE, sMAPE, MASE for time-series)
+- **Leaderboard Artifact**: Leaderboard with models and eval scores 
   
   > ⚠️ **Warning:** Metrics artifacts are optional and may not be generated in all pipeline runs depending on configuration.
 - **AutoML Experiment Summary Markdown Artifact** including:
