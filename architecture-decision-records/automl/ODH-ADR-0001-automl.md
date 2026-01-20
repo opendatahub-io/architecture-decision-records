@@ -152,26 +152,27 @@ When optional parameters are omitted, AutoML uses AutoGluon default values.
 
 For each pipeline run, AutoML generates:
 
-1. **Model Artifacts** (multiple): Trained AutoGluon Predictor models named `Predictor1`, `Predictor2`, etc., each containing:
+1. **Model Artifact(s)** (multiple): Trained AutoGluon Predictor models with names following AutoGluon model naming conventions (e.g., `WeightedEnsemble_L3`, `CatBoost_BAG_L2`), each containing:
    - Complete AutoGluon Predictor with all trained models (ensemble)
    - Model files and weights
    - Model configuration
    - Performance metrics
-   - Leaderboard rankings
 
-2. **AutoML Run Artifact** (single): Run-level artifact with status properties and URI to log file with messages
+2. **AutoML Run Output Artifact** (single): Run-level artifact named `automl_output` with status properties and URI to log file with messages
 
-3. **Metrics Artifacts** (optional):
+3. **Leaderboard Artifact** (single): HTML artifact named `automl_leaderboard` containing serialized leaderboard data with models ranked by performance metrics
+
+4. **Metrics Artifacts** (optional):
    - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
    - **Metrics**: Scalar metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression; MAPE, sMAPE, MASE for time-series)
 
-4. **AutoML Experiment Summary** (Markdown): Comprehensive report including:
+5. **AutoML Experiment Summary** (Markdown): Artifact named `automl_run_summary` providing a comprehensive report including:
    - Data preparation details
    - Model building and selection process
    - Leaderboard of models ranked by performance
    - Links to remaining artifacts
 
-5. **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with TabularPredictor
+6. **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with TabularPredictor
 
 ### Supported Features (Tech Preview - MVP)
 
@@ -260,6 +261,7 @@ For each pipeline run, AutoML generates:
 * [AutoML Documentation](/documentation/components/automl/README.md)
 * [AutoML Artifacts Documentation](/documentation/components/automl/artifacts.md)
 * [AutoML Components Documentation](/documentation/components/automl/components.md)
+* [AutoML Experiment Summary Sample](/documentation/components/automl/experiment-summary-sample.md)
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
 * [Kubeflow Pipelines Components](https://github.com/kubeflow/pipelines-components)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
