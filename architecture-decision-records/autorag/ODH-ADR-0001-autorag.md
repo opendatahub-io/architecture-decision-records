@@ -32,7 +32,7 @@ AutoRAG automates this process, enabling users to:
 ## Goals
 
 * Provide automated optimization of RAG applications within RHOAI
-* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, llama-stack, vector databases)
+* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, llama-stack, vector databases, MLflow)
 * Support flexible search space definition through constraints
 * Generate production-ready RAG Patterns as deployable artifacts
 * Enable evaluation using standardized metrics (answer_correctness, faithfulness, context_correctness)
@@ -41,11 +41,17 @@ AutoRAG automates this process, enabling users to:
 * Provide both programmatic (API) and UI interfaces
 
 ## Non-Goals
-
+* Auto LLM deployment / shut down for experiment run purposes
 * Support for languages other than English (initially)
 * Support for vector databases other than Milvus/Milvus Lite
 * Direct LLM provider integration (uses llama-stack abstraction)
-* Multi-tenant optimization (single experiment per run)
+* Multi-modal RAG support (images, audio, video in documents)
+* Document types beyond PDF, DOCX, PPTX, Markdown, HTML, and Plain text
+* Custom evaluation metrics (only answer_correctness and faithfulness are optimizable)
+* LLM fine-tuning or model training capabilities
+* Optimization resume/checkpointing for interrupted runs
+* Parallel optimization runs or distributed optimization
+
 
 ## How
 
@@ -143,7 +149,7 @@ Status: Tech Preview
 - **RAG Type**: Documents (documents provided as input)
 - **Languages**: English
 - **Document Types**: PDF, DOCX, PPTX, Markdown, HTML, Plain text
-- **Data Sources**: S3 (Amazon S3), Local filesystem (FS)
+- **Data Sources**: S3, Local filesystem (FS)
 - **Vector Databases**: Milvus, Milvus Lite
 - **LLM Provider**: Llama-stack
 - **Experiment Tracking**: MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
@@ -194,10 +200,9 @@ Status: Tech Preview
 
 ## Risks
 
-* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations
+* **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results (embedding and generation LLM)
+* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations (responsivness of llama stack)
 * **Resource Consumption**: Large document sets and extensive search spaces may require substantial compute resources
-* **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results
-* **Search Space Complexity**: Very large or poorly constrained search spaces may not converge to optimal solutions efficiently
 * **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
 
 ## Stakeholder Impacts
