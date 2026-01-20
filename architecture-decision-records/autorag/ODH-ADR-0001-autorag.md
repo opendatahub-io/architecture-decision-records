@@ -42,9 +42,7 @@ AutoRAG automates this process, enabling users to:
 
 ## Non-Goals
 * Auto LLM deployment / shut down for experiment run purposes
-* Support for languages other than English (initially)
-* Support for vector databases other than Milvus/Milvus Lite
-* Direct LLM provider integration (uses llama-stack abstraction)
+* Direct LLM provider or Vector Database integration (uses llama-stack abstraction)
 * Multi-modal RAG support (images, audio, video in documents)
 * Document types beyond PDF, DOCX, PPTX, Markdown, HTML, and Plain text
 * Custom evaluation metrics (only answer_correctness and faithfulness are optimizable)
@@ -201,9 +199,9 @@ Status: Tech Preview
 ## Risks
 
 * **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results (embedding and generation LLM)
-* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations (responsivness of llama stack)
-* **Resource Consumption**: Large document sets and extensive search spaces may require substantial compute resources
-* **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
+* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations. Response times and rate limits of llama stack API can be a bottle neck.
+* **RAG Pattern Registry**: As AutoRAG adoption grows, there may be a need for a more generic registry service (beyond the current Model Registry) to support RAG Pattern storage, versioning, and lifecycle management, which could impact long-term pattern discoverability and reuse
+
 
 ## Stakeholder Impacts
 
