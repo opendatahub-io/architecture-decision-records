@@ -2,14 +2,14 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2025-01-XX |
+| Date           | 2026-01-21 |
 | Scope          | AutoRAG Component |
 | Status         | Proposed |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | [AutoRAG Documentation](/documentation/components/autorag/README.md) |
+| Other docs:    | N/A |
 
 ## What
 
@@ -44,8 +44,6 @@ AutoRAG automates this process, enabling users to:
 * Auto LLM deployment / shut down for experiment run purposes
 * Direct LLM provider or Vector Database integration (uses llama-stack abstraction)
 * Multi-modal RAG support (images, audio, video in documents)
-* Document types beyond PDF, DOCX, PPTX, Markdown, HTML, and Plain text
-* Custom evaluation metrics (only answer_correctness and faithfulness are optimizable)
 * LLM fine-tuning or model training capabilities
 * Optimization resume/checkpointing for interrupted runs
 * Parallel optimization runs or distributed optimization
@@ -106,7 +104,8 @@ flowchart LR
    - Selects promising configurations using GAM-based prediction
    - Executes RAG Pattern with selected configuration
    - Evaluates performance using test data
-   - Logs metrics and configuration to MLFlow (if enabled)
+   - Generates KFP artifacts
+   - Logs metrics, and configuration to MLFlow (if enabled)
    - Updates the leaderboard with results
 6. **Pattern Generation**: Top-performing configurations are packaged as RAG Patterns with executable notebooks
 7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
@@ -124,7 +123,7 @@ The pipeline accepts parameters organized into logical groups:
 **Optional Parameters:**
 - Optimization settings (max patterns, metric to optimize)
 - Search space constraints (chunking, embeddings, generation, retrieval)
-- MLFlow configuration (tracking_uri, experiment_name, enabled) for experiment tracking
+- MLFlow configuration for experiment tracking
 
 When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
 
@@ -214,9 +213,6 @@ Status: Tech Preview
 
 ## References
 
-* [AutoRAG Documentation](/documentation/components/autorag/README.md)
-* [AutoRAG Artifacts Documentation](/documentation/components/autorag/artifacts.md)
-* [AutoRAG Components Documentation](/documentation/components/autorag/components.md)
 * [ai4rag GitHub Repository](https://github.com/IBM/ai4rag)
 * [Kubeflow Pipelines Components](https://github.com/kubeflow/pipelines-components)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)

@@ -2,14 +2,14 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2025-01-XX |
+| Date           | 2026-01-21 |
 | Scope          | AutoML Component |
 | Status         | Proposed |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | [AutoML Documentation](/documentation/components/automl/README.md) |
+| Other docs:    | N/A |
 
 ## What
 
@@ -112,7 +112,7 @@ flowchart LR
 **Workflow Steps:**
 
 1. **Data Loading**: Tabular data is loaded from configured data sources (S3 or local filesystem). Supports CSV, Parquet, and XLSX formats.
-2. **Data Splitting & Sampling**: Data is split into train/test sets using appropriate techniques (random, stratified for classification; time-series split for forecasting). A subset of training data (default: 500 samples) is sampled for initial model building to reduce computational cost.
+2. **Data Sampling & Splitting**: Data is split into train/test sets using appropriate techniques (random, stratified for classification; time-series split for forecasting). A subset of training data (default: 500 samples) is sampled for initial model building to reduce computational cost.
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
 4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Explores Kubeflow Katib for distributed computing and experiment/trials logging.
 5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models.
@@ -137,7 +137,7 @@ The pipelines accept parameters organized into logical groups:
 **Optional Parameters:**
 - Experiment description
 - Test data reference (external test data for evaluation)
-- MLFlow configuration (tracking_uri, experiment_name, enabled) for experiment tracking
+- MLFlow configuration for experiment tracking
 - Data preparation (sampling_config, split_config)
 - Model configuration (selection_config with time_limit, preset, eval_metric, top_n)
 - Time-series specific (prediction_length, time_series_config with covariates, static features, etc.)
@@ -150,28 +150,25 @@ When optional parameters are omitted, AutoML uses AutoGluon default values.
 For each pipeline run, AutoML generates:
 
 1. **Model Artifact(s)** (multiple): Trained AutoGluon Predictor models with names following AutoGluon model naming conventions (e.g., `WeightedEnsemble_L3`, `CatBoost_BAG_L2`), each containing:
-   - Complete AutoGluon Predictor with all trained models (ensemble)
    - Model files and weights
    - Model configuration
    - Performance metrics
 
 2. **AutoML Run Output Artifact** (single): Run-level artifact named `automl_output` with status properties and URI to log file with messages
 
-3. **Leaderboard Artifact** (single): `dsl.HTML` artifact named `automl_leaderboard` with URI to HTML file persisted in result directory and metadata containing serialized leaderboard data with models ranked by performance metrics
-
-4. **Metrics Artifacts** (optional):
+3. **Metrics Artifacts** (optional):
    - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
    - **Metrics**: Scalar metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression; MAPE, sMAPE, MASE for time-series)
 
-5. **AutoML Experiment Summary** (Markdown): Artifact named `automl_run_summary` providing a comprehensive report including:
+4. **AutoML Experiment Summary** (Markdown): Artifact named `automl_run_summary` providing a comprehensive report including:
    - Data preparation details
    - Model building and selection process
    - Leaderboard of models ranked by performance
    - Links to remaining artifacts
 
-6. **Notebook Artifact** (optional, not in scope for MVP): Notebook experience for interacting with Predictor
 
-### Supported Features (Tech Preview - MVP)
+### Supported Features
+Status: Tech Preview
 
 - **Data Type**: Tabular data (CSV, Parquet, XLSX)
 - **Data Sources**: S3, Local filesystem (FS)
@@ -182,9 +179,9 @@ For each pipeline run, AutoML generates:
 - **Model Training**: AutoGluon library
 - **Model Types**: Neural networks, tree-based models (XGBoost, LightGBM, CatBoost), linear models, and more
 - **Ensembling**: Stacking and bagging approaches
-- **Experiment Tracking**: MLFlow - For experiment tracking, metrics logging, and artifact management
-- **Model Registry**: MlFlow Model Registry
-- **Model Serving**: KServe with AutoGluon runtime (custom runtime)
+- **Experiment Tracking**: MLflow - For experiment tracking, metrics logging, and artifact management
+- **Model Registry**: MLflow Model Registry
+- **Model Serving**: KServe with AutoGluon runtime (custom runtime to be delivered)
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
 
 ## Alternatives
@@ -236,9 +233,9 @@ For each pipeline run, AutoML generates:
 
 ## Risks
 
-* **Performance**: Model training can take significant time depending on dataset size, model complexity, and time limits
-* **Resource Consumption**: Large datasets and complex models may require substantial compute resources or incremental learning approach
-* **KServe Dependency**: Model deployment depends on KServe availability and custom AutoGluon runtime support. Changes to KServe API or runtime requirements may impact deployment functionality
+* **Performance**: Model training can take significant time depending on dataset size, model complexity, and time limits. Benchmarking required to mitigate the risk.
+* **Resource Consumption**: Large datasets and complex models may require substantial compute resources or incremental learning approach (to be explored post TP)
+* **KServe Dependency**: Model deployment depends on KServe availability and custom AutoGluon runtime support
 * **Model Registry Dependency**: Model registration depends on Model Registry availability
 * **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
 
@@ -255,10 +252,6 @@ For each pipeline run, AutoML generates:
 
 ## References
 
-* [AutoML Documentation](/documentation/components/automl/README.md)
-* [AutoML Artifacts Documentation](/documentation/components/automl/artifacts.md)
-* [AutoML Components Documentation](/documentation/components/automl/components.md)
-* [AutoML Experiment Summary Sample](/documentation/components/automl/experiment-summary-sample.md)
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
 * [Kubeflow Pipelines Components](https://github.com/kubeflow/pipelines-components)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
