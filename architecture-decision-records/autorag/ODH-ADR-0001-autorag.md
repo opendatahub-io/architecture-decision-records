@@ -38,7 +38,7 @@ AutoRAG automates this process, enabling users to:
 * Enable evaluation using standardized metrics (answer_correctness, faithfulness, context_correctness)
 * Support multiple document types and data sources (S3, local filesystem)
 * Maintain compatibility with RHOAI Connections for secure data access
-* Provide both programmatic (API) and UI interfaces
+* Provide both programmatic (API) and UI
 
 ## Non-Goals
 * Auto LLM deployment / shut down for experiment run purposes
@@ -69,18 +69,16 @@ The following flowchart illustrates the AutoRAG optimization workflow:
 flowchart LR
     Start([Pipeline Start]) --> DataIngestion["Data Ingestion<br/>Load documents & test data"]
     DataIngestion --> DocProcessing["Document Processing<br/>Sample & extract text"]
-    DocProcessing --> SearchSpace["Search Space Definition<br/>Define configurations"]
-    SearchSpace --> ModelValidation["Model Validation<br/>Preselect models"]
-    ModelValidation --> OptLoop{"Optimization<br/>Loop"}
+    DocProcessing --> SearchSpace["Search Space Definition<br/>Define configurations & validate models"]
+    SearchSpace --> OptLoop{"Optimization<br/>Loop"}
     OptLoop --> SelectConfig["Select Configuration<br/>GAM prediction"]
     SelectConfig --> ExecuteRAG["Execute RAG Pipeline<br/>Run configuration"]
     ExecuteRAG --> Evaluate["Evaluate Performance<br/>Test data metrics"]
     Evaluate --> MLFlowLog["MLFlow Logging<br/>Log metrics & config"]
-    MLFlowLog --> UpdateLeaderboard["Update Leaderboard<br/>Rank patterns"]
+    MLFlowLog --> UpdateLeaderboard["Artifacts storage<br/>RAG Pattern"]
     UpdateLeaderboard --> CheckMax{"Reached max<br/>patterns?"}
     CheckMax -->|No| OptLoop
-    CheckMax -->|Yes| PatternGen["Pattern Generation<br/>Package top patterns"]
-    PatternGen --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
+    CheckMax -->|Yes| ResultsStorage["Artifacts Storage<br/>Leaderboard & logs"]
     ResultsStorage --> MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
     MLFlowFinal --> End([Pipeline Complete])
     
@@ -88,27 +86,27 @@ flowchart LR
     style End fill:#2d8659,color:#fff,stroke-width:3px
     style OptLoop fill:#d97706,color:#fff,stroke-width:3px
     style CheckMax fill:#d97706,color:#fff,stroke-width:3px
-    style PatternGen fill:#1e40af,color:#fff,stroke-width:3px
     style MLFlowLog fill:#9333ea,color:#fff,stroke-width:2px
     style MLFlowFinal fill:#9333ea,color:#fff,stroke-width:2px
 ```
 
 **Workflow Steps:**
 
+📝 **Note:** The AutoRAG experiment uses sample of documents for optimization purposes. The generated artifact is designed for full data load.
+
 1. **Data Ingestion**: Documents are loaded from configured data sources (S3 or local filesystem) and test data is loaded for evaluation
-2. **Document Processing**: Documents are sampled using a test data-driven approach (load documents referenced in ground truth records first, then add noise documents). Text is extracted using the `docling` library, and content is prepared for indexing
-3. **Search Space Definition**: Based on provided constraints (or defaults), the system defines the search space of possible RAG configurations
-4. **Model Validation**: Available models are validated and preselected based on performance criteria using an in-memory vector database
-5. **Optimization Loop**: (runs on the sample of data). The system iteratively:
+2. **Document Processing**: Documents are **sampled** using a test data-driven approach (load documents referenced in ground truth records first, then add noise documents). Text is extracted using the `docling` library, and content (markdown files) is prepared for indexing
+3. **Search Space Definition**: Based on provided constraints (or defaults), the system defines the search space of possible RAG configurations. Available models are validated and preselected based on performance criteria using an in-memory vector database
+4. **Optimization Loop**: (runs on the sample of data). The system iteratively:
    - Selects promising configurations using GAM-based prediction
    - Executes RAG Pattern with selected configuration
    - Evaluates performance using test data
    - Generates KFP artifacts
    - Logs metrics and configuration to MLFlow (if enabled)
    - Updates the leaderboard with results
-6. **Pattern Generation**: Top-performing configurations are packaged as RAG Patterns with executable notebooks
-7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
-8. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled)
+5. **Pattern Generation**: Top-performing configurations are packaged as RAG Patterns with executable notebooks
+6. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
+7. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled)
 
 ### Input Parameters
 
@@ -174,7 +172,7 @@ Status: Tech Preview
 * Test data generation (SDG - either existing component or docling-sdg)
 * Parallel optimization runs or distributed optimization
 * Generating Kubeflow Pipeline as output artifact for index building (in the MVP, Jupyter notebook is produced only). Load testing/benchmarking of index building artifact will be performed, including investment in parallel data ingestion
-* RAG Pattern retrieval & generation application deployment as chat completion endpoint (Kagenti to be explored)
+* Generating RAG Pattern application (retrieval & generation) that can be deployed as completion endpoint (Kagenti)
 
 
 ## Alternatives

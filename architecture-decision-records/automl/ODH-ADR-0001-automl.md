@@ -50,7 +50,7 @@ AutoML automates this process, enabling users to:
 * Enable evaluation using standardized metrics (accuracy, ROC-AUC, R², RMSE, MAPE, etc.)
 * Support multiple data sources and formats (S3, local filesystem; CSV, Parquet, XLSX)
 * Maintain compatibility with RHOAI Connections for secure data access
-* Provide both programmatic (API) and UI interfaces
+* Provide both programmatic (API) and UI
 * Support flexible configuration through optional parameters with sensible defaults
 
 ## Non-Goals
@@ -58,9 +58,6 @@ AutoML automates this process, enabling users to:
 * Support for non-tabular data (images, text, audio)
 * Traditional hyperparameter optimization (AutoGluon uses ensembling approach)
 
-### Non-MVP goals
-* Distributed training with Kubeflow Katib (to be explored post-MVP)
-* Large tabular data support (1GB +)
 
 ## How
 
@@ -84,7 +81,7 @@ flowchart LR
     Start([Pipeline Start]) --> DataLoad["Data Loading<br/>Load tabular data"]
     DataLoad --> DataSplit["Data Splitting & Sampling<br/>Split train/test & sample"]
     DataSplit --> ModelBuild["Model Building & Selection<br/>Build on sampled data"]
-    ModelBuild --> ModelRefit["Model Refit<br/>Refit on full training data"]
+    ModelBuild --> ModelRefit["Model Refit<br/>Refit selected models on full training data"]
     ModelRefit --> Leaderboard["Leaderboard Evaluation<br/>Evaluate & rank models"]
     Leaderboard --> MLFlowLog["MLFlow Logging<br/>Log metrics & models"]
     MLFlowLog --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
@@ -183,6 +180,17 @@ Status: Tech Preview
 - **Model Registry**: MLflow Model Registry
 - **Model Serving**: KServe with AutoGluon runtime (custom runtime to be delivered)
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
+
+### Future Enhancements
+
+* ONNX converters for AutoGluon - contribution to experimental component compile. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
+* Predictor (AutoGluon model) conversion to MCP tool
+* Distributed training with Kubeflow Katib for distributed computing (POC and benchmarking to be performed)
+* Large tabular data support (1GB+) with incremental learning approaches
+* Model interpretability and explainability features integration
+* Bias detection and mitigation (fairness support)
+* Enhanced time-series features (multi-variate)
+
 
 ## Alternatives
 
