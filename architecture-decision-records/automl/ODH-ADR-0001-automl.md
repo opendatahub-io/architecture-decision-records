@@ -57,7 +57,7 @@ AutoML automates this process, enabling users to:
 
 * Support for non-tabular data (images, text, audio)
 * Traditional hyperparameter optimization (AutoGluon uses ensembling approach)
-
+* Unsupervised learning support (e.g. clustering)
 
 ## How
 
@@ -183,6 +183,7 @@ Status: Tech Preview
 
 ### Future Enhancements
 
+* Notebooks generation as output artifacts for training and interaction with Predictor
 * ONNX converters for AutoGluon - contribution to experimental component compile. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
 * Predictor (AutoGluon model) conversion to MCP tool
 * Distributed training with Kubeflow Katib for distributed computing (POC and benchmarking to be performed)
