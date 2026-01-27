@@ -46,7 +46,6 @@ AutoRAG automates this process, enabling users to:
 * Multi-modal RAG support (images, audio, video in documents)
 * LLM fine-tuning or model training capabilities
 * Optimization resume/checkpointing for interrupted runs
-* Parallel optimization runs or distributed optimization
 
 
 ## How
@@ -97,15 +96,15 @@ flowchart LR
 **Workflow Steps:**
 
 1. **Data Ingestion**: Documents are loaded from configured data sources (S3 or local filesystem) and test data is loaded for evaluation
-2. **Document Processing**: Documents are sampled, text is extracted using `docling` library, and content is prepared for indexing
+2. **Document Processing**: Documents are sampled using a test data-driven approach (load documents referenced in ground truth records first, then add noise documents). Text is extracted using the `docling` library, and content is prepared for indexing
 3. **Search Space Definition**: Based on provided constraints (or defaults), the system defines the search space of possible RAG configurations
-4. **Model Validation**: Available models are validated and preselected based on performance criteria using in-memory vector database
-5. **Optimization Loop**: The system iteratively:
+4. **Model Validation**: Available models are validated and preselected based on performance criteria using an in-memory vector database
+5. **Optimization Loop**: (runs on the sample of data). The system iteratively:
    - Selects promising configurations using GAM-based prediction
    - Executes RAG Pattern with selected configuration
    - Evaluates performance using test data
    - Generates KFP artifacts
-   - Logs metrics, and configuration to MLFlow (if enabled)
+   - Logs metrics and configuration to MLFlow (if enabled)
    - Updates the leaderboard with results
 6. **Pattern Generation**: Top-performing configurations are packaged as RAG Patterns with executable notebooks
 7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
@@ -117,12 +116,18 @@ The pipeline accepts parameters organized into logical groups:
 
 **Required Parameters:**
 - Experiment metadata (name, description)
-- Input data sources (document data, test data)
-- Infrastructure configuration (vector database ID, results storage)
+- Input data sources (document data reference, test data reference)
+- Infrastructure configuration (vector database ID)
 
 **Optional Parameters:**
-- Optimization settings (max patterns, metric to optimize)
-- Search space constraints (chunking, embeddings, generation, retrieval)
+- Optimization settings:
+  - `max_patterns`: Maximum number of patterns to generate (default: explores full search space)
+  - `optimization_metric`: Metric to optimize (e.g., `answer_correctness`, `faithfulness`, `context_correctness`)
+- Search space constraints:
+  - Chunking parameters (chunk size, overlap)
+  - Embedding model selection
+  - Generation model selection
+  - Retrieval method selection (Simple, Simple with hybrid ranker)
 - MLFlow configuration for experiment tracking
 
 When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
@@ -133,16 +138,23 @@ For each pipeline run, AutoRAG generates:
 
 1. **RAG Pattern Artifacts** (multiple): Each optimized configuration packaged with:
    - Pattern metadata with configuration settings and evaluation metrics
-   - URI to tar archive with executable notebooks (index building, retrieval/generation)
+   - URI to folder with executable notebooks (index building, retrieval/generation) and evaluation.json file (containing ground truth and answers)
    - Performance metrics (answer_correctness, faithfulness, context_correctness)
+   
+   📝 **Note:** The index building notebook processes documents in batches.
 
-2. **AutoRAG Run Artifact** (single): Run-level artifact with status and execution details
+2. **AutoRAG Run Artifact** (single): Run-level artifact named `autorag_output` with status properties and URI to log file with execution details
 
-3. **AutoRAG Experiment Summary** (Markdown): Comprehensive report including data preparation details, search space, explored configurations, and leaderboard
+3. **AutoRAG Experiment Summary** (Markdown): Artifact named `autorag_run_summary` providing a comprehensive report including:
+   - Data preparation details
+   - Search space definition
+   - Explored configurations and leaderboard
+   - Links to remaining artifacts
 
 ### Supported Features
 
 Status: Tech Preview
+
 - **RAG Type**: Documents (documents provided as input)
 - **Languages**: English
 - **Document Types**: PDF, DOCX, PPTX, Markdown, HTML, Plain text
@@ -150,9 +162,20 @@ Status: Tech Preview
 - **Vector Databases**: Milvus, Milvus Lite
 - **LLM Provider**: Llama-stack
 - **Experiment Tracking**: MLFlow (optional) - For experiment tracking, metrics logging, and artifact management
-- **Chunking Method**: Recursive
-- **Retrieval Methods**: Simple, Simple with hybrid ranker
+- **Chunking Method**: Recursive chunking
+- **Retrieval Methods**: 
+  - Simple: Basic vector similarity search
+  - Simple with hybrid ranker: Vector similarity search combined with a reranking step to improve relevance
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
+
+### Future Enhancements
+
+* Multi-lingual support (prompt engineering)
+* Test data generation (SDG - either existing component or docling-sdg)
+* Parallel optimization runs or distributed optimization
+* Generating Kubeflow Pipeline as output artifact for index building (in the MVP, Jupyter notebook is produced only). Load testing/benchmarking of index building artifact will be performed, including investment in parallel data ingestion
+* RAG Pattern retrieval & generation application deployment as chat completion endpoint (Kagenti to be explored)
+
 
 ## Alternatives
 
@@ -194,11 +217,14 @@ Status: Tech Preview
 * **Vector Database Access**: Vector database credentials are managed through llama-stack, maintaining security boundaries
 * **Artifact Storage**: Results are stored in user-configured locations with appropriate access controls
 * **Model Access**: LLM model access is managed through llama-stack API, maintaining existing security policies
+* **Data Privacy**: Documents and test data are processed within the pipeline execution environment and not persisted beyond configured storage locations
 
 ## Risks
 
 * **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results (embedding and generation LLM)
-* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations. Response times and rate limits of llama stack API can be a bottleneck.
+* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations. Response times and rate limits of llama-stack API can be a bottleneck
+* **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
+* **Vector Database Dependency**: Optimization and pattern execution depend on vector database availability and performance
 * **RAG Pattern Registry**: As AutoRAG adoption grows, there may be a need for a more generic registry service (beyond the current Model Registry) to support RAG Pattern storage, versioning, and lifecycle management, which could impact long-term pattern discoverability and reuse
 
 
