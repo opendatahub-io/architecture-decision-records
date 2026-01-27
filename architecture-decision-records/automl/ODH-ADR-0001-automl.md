@@ -57,10 +57,10 @@ AutoML automates this process, enabling users to:
 
 * Support for non-tabular data (images, text, audio)
 * Traditional hyperparameter optimization (AutoGluon uses ensembling approach)
+
+### Non-MVP goals
 * Distributed training with Kubeflow Katib (to be explored post-MVP)
 * Large tabular data support (1GB +)
-
-
 
 ## How
 
