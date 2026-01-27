@@ -198,7 +198,7 @@ Status: Tech Preview
 ## Risks
 
 * **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results (embedding and generation LLM)
-* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations. Response times and rate limits of llama stack API can be a bottle neck.
+* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations. Response times and rate limits of llama stack API can be a bottleneck.
 * **RAG Pattern Registry**: As AutoRAG adoption grows, there may be a need for a more generic registry service (beyond the current Model Registry) to support RAG Pattern storage, versioning, and lifecycle management, which could impact long-term pattern discoverability and reuse
 
 
