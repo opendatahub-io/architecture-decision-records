@@ -85,14 +85,10 @@ flowchart LR
     ModelRefit --> Leaderboard["Leaderboard Evaluation<br/>Evaluate & rank models"]
     Leaderboard --> MLFlowLog["MLFlow Logging<br/>Log metrics & models"]
     MLFlowLog --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
-    ResultsStorage --> CheckRegistry{"Auto Register<br/>enabled?"}
-    CheckRegistry -->|Yes| Registry["Model Registry<br/>Register best model"]
-    CheckRegistry -->|No| CheckDeploy{"Auto Deploy<br/>enabled?"}
-    Registry --> CheckDeploy
-    CheckDeploy -->|Yes| Deploy["KServe Deployment<br/>Deploy model"]
-    CheckDeploy -->|No| MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
-    Deploy --> MLFlowFinal
+    ResultsStorage --> MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
     MLFlowFinal --> End([Pipeline Complete])
+    
+   
     
     style Start fill:#2d8659,color:#fff,stroke-width:3px
     style End fill:#2d8659,color:#fff,stroke-width:3px
@@ -101,7 +97,7 @@ flowchart LR
     style Leaderboard fill:#1e40af,color:#fff,stroke-width:3px
     style ResultsStorage fill:#059669,color:#fff,stroke-width:3px
     style Registry fill:#7c3aed,color:#fff,stroke-width:3px
-    style Deploy fill:#7c3aed,color:#fff,stroke-width:3px
+    style KServe fill:#7c3aed,color:#fff,stroke-width:3px
     style MLFlowLog fill:#9333ea,color:#fff,stroke-width:2px
     style MLFlowFinal fill:#9333ea,color:#fff,stroke-width:2px
 ```
@@ -157,7 +153,7 @@ For each pipeline run, AutoML generates:
    - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
    - **Metrics**: Scalar metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression; MAPE, sMAPE, MASE for time-series)
 
-4. **AutoML Experiment Summary** (Markdown): Artifact named `automl_run_summary` providing a comprehensive report including:
+4. **AutoML Experiment Summary**: Artifact named `automl_run_summary` providing a comprehensive report including:
    - Data preparation details
    - Model building and selection process
    - Leaderboard of models ranked by performance
