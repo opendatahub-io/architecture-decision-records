@@ -97,27 +97,28 @@ flowchart LR
 1. **Data Ingestion**: Documents are loaded from configured data sources (S3 or local filesystem) and test data is loaded for evaluation
 2. **Document Processing**: Documents are **sampled** using a test data-driven approach (load documents referenced in ground truth records first, then add noise documents). Text is extracted using the `docling` library, and content (markdown files) is prepared for indexing
 3. **Search Space Definition**: Based on provided constraints (or defaults), the system defines the search space of possible RAG configurations. Available models are validated and preselected based on performance criteria using an in-memory vector database
-4. **Optimization Loop**: (runs on the sample of data). The system iteratively:
+4. **RAG Templates Optimization**: (runs on the sample of data). The system iteratively:
    - Selects promising configurations using GAM-based prediction
    - Executes RAG Pattern with selected configuration
    - Evaluates performance using test data
-   - Generates KFP artifacts
+   - Generates RAG Pattern artifacts
    - Logs metrics and configuration to MLFlow (if enabled)
    - Updates the leaderboard with results
-5. **Pattern Generation**: Top-performing configurations are packaged as RAG Patterns with executable notebooks
-6. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
-7. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled)
+
+5. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location
+6. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled)
 
 ### Input Parameters
 
 The pipeline accepts parameters organized into logical groups:
 
 **Required Parameters:**
-- Experiment metadata (name, description)
+- Experiment metadata (`name`)
 - Input data sources (document data reference, test data reference)
 - Infrastructure configuration (vector database ID)
 
 **Optional Parameters:**
+- Experiment metadata (`description`)
 - Optimization settings:
   - `max_patterns`: Maximum number of patterns to generate (default: explores full search space)
   - `optimization_metric`: Metric to optimize (e.g., `answer_correctness`, `faithfulness`, `context_correctness`)
@@ -125,7 +126,8 @@ The pipeline accepts parameters organized into logical groups:
   - Chunking parameters (chunk size, overlap)
   - Embedding model selection
   - Generation model selection
-  - Retrieval method selection (Simple, Simple with hybrid ranker)
+  - Generation parameters settings
+  - Retrieval method selection (e.g.: Simple, Simple with hybrid ranker)
 - MLFlow configuration for experiment tracking
 
 When optional parameters are omitted, AutoRAG uses default values or explores the full available search space.
@@ -135,9 +137,8 @@ When optional parameters are omitted, AutoRAG uses default values or explores th
 For each pipeline run, AutoRAG generates:
 
 1. **RAG Pattern Artifacts** (multiple): Each optimized configuration packaged with:
-   - Pattern metadata with configuration settings and evaluation metrics
+   - Pattern metadata with configuration settings and performance metrics
    - URI to folder with executable notebooks (index building, retrieval/generation) and evaluation.json file (containing ground truth and answers)
-   - Performance metrics (answer_correctness, faithfulness, context_correctness)
    
    📝 **Note:** The index building notebook processes documents in batches.
 
@@ -169,6 +170,7 @@ Status: Tech Preview
 ### Future Enhancements
 
 * Multi-lingual support (prompt engineering)
+* LLM as a Judge metrics
 * Test data generation (SDG - either existing component or docling-sdg)
 * Parallel optimization runs or distributed optimization
 * Generating Kubeflow Pipeline as output artifact for index building (in the MVP, Jupyter notebook is produced only). Load testing/benchmarking of index building artifact will be performed, including investment in parallel data ingestion

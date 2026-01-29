@@ -104,15 +104,18 @@ flowchart LR
 
 **Workflow Steps:**
 
-1. **Data Loading**: Tabular data is loaded from configured data sources (S3 or local filesystem). Supports CSV, Parquet, and XLSX formats.
-2. **Data Sampling & Splitting**: Data is split into train/test sets using appropriate techniques (random, stratified for classification; time-series split for forecasting). A subset of training data (default: 500 samples) is sampled for initial model building to reduce computational cost.
+1. **Data Loading**: Tabular data is loaded from configured data sources (S3 or local filesystem). Supports CSV, Parquet, and XLSX formats and reading in batches of data.
+2. **Data Sampling & Splitting**:  A subset of training data (default: 500 samples) is sampled for initial model building to reduce computational cost.
+Data is split into train/test sets using appropriate techniques:
+   - random or stratified for classification
+   - time-series split for forecasting
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
-4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Explores Kubeflow Katib for distributed computing and experiment/trials logging.
+4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. 
 5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models.
 6. **MLFlow Logging**: Model metrics, configurations, and leaderboard rankings are logged to MLFlow (if enabled) for experiment tracking and comparison.
 7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location. This includes model artifacts, run artifacts, metrics, and experiment summary.
 8. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata.
-9. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry. Contribution to KServe with new runtime to be considered.
+9. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry.
 10. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled) before pipeline completion.
 
 ### Input Parameters
@@ -120,15 +123,15 @@ flowchart LR
 The pipelines accept parameters organized into logical groups:
 
 **Required Parameters:**
-- Experiment metadata (name)
-- Input data sources (input_data_reference)
-- Infrastructure configuration (results_reference)
+- Experiment metadata (`name`)
+- Input data source (`input_data_reference`)
 - Task-specific parameters:
   - Classification & Regression: `task_type`, `label_column`
   - Time-Series: `timestamp_column`, `target`
 
 **Optional Parameters:**
 - Experiment description
+- Infrastructure configuration (results_reference)
 - Test data reference (external test data for evaluation)
 - MLFlow configuration for experiment tracking
 - Data preparation (sampling_config, split_config)
@@ -180,7 +183,7 @@ Status: Tech Preview
 ### Future Enhancements
 
 * Notebooks generation as output artifacts for training and interaction with Predictor
-* ONNX converters for AutoGluon - contribution to experimental component compile. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
+* ONNX converters for AutoGluon - contribution to experimental component `compile`. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
 * Predictor (AutoGluon model) conversion to MCP tool
 * Distributed training with Kubeflow Katib for distributed computing (POC and benchmarking to be performed)
 * Large tabular data support (1GB+) with incremental learning approaches
