@@ -89,7 +89,7 @@ As part of RHAISTRAT-927 Milestone 2, five alternatives were evaluated via POCs:
 
 **Operational**: Loss of Service Mesh advanced features (A/B testing, canary deployments, rate limiting), kube-rbac-proxy configuration more complex than oauth-proxy CLI args.
 
-**Mitigations**: kube-auth-proxy built on proven oauth-proxy codebase, comprehensive migration documentation provided, operator manages kube-rbac-proxy configuration via ConfigMaps, clear platform standards established for future components.
+**Mitigations**: kube-auth-proxy built on proven oauth2-proxy codebase with OpenShift provider ported from oauth-proxy, comprehensive migration documentation provided, operator manages kube-rbac-proxy configuration via ConfigMaps, clear platform standards established for future components.
 
 ## Stakeholder Impacts
 
