@@ -2,7 +2,7 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2025-05-29 |
+| Date           | 2026-02-03 |
 | Scope          | RHOAI Platform Authentication & Authorization |
 | Status         | Approved |
 | Authors        | [Lindani Phiri](@lphiri), [James Tanner](@jtanner) |
