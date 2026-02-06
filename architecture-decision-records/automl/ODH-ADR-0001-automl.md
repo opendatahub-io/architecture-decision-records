@@ -61,45 +61,49 @@ AutoML automates this process, enabling users to:
 
 ## How
 
-AutoML is implemented as Kubeflow Pipelines that orchestrate the following workflows:
+AutoML is implemented as Kubeflow Pipelines that orchestrate the following workflow:
 
 ### Architecture Components
 
 1. **Kubeflow Pipelines**: Orchestrates the model training workflow as a pipeline of containerized components
-2. **AutoGluon Library**: Core ML optimization engine (open-source) that automatically builds, evaluates, and selects optimal models
-3. **MLFlow**: Provides experiment tracking, metrics logging, and artifact management for training runs
-4. **RHOAI Model Registry**: Manages model versioning and metadata
-5. **KServe**: Provides model serving capabilities with custom AutoGluon runtime
-6. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
+2. **KFP Reusable components**: for the end to end pipeline: https://github.com/kubeflow/pipelines-components
+3. **AutoGluon Library**: Core ML optimization engine (open-source) that automatically builds, evaluates, and selects optimal models
+4. **MLFlow**: Provides experiment tracking, metrics logging, and artifact management for training runs
+5. **RHOAI Model Registry**: Manages model versioning and metadata
+6. **KServe**: Provides model serving capabilities with custom AutoGluon runtime
+7. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
 
 ### Pipeline Workflow
 
 The following flowchart illustrates the AutoML optimization workflow:
 
 ```mermaid
-flowchart LR
-    Start([Pipeline Start]) --> DataLoad["Data Loading<br/>Load tabular data"]
-    DataLoad --> DataSplit["Data Splitting & Sampling<br/>Split train/test & sample"]
-    DataSplit --> ModelBuild["Model Building & Selection<br/>Build on sampled data"]
-    ModelBuild --> ModelRefit["Model Refit<br/>Refit selected models on full training data"]
-    ModelRefit --> Leaderboard["Leaderboard Evaluation<br/>Evaluate & rank models"]
-    Leaderboard --> MLFlowLog["MLFlow Logging<br/>Log metrics & models"]
-    MLFlowLog --> ResultsStorage["Results Storage<br/>Artifacts & logs"]
-    ResultsStorage --> MLFlowFinal["MLFlow Finalize<br/>Log experiment summary"]
-    MLFlowFinal --> End([Pipeline Complete])
-    
-   
-    
+flowchart TB
+    subgraph pipeline["AutoML training pipeline"]
+        direction LR
+        Start([Pipeline Start]) --> DataLoad["Data Loading<br/>Load tabular data from S3"]
+        DataLoad --> DataSplit["Data Splitting<br/>Train/test split"]
+        DataSplit --> ModelSelect["Model Selection<br/>Train models, select top N on sampled data"]
+        ModelSelect -->|"top N models"| RefitLoop
+        subgraph RefitLoop["for N models"]
+            direction LR
+            ModelRefit["Model Refit<br/>Refit on full dataset"]
+        end
+        RefitLoop --> Leaderboard["Leaderboard Evaluation<br/>Aggregate metrics, HTML leaderboard"]
+        Leaderboard -->|"if auto_register=True"| ModelRegistry["Model Registry<br/>Register best predictor"]
+        ModelRegistry -.->|if auto_deploy=True| ModelServing
+        Leaderboard -->|"if auto_deploy=True"| ModelServing["Model Serving<br/>Deploy with KServe"]
+        ModelRegistry --> End([Pipeline Complete])
+        ModelServing --> End([Pipeline Complete])
+    end
+
     style Start fill:#2d8659,color:#fff,stroke-width:3px
     style End fill:#2d8659,color:#fff,stroke-width:3px
-    style ModelBuild fill:#d97706,color:#fff,stroke-width:3px
+    style ModelSelect fill:#d97706,color:#fff,stroke-width:3px
     style ModelRefit fill:#d97706,color:#fff,stroke-width:3px
     style Leaderboard fill:#1e40af,color:#fff,stroke-width:3px
-    style ResultsStorage fill:#059669,color:#fff,stroke-width:3px
-    style Registry fill:#7c3aed,color:#fff,stroke-width:3px
-    style KServe fill:#7c3aed,color:#fff,stroke-width:3px
-    style MLFlowLog fill:#9333ea,color:#fff,stroke-width:2px
-    style MLFlowFinal fill:#9333ea,color:#fff,stroke-width:2px
+    style ModelRegistry fill:#7c3aed,color:#fff,stroke-width:2px
+    style ModelServing fill:#7c3aed,color:#fff,stroke-width:2px
 ```
 
 **Workflow Steps:**
@@ -183,9 +187,10 @@ Status: Tech Preview
 ### Future Enhancements
 
 * Notebooks generation as output artifacts for training and interaction with Predictor
+* Distributed training (full refit) of models with Kubeflow Katib (handled by a separate RFE: https://issues.redhat.com/browse/RHAIRFE-997)
 * ONNX converters for AutoGluon - contribution to experimental component `compile`. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
 * Predictor (AutoGluon model) conversion to MCP tool
-* Distributed training with Kubeflow Katib for distributed computing (POC and benchmarking to be performed)
+
 * Large tabular data support (1GB+) with incremental learning approaches
 * Model interpretability and explainability features integration
 * Bias detection and mitigation (fairness support)
@@ -243,20 +248,7 @@ Status: Tech Preview
 
 * **Performance**: Model training can take significant time depending on dataset size, model complexity, and time limits. Benchmarking required to mitigate the risk.
 * **Resource Consumption**: Large datasets and complex models may require substantial compute resources or incremental learning approach (to be explored post TP)
-* **KServe Dependency**: Model deployment depends on KServe availability and custom AutoGluon runtime support
-* **Model Registry Dependency**: Model registration depends on Model Registry availability
-* **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
 
-
-## Stakeholder Impacts
-
-| Group              | Key Contacts     | Date       | Impacted? |
-| ------------------ | ---------------- | ---------- | --------- |
-| Data Science Pipelines Team | TBD | TBD | YES |
-| Model Serving Team | TBD | TBD | YES |
-| Dashboard Team     | TBD | TBD | YES |
-| Platform Team      | TBD | TBD | YES |
-| Model Registry Team | TBD | TBD | YES |
 
 ## References
 
