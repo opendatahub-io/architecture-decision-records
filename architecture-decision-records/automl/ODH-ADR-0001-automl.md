@@ -114,13 +114,26 @@ Data is split into train/test sets using appropriate techniques:
    - random or stratified for classification
    - time-series split for forecasting
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
-4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. 
-5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models.
-6. **MLFlow Logging**: Model metrics, configurations, and leaderboard rankings are logged to MLFlow (if enabled) for experiment tracking and comparison.
-7. **Results Storage**: All artifacts, metrics, and logs are stored in the configured results location. This includes model artifacts, run artifacts, metrics, and experiment summary.
-8. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata.
-9. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry.
-10. **MLFlow Finalization**: Experiment summary, final metrics, and artifact references are logged to MLFlow (if enabled) before pipeline completion.
+4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Models are persisted as Model Artifacts.
+5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models. Leaderboard, metrics, confusion matrix and feature importance is persisted as Artifact.
+6. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata.
+7. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry.
+
+**MLFlow Logging**: Done automaticaly via KFP native integration with MLFlow.
+
+### KFP components
+The KFP components planned to be delivered for the KFP pipeline implmentation.
+
+   - Data Loading
+   - Data Sampling and Splitting
+   - Model Selection
+   - Model Refitting
+   - Leaderboard Evaluation
+   - Notebook Generation
+   - Model Registry
+   - Model Serving
+
+
 
 ### Input Parameters
 
