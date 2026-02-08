@@ -78,7 +78,7 @@ The evaluation flow follows these steps:
 10. Any GET /api/v1/evaluations/jobs/{id} call coming from the user will reflect the current records status in DB. There is no kube api invocation in this flow. This is how the users or UIs can monitor the job progress via a polling mechanism. Different monitoring mechanisms can be considered later on:
     - Web-sockets or SSE.
     - Web-hooks - this can be handy for a UI to submit an eval job and also register a web hook that eval-hub service would call to keep the UI BFF up to date, hence avoiding the chatty polling approach.
-11. Eval-hub service creates the MLFlow experiment and runs. The top level MLFlow experiment needs to be created at the eval-hub service level because an evaluation can run multiple benchmarks using multiple providers. Exepriment runs however are managed by the AdapterFramework SDK because each experiment ran is 1-1 mapped with a benchmark job.
+11. Eval-hub service creates the MLFlow experiment and top level Trace.  Exepriment runs and trace Spans however are managed at each benchmark runtime job level.
 
 12. Eval-Hub service emits OTEL traces and metrics to the Observability system if available. The exact traces and metrics still need to be determined. <a href="#metrics-and-traces-documentation">This document discussed these details</a>  
 
@@ -181,11 +181,7 @@ In this case eval-hub creates a kube job (along with the sidecar etc) but the ev
 
 #### Experiment tracking in MLFlow
 
-This is the current integration that is happening. The eval-hub service needs to create the initial Experiment in MLFlow but to track each run within that experiment we have two options:
-- **Centralized** - Track the run from within eval-hub service itself
-- **Decentralized** - Each job tracks its own run from the eval job POD. The FrameworkAdapter SDK needs to perform the tracking.
-
-The decentralized option has the advantage of offloading work from the service itself and let each job track itself in MLFlow, including potential integration with MLflow SDK additional capabilities.
+The eval-hub service needs to create the initial Experiment in MLFlow from the Eval-Hub service. The reason is that an evaluation job can run multiple benchmarks from different providers and each run happens in a separate POD. Howver experiment runs are created from the runtime PODs and managed by the AdapterFramework SDK.
 
 #### Tracing in MLFlow
 
