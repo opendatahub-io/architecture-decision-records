@@ -206,8 +206,7 @@ There are a few exceptions that are mostly deprecated and have a desire to be re
         * **Future Goal:** Likely required to stay on the Service Account, but infrastructure may be able to change so its less Admin vs User and "what you have access to"
     * The Dashboard Service Account manages getting the needed information to validate and operate on these functionalities
 * [Admin access](#admins) (aka "Settings" navigation)
-    * All UI admin functionality is done by the Service Account despite the user maybe having valid permissions to do so
-    * **Future Goal:** Empower those picked as Admins to have direct permissions & shift to a SSAR model for Admin views
+    * Admin functionality now uses SelfSubjectAccessReview (SSAR) checks to determine user permissions. The backend uses SSAR for `isUserAdmin` and `isUserAllowed` checks, and the frontend uses `useAccessReview` hooks. Some admin operations still fall back to the Service Account where direct user RBAC is not yet fully available.
 
 ### Fundamental User Types
 
@@ -269,7 +268,10 @@ Current supported OpenShift AI components are:
 - Model Serving
 - Platform
 - Distributed Workloads
-- Model Registry (soon)
+- Model Registry
+- Model Catalog
+- Connections
+- Fine-Tuning / InstructLab
 
 Concepts not provided by OpenShift AI that are supported are:
 
@@ -285,8 +287,8 @@ More details:
 
 * Initially there was an intent to have Projects created by the Dashboard to have specific flows to provide to users; this since has become a point of confusion and frustration trying to extend existing Projects
 * Projects created in the Dashboard have a `opendatahub.io/dashboard` label to indicate they are Dashboard Data Science Projects
-* Some namespaces are ignored despite permissions, these are namespaces that are not intended for data science flows (infrastructure namespaces, configuration namespaces, etc)
-* Most resources within projects have the `opendatahub.io/dashboard` label to help indicate their intent for Data Science flows
+* Some namespaces are ignored despite permissions, these are namespaces that are not intended for data science flows. Specifically, namespaces matching `openshift-*`, `kube-*`, `default`, `system`, `openshift`, and the Dashboard's own deployment namespace are filtered out using name-pattern filtering (not label-based filtering).
+* Most resources within projects have the `opendatahub.io/dashboard` label to help indicate their intent for Data Science flows. The label is still used for resource identification (e.g., model serving projects) but is no longer required for project listing.
     * Note: There is a goal to reduce this to pure K8s resources and all AI custom resources (Notebook, ServingRuntimes, InferenceServices, etc) should not need the label 
 
 > Note: You can read more about `opendatahub.io/dashboard` in [Dashboard K8s Labels & Annotations](./k8sLabelsAndAnnotations.md#opendatahubiodashboard)
@@ -325,20 +327,20 @@ These resources provide access to link to external documentation about how-tos a
 
 These resources provide access to have embedded quick starts, where the users can access the quick start and follow a guided experience.
 
-### AcceleratorProfiles
+### AcceleratorProfiles (deprecated)
 
 **acceleratorprofiles.dashboard.opendatahub.io/v1**
 
-> **Note:** This resource is fully configurable with in-app Admin flows
+> **Note:** AcceleratorProfiles are deprecated and have been replaced by [HardwareProfiles](#hardwareprofiles). The `disableAcceleratorProfiles` feature flag is deprecated and immutable. AcceleratorProfiles remain only for backward compatibility and will be removed in a future version.
 
-These resources help provide information of your accelerators on your cluster and gives the admin the ability to configure or disable them as they see fit. In turn, the user can get access to "profiles" of how
+These resources help provide information of your accelerators on your cluster and gives the admin the ability to configure or disable them as they see fit. In turn, the user can get access to profiles describing the accelerator resources (e.g., GPU type and count) available for selection when launching workloads such as Workbenches and Model Serving.
 
 ### HardwareProfiles
 
-**hardwareprofiles.dashboard.opendatahub.io/v1alpha1**
+**hardwareprofiles.infrastructure.opendatahub.io/v1**
 
-> **Note:** This resource is fully configurable with in-app Admin flows
+> **Note:** This resource is fully configurable with in-app Admin flows. HardwareProfiles are GA and cannot be disabled.
 
-The HardwareProfiles CRD provides a declarative way for administrators to define compute profiles that control the CPU, memory, and other resource constraints available for workloads in OpenShift AI. These profiles are surfaced to end users to select when launching workloads such as Workbenches.
+The HardwareProfiles CRD provides a declarative way for administrators to define compute profiles that control the CPU, memory, and other resource constraints available for workloads in OpenShift AI. These profiles are surfaced to end users to select when launching workloads such as Workbenches. HardwareProfiles replace both the deprecated AcceleratorProfiles CRD and the deprecated `notebookSizes`/`modelServerSizes` fields on OdhDashboardConfig.
 
 Admins can configure profiles directly within the Dashboard, enabling or disabling profiles, as well as setting minimums, maximums, and default values for CPU, memory, and other resources (e.g., GPUs).

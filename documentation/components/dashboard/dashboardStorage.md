@@ -1,5 +1,6 @@
 [Workbench component documentation]: ../workbenches
-[AcceleratorProfiles]: ./README.md#acceleratorprofiles
+[AcceleratorProfiles]: ./README.md#acceleratorprofiles-deprecated
+[HardwareProfiles]: ./README.md#hardwareprofiles
 
 # Dashboard Storage Mechanisms
 
@@ -37,12 +38,15 @@ Features that impact all users or the Dashboard itself. These are only available
 * Cluster Settings' Notebook Culler
     * This is configured by the Notebook Controller feature
     * Stored today as `notebook-controller-culler-config` ConfigMap in the deployment namespace (see [Workbench component documentation] for more information)
-* Accelerator profiles
-    * These are stored as [AcceleratorProfiles]
+* Accelerator profiles (deprecated)
+    * These are stored as [AcceleratorProfiles] -- deprecated, replaced by HardwareProfiles
+* Hardware profiles
+    * These are stored as [HardwareProfiles] CRDs (`hardwareprofiles.infrastructure.opendatahub.io/v1`). HardwareProfiles replace both AcceleratorProfiles and the deprecated `notebookSizes`/`modelServerSizes` fields on OdhDashboardConfig.
 * Notebook images
     * These are stored as ImageStreams in the deployment namespace
 * Serving Runtimes
-    * These are stored as OpenShift Templates in the deployment namespace
+    * Admin-managed (global) serving runtimes are stored as OpenShift Templates wrapping ServingRuntime CRs in the deployment namespace
+    * Project-scoped serving runtimes are stored as direct ServingRuntime CRs in the user's project namespace
       > Note: OpenShift Templates was an idea of future feature expansion and are not executed as OpenShift Templates today.
 * Connection Types
     * These are stored as ConfigMaps in the deployment namespace
@@ -61,13 +65,13 @@ Connections is a concept created by the Dashboard to store information and enabl
 kind: Secret
 apiVersion: v1
 metadata:
-  name: aws-connection-<user-inputted-value>
+  name: <user-inputted-value>
   namespace: <users-namespace>
   labels:
     opendatahub.io/dashboard: 'true'
     opendatahub.io/managed: 'true'
   annotations:
-    opendatahub.io/connection-type: s3
+    opendatahub.io/connection-type-ref: s3
     openshift.io/display-name: <users-driven-display-name>
 data:
   AWS_ACCESS_KEY_ID: <value>
@@ -77,6 +81,10 @@ data:
   AWS_SECRET_ACCESS_KEY: <value>
 type: Opaque
 ```
+
+> Note: The `opendatahub.io/connection-type-ref` annotation (introduced in 2.16) is the primary annotation for identifying the connection type schema. The legacy `opendatahub.io/connection-type` annotation is still recognized as a fallback. Additionally, connections may include the `opendatahub.io/connection-type-protocol` annotation (3.0+) for protocol-based validation and routing.
+
+> Note: The `aws-connection-` name prefix shown in older examples is a legacy naming convention from the original S3-only Data Connections. New connections created through the Connection Type system do not use this prefix.
 
 See more information on the labels & annotations in the [Connection section of the K8s Labels & Annotations](./k8sLabelsAndAnnotations.md#connections)
 

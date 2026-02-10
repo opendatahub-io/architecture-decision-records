@@ -6,9 +6,9 @@ It is worth noting, some of this information will talk about other backend featu
 
 ## Features
 
-1. [Data Connections - Connection Types - Connections](./connections.md)
-
-Additional specific feature details coming soon...
+1. [Connections (formerly Data Connections) - Connection Types](./connections.md)
+2. [Model Catalog](./modelCatalog.md)
+3. [Model Registry](./modelRegistry.md)
 
 <!-- TODO: Model Serving Tokens -->
 <!-- TODO: Jupyter Tile & Notebook Namespace (ex. rhods-notebooks) -->

@@ -72,7 +72,7 @@ Our configuration would look something like this:
 const configurations = {
   [SupportedArea.DS_PIPELINES]: {
     featureFlags: ['disablePipelines'],
-    requiredComponents: [StackComponent.DS_PIPELINES],
+    requiredComponents: [DataScienceStackComponent.DS_PIPELINES],
   },
   // ...
 }
@@ -93,14 +93,17 @@ See the comprehensive list below for Dashboard-specific aspects.
 
 > Note: For this list, each item will be flagged with **(UI)** or **(API)**. UI features have a UI flow and can be configured through API as needed (aka outside of the UI). API features are not able to be configured inside the UI and can only be configured outside of the UI.
 
-* Workbench Container Sizes **(API)**
+* Workbench Container Sizes **(API)** -- **DEPRECATED: Use HardwareProfiles instead.**
   > Visible during creation of a Workbench & Jupyter tile's Notebooks
     * Configured through the [OdhDashboardConfig] `.spec.notebookSizes` an array of resource objects (memory & cpu limits/requests)
     * We have a fallback default if not provided
-* Model Serving Container Sizes **(API)**
+    * This field is deprecated and will be removed in a future version. HardwareProfiles (`hardwareprofiles.infrastructure.opendatahub.io/v1`) are the replacement mechanism.
+* Model Serving Container Sizes **(API)** -- **DEPRECATED: Use HardwareProfiles instead.**
   > Visible during the creation of a Model Server (or KServe model)
-    * Configured through the [OdhDashboardConfig] `.spec.modelServingSizes` an array of resource objects (memory & cpu limits/requests)
+    * Configured through the [OdhDashboardConfig] `.spec.modelServerSizes` an array of resource objects (memory & cpu limits/requests)
     * We have a fallback default if not provided
+    * This field is deprecated and will be removed in a future version. HardwareProfiles are the replacement mechanism.
 * Jupyter Tile configurations **(UI)**
     * PVC Size through the [OdhDashboardConfig] `spec.notebookController.pvcSize`
-* Telemetry
+* Telemetry **(API)**
+    * Controlled by the `disableTracking` feature flag in the [OdhDashboardConfig]
