@@ -199,7 +199,7 @@ Status: Tech Preview
 
 ### Future Enhancements
 
-* Notebooks generation as output artifacts for training and interaction with Predictor
+* Contribution to KServe (or any target alternative) to have native AutoGluon Models support
 * Distributed training (full refit) of models with Kubeflow Katib (handled by a separate RFE: https://issues.redhat.com/browse/RHAIRFE-997)
 * ONNX converters for AutoGluon - contribution to experimental component `compile`. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
 * Predictor (AutoGluon model) conversion to MCP tool
@@ -271,6 +271,9 @@ Status: Tech Preview
 
 ## Reviews
 
-| Reviewed by | Date | Approval | Notes |
-| ----------- | ---- | -------- | ----- |
-| TBD         | TBD  | TBD      | TBD   |
+| Reviewed by  | Date     | Approval | Notes |
+|--------------|----------| -------- |-------|
+| Ana Biazetti | Jan, 27  | TBD      | N/A   |
+| Yuan Tang | Feb, 5th | TBD      | N/A   |
+
+

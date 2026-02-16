@@ -219,24 +219,6 @@ Status: Tech Preview
 * **Model Access**: LLM model access is managed through llama-stack API, maintaining existing security policies
 * **Data Privacy**: Documents and test data are processed within the pipeline execution environment and not persisted beyond configured storage locations
 
-## Risks
-
-* **Model Availability**: Optimization depends on model availability through llama-stack, which may impact results (embedding and generation LLM)
-* **Performance**: Optimization runs can take significant time depending on search space size and number of iterations. Response times and rate limits of llama-stack API can be a bottleneck
-* **MLFlow Dependency**: When MLFlow integration is enabled, experiment tracking depends on MLFlow server availability
-* **Vector Database Dependency**: Optimization and pattern execution depend on vector database availability and performance
-* **RAG Pattern Registry**: As AutoRAG adoption grows, there may be a need for a more generic registry service (beyond the current Model Registry) to support RAG Pattern storage, versioning, and lifecycle management, which could impact long-term pattern discoverability and reuse
-
-
-## Stakeholder Impacts
-
-| Group              | Key Contacts     | Date       | Impacted? |
-| ------------------ | ---------------- | ---------- | --------- |
-| Data Science Pipelines Team | TBD | TBD | YES |
-| LLM/Model Serving Team | TBD | TBD | YES |
-| Dashboard Team     | TBD | TBD | YES |
-| Platform Team      | TBD | TBD | YES |
-
 ## References
 
 * [ai4rag GitHub Repository](https://github.com/IBM/ai4rag)
@@ -245,6 +227,6 @@ Status: Tech Preview
 
 ## Reviews
 
-| Reviewed by | Date | Approval | Notes |
-| ----------- | ---- | -------- | ----- |
-| TBD         | TBD  | TBD      | TBD   |
+| Reviewed by | Date | Approval  | Notes |
+| ----------- | ---- |-----------|-------|
+| Francisco Javier Arceo | TBD  | Jan, 29th | N/A   |
