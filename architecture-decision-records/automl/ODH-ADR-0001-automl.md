@@ -273,9 +273,9 @@ Status: Tech Preview
 
 ## Reviews
 
-| Reviewed by  | Date     | Approval | Notes |
-|--------------|----------| -------- |-------|
-| Ana Biazetti | Jan, 27  | TBD      | N/A   |
-| Yuan Tang | Feb, 5th | TBD      | N/A   |
+| Reviewed by  | Date      | Approval | Notes |
+|--------------|-----------|----------|-------|
+| Ana Biazetti | Jan, 27   | TBD      | N/A   |
+| Yuan Tang | Feb, 17th | YES      | N/A   |
 
 

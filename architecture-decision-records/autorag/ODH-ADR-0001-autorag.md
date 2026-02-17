@@ -227,6 +227,6 @@ Status: Tech Preview
 
 ## Reviews
 
-| Reviewed by | Date | Approval  | Notes |
-| ----------- | ---- |-----------|-------|
-| Francisco Javier Arceo | TBD  | Jan, 29th | N/A   |
+| Reviewed by | Date | Approval | Notes |
+| ----------- | ---- |----------|-------|
+| Francisco Javier Arceo |  Jan, 29th | YES | N/A   |
