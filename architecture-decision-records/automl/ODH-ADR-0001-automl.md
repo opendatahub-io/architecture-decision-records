@@ -194,16 +194,18 @@ Status: Tech Preview
 - **Ensembling**: Stacking and bagging approaches
 - **Experiment Tracking**: MLflow - For experiment tracking, metrics logging, and artifact management
 - **Model Registry**: MLflow Model Registry
-- **Model Serving**: KServe with AutoGluon runtime (custom runtime to be delivered)
+- **Model Serving**: KServe with custom runtime image or out-of-the-box support for AutoGluon
+  (contribution with yet another runtime / extension of existing one if we got a buy-in from community).
+  - Note: 
+       - (DP) - the script to build the image (custom serving runtime) + documented steps to bring it to RHOAI
+       - (GA) - to be discussed based on the TP feedback, requirements and recommendations.
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
 
 ### Future Enhancements
 
-* Contribution to KServe (or any target alternative) to have native AutoGluon Models support
 * Distributed training (full refit) of models with Kubeflow Katib (handled by a separate RFE: https://issues.redhat.com/browse/RHAIRFE-997)
 * ONNX converters for AutoGluon - contribution to experimental component `compile`. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
 * Predictor (AutoGluon model) conversion to MCP tool
-
 * Large tabular data support (1GB+) with incremental learning approaches
 * Model interpretability and explainability features integration
 * Bias detection and mitigation (fairness support)
