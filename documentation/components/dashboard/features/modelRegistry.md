@@ -1,6 +1,6 @@
 # Model Registry
 
-> Introduced in 2.16 as Tech Preview. Fully implemented with feature flag (`disableModelRegistry`) under tech preview flags.
+> Introduced in 2.16 as Tech Preview and GA'ed in 2.25. Fully implemented with feature flag (`disableModelRegistry`) under tech preview feature flags.
 
 - [Introduction](#introduction)
   - [A Model Registry is a Metadata Service Only](#a-model-registry-is-a-metadata-service-only)
