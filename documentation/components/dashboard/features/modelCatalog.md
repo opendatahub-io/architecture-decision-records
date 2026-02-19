@@ -35,7 +35,7 @@ The initial version of Model Catalog introduced in 2.19 and enhanced in 2.20 was
 
 A BFF-based Model Catalog API (`/api/model_catalog/v1alpha1`) now exists alongside the ConfigMap approach. The frontend continues to use the ConfigMaps (`model-catalog-sources` and `model-catalog-unmanaged-sources`) while the BFF layer provides a structured API for upstream integration. The long-term goal is for the API to fully replace the ConfigMap approach, allowing the dashboard to fetch and search/filter remote repositories of model metadata.
 
-For more details on the ConfigMap implementation and how the model metadata is updated, see [this README in the model registry repo](https://github.com/opendatahub-io/model-registry/tree/main/model-catalog).
+For more details on the ConfigMap implementation and how the model metadata is updated, see [this README in the model registry repo](https://github.com/kubeflow/model-registry/tree/main/catalog).
 
 ## Terms
 
