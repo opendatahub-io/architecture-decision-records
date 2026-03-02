@@ -30,7 +30,7 @@ MLFlow is the RHAI strategy for several key aspects, such as experiment tracking
 - Define how Eval-Hub APIs work in multi tenancy mode
 - Define how Eval-Hub service interacts with MLFlow in multi tenancy mode
 - Define the prerequisites for admins allowing e2e access using k8s MLFlow Roles and ServiceAccounts.
-- Define the metadata isolation per tenant in Eval-Hube storage (PostgreSQL)
+- Define the metadata isolation per tenant in Eval-Hub storage (PostgreSQL)
 - Support only Kubernetes service account tokens.
 
 ## Non-Goals
@@ -388,9 +388,9 @@ In this case there is no tenant column instead we create separate tables per eac
 
 #### Option 3 - Discriminate by a separate database
 
-Going further this option does not discriminate tenants by a column or by table names. Instead it uses a completely different database name in the same PosgreSQL server. Now the database name would be formed by `{db-name}-{tenant}`
+Going further this option does not discriminate tenants by a column or by table names. Instead it uses a completely different database name in the same PostgreSQL server. Now the database name would be formed by `{db-name}-{tenant}`
 
-Of course if some adopters choose not to use PostgresSQL but provide a custom storage, the abstractions for the Storage API will contain the tenant information. This means that the storage implementation is free to choose how tenancy information is stored.
+Of course if some adopters choose not to use PostgreSQL but provide a custom storage, the abstractions for the Storage API will contain the tenant information. This means that the storage implementation is free to choose how tenancy information is stored.
 
 ### Recommendation
 
@@ -457,10 +457,10 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: eval-hub-service
-  Namespace: control-plane
+  namespace: control-plane
 - kind: ServiceAccount
   name: eval-hub-job
-  Namespace: team-a
+  namespace: team-a
 ```
 
 This means that EvalHub needs to document the above service accounts:
