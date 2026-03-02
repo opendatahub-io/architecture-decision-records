@@ -120,41 +120,42 @@ Therefore to address the above limitation we've explored several options:
 Extending the RBAC Proxy would imply a config.yaml file perhaps similar this this:
 
 ```yaml
+# Test config: evaluations jobs endpoint (POST and other methods)
 authorization:
-  pathResourceMapping:
-  - path: /api/v1/evaluations/jobs
-    method: post
-    resources:
-    - rewrites:
-        byHttpHeader:
-          name: X-Tenant
-        resourceAttributes:
-          namespace: {{.Value}}
-          apiGroup: trustyai.opendatahub.io
-          resource: evaluations
-          verb: create
-    - rewrites:
-        byHttpHeader:
-          name: X-Tenant
-        resourceAttributes:
-          namespace: {{.Value}}
-          apiGroup: mlflow.kubeflow.org
-          resource: experiments
-          verb: create
-  - path: /api/v1/evaluations/collections
-    method: post
-    resources:
-    - rewrites:
-        byHttpHeader:
-          name: X-Tenant
-        resourceAttributes:
-          namespace: {{.Value}}
-          apiGroup: trustyai.opendatahub.io
-          resource: collections
-          verb: create
+  endpoints:
+    - path: /api/v1/evaluations/jobs
+      mappings:
+        - methods: [post]
+          resources:
+            - rewrites:
+                byHttpHeader:
+                  name: X-Tenant
+              resourceAttributes:
+                namespace: "{{.FromHeader}}"
+                apiGroup: trustyai.opendatahub.io
+                resource: evaluations
+                verb: create
+            - rewrites:
+                byHttpHeader:
+                  name: X-Tenant
+              resourceAttributes:
+                namespace: "{{.FromHeader}}"
+                apiGroup: mlflow.kubeflow.org
+                resource: experiments
+                verb: create
+
+        - resources:
+            - rewrites:
+                byHttpHeader:
+                  name: X-Tenant
+              resourceAttributes:
+                namespace: "{{.FromHeader}}"
+                apiGroup: trustyai.opendatahub.io
+                resource: evaluations
+                verb: "{{.FromMethod}}"
 ```
 
-Thus `pathResourceMapping` would be a new supported configuration. It can map individual paths to a set of kube resources that will be verified via SAR.
+Thus `endpoints` would be a new supported configuration. It can map individual paths to a set of kube resources that will be verified via SAR.
 
 2. Add support for sending the extracted user (from the JWT bearer token) and send it downstream as X-User header so that the downstream service will get the HTTP headers:
    - **X-User** - the service account name
