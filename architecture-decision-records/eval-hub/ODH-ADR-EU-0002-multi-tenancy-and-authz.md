@@ -66,7 +66,7 @@ In this case the JWT Token contains the namespace information for this ServiceAc
 
 **IMPORTANT** - this is the namespace of the identity, not the namespace of a particular resource (like an evaluation job). **SA from different namespaces can be granted access to resources from other namespaces via RoleBindings.**
 
-Thus it is not enough to assume that the tenant that EvalHub service manages is the namespace of the identity. It needs to be the namespace of the resource and this must be specified in the request.
+Thus it is not enough to assume that the tenant that EvalHub service manages is the namespace of the identity. It needs to be the namespace of the resource and this must be specified in the request. If the tenant header is missing, the downstream service (EvalHub) will assume the default namespace.
 
 ### RBAC Proxy limitations
 
