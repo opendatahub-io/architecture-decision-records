@@ -159,7 +159,7 @@ Thus `endpoints` would be a new supported configuration. It can map individual p
 
 2. Add support for sending the extracted user (from the JWT bearer token) and send it downstream as X-User header so that the downstream service will get the HTTP headers:
    - **X-User** - the service account name
-   - **X-Tenant-** the tenant that scopes this request.
+   - **X-Tenant** - the tenant that scopes this request.
 
 #### Flow example
 
