@@ -500,7 +500,11 @@ Now the eval-hub service is able to call the mlflow experiments APIs from both t
 
 All this assumes that the EvalHub Controller itself uses a SA that has the proper permissions for `team-a` namespace to create Roles, RoleBindings and ServiceAccounts.
 
-**Important** - *The EvalHub service should not use the incoming user bearer tokens to call other remote services like mlFlow. The reason is while this is usable from the eval-service perspective to create the initial MLFlow experiment, it is risky to use it from the eval jobs which run asynchronously thus using the user's token may lead to failures as the token could expire. Thus in order to maintain consistency for S2S communication we should not use the user's tokens but rather use the service accounts as described above.*
+> Alternatively, in order to simplify the above process, the EvalHub Controller can create the ClusterRoleBinding and ClusterRole to grant proper access to these service accounts. Thus it is not necessary to recreate RoleBindings and Role in each tenant namespace although this would be up to the admin.
+
+
+**Important**
+> The EvalHub service should not use the incoming user bearer tokens to call other remote services like mlFlow. The reason is while this is usable from the eval-service perspective to create the initial MLFlow experiment, it is risky to use it from the eval jobs which run asynchronously thus using the user's token may lead to failures as the token could expire. Thus in order to maintain consistency for S2S communication we should not use the user's tokens but rather use the service accounts as described above.
 
 ### OTEL interaction
 
