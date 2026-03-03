@@ -336,22 +336,22 @@ metadata:
 rules:
 - apiGroups:
   - trustyai.opendatahub.io
-    resources:
-    - evaluations
-    - collections
-    verbs:
-    - get
-    - list
-    - create
-    - update
-    - delete
+  resources:
+  - evaluations
+  - collections
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - delete
 - apiGroups:
   - mlflow.kubeflow.org
-    resources:
-    - experiments
-    verbs:
-    - create
-    - update
+  resources:
+  - experiments
+  verbs:
+  - create
+  - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
