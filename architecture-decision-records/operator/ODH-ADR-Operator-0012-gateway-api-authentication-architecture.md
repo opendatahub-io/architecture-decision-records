@@ -137,8 +137,7 @@ As part of RHAISTRAT-927 Milestone 2, five alternatives were evaluated via POCs:
 | Lindani Phiri                 |            |          | Working Group Leader |
 | James Tanner                  |            |          | BYOIDC Lead |
 | Luca Burgazzoli               |            |          | Platform |
-| Derek Carr                    |            |          | OpenShift |
-| Feng Pan                      |            |          | OpenShift |
+| Ben Bennet                    |            |          | OpenShift |
+| Shane Utt                     |            |          | OpenShift |
 | Jeff DeMoss                   |            |          | Product Management |
 | Owen Watkins                  |            |          | Product Security - RH-SDL validation |
-| Marc Curry                    |            |          | OCP Networking |
