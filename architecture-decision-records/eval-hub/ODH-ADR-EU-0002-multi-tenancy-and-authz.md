@@ -4,7 +4,7 @@
 |-------|-------|
 | Date | January, 2026 |
 | Scope | EvalHub (TrustyAI) |
-| Status | Draft |
+| Status | Approved |
 | Authors | mdanciu@redhat.com |
 | Supersedes | N/A |
 | Superseded by | N/A |
@@ -36,7 +36,7 @@ MLFlow is the RHAI strategy for several key aspects, such as experiment tracking
 ## Non-Goals
 
 - Support 3rd party OIDC providers
-  - While this is a non goal here supporting this should be implicit because it would not affect EvaHub service code as this is a matter of OIDC tokens validation at the proxy layer (which RBAC Proxy supports) and creating the Kube Role pointing the user or groups instead of service accounts. This will require separate testing, documentation etc..
+  - While this is a non goal here supporting this should be implicit because it would not affect EvaHub service code as this is a matter of OIDC tokens validation at the proxy layer (which Kube RBAC Proxy supports) and creating the Kube Role pointing the user or groups instead of service accounts. This will require separate testing, documentation etc..
 
 ## How
 
@@ -68,7 +68,7 @@ In this case the JWT Token contains the namespace information for this ServiceAc
 
 Thus it is not enough to assume that the tenant that EvalHub service manages is the namespace of the identity. It needs to be the namespace of the resource and this must be specified in the request. If the tenant header is missing, the downstream service (EvalHub) will assume the default namespace.
 
-### RBAC Proxy limitations
+### Kube RBAC Proxy limitations
 
 We want to allow the users to define access to different service capabilities:
 - Permissions to run evaluations vs read-only
@@ -113,11 +113,11 @@ Extraction of user information from the incoming bearer token and propagate this
 
 Therefore to address the above limitation we've explored several options:
 
-### Option 1 - Extend RBAC Proxy - Fork & contribute back
+### Option 1 - Extend Kube RBAC Proxy - Fork & contribute back
 
 1. Extend the current RBACProxy to allow path - resources mapping. In this way the RBACProxy config.yaml can define the exact mapping as per Table 1.
 
-Extending the RBAC Proxy would imply a config.yaml file perhaps similar this this:
+Extending the Kube RBAC Proxy would imply a config.yaml file perhaps similar this this:
 
 ```yaml
 # Test config: evaluations jobs endpoint (POST and other methods)
@@ -176,7 +176,7 @@ X-Tenant: team-a
 {...payload ...}
 ```
 
-2. When the RH-RBAC proxy receives the request, extract the SA identity, the claims and the tenant information from the X-Tenant header. It then performs the SAR request to Kube API server:
+2. When the Kube RBAC proxy receives the request, extract the SA identity, the claims and the tenant information from the X-Tenant header. It then performs the SAR request to Kube API server:
 
 Given the above ServiceAccount token example and the X-Tenant header the SAR requests payloads will look like:
 
@@ -229,7 +229,7 @@ spec:
 
 If all these SAR requests succeed, it is guaranteed that the current SA has the proper access to kube resources such as `evaluations` and `experiments` and the request can be sent to the downstream EvalHub service.
 
-3. If the SAR responses allow the access, the RH-RBAC proxy forwards the request to the actual EvalHub service. The request now looks like:
+3. If the SAR responses allow the access, the Kube RBAC proxy forwards the request to the actual EvalHub service. The request now looks like:
 
 ```
 POST /api/v1/evaluations/jobs HTTP/1.1
@@ -242,7 +242,7 @@ X-Tenant: team-a
 {...payload ...}
 ```
 
-As the downstream EvalHub service receives the above request from the RH-RBAC proxy it is guaranteed that the auth(z) steps were already been performed. Note that only the RH-RBAC proxy sidecar is exposed as a Kube Service at deployment time. Not the EvalHub server itself. So at this point the actual SA bearer token is not needed by the downstream service.
+As the downstream EvalHub service receives the above request from the Kube RBAC proxy it is guaranteed that the auth(z) steps were already been performed. Note that only the Kube RBAC proxy sidecar is exposed as a Kube Service at deployment time. Not the EvalHub server itself. So at this point the actual SA bearer token is not needed by the downstream service.
 
 Note that this option implies a new OCI image from the DevTestOps team and this may take 1-2 weeks.
 
@@ -295,19 +295,19 @@ spec:
 
 *But to check for /evaluations for multiple resources like evaluations and experiments, we probably need multiple AuthConfig CRs.*
 
-### Recommendation
+### Decision
 
 **Option 1** - is the preferred architectural approach as this can be re-used by multiple components (EvalHub, MLFlow etc). However this implies other dependencies such as:
 - DevTestOps image readiness
-- Fork RBAC proxy and extend
-- Contribute to RBAC proxy upstream
+- Fork Kube RBAC proxy and extend
+- Contribute to Kube RBAC proxy upstream
 
-All these things add up and make this option impractical for EA2.
+All these things add up and make this option impractical provided the timeframe limitations.
 
-### Tactical approach for EA2
+### Tactical approach given existent timelines
 
 Implement Option 2 but with major constraints and care:
-- Code is isolated and does not depend on any internal packages for EvalHub service. The reason is that post EA2 we want to port this code in RBAC proxy with minimal changes.
+- Code is isolated and does not depend on any internal packages for EvalHub service. The reason is that in the near future we want to port this code in Kube RBAC proxy with minimal changes.
 - This code can be disabled from EvalHub config.
 
 ### Kubernetes Roles and resource-path mapping for EvalHub APIs
@@ -392,7 +392,7 @@ Going further this option does not discriminate tenants by a column or by table 
 
 Of course if some adopters choose not to use PostgreSQL but provide a custom storage, the abstractions for the Storage API will contain the tenant information. This means that the storage implementation is free to choose how tenancy information is stored.
 
-### Recommendation
+### Decision
 
 However, provided that we are focusing on PostgreSQL, we propose OPTION 1 as being the simplest option and it has the potential of minimal maintenance cost by ops teams. Managing an increased number of tables of a large number of databases can be a devops problem. Scalability is another concern as for a relatively large number of tenants Option 2 and Option 3 would likely expose limitations. **Thus, for the foreseeable future we propose OPTION 1**. This is also the approach adopted by MLFlow - see Ref 2 document, "Schema migration" section.
 
