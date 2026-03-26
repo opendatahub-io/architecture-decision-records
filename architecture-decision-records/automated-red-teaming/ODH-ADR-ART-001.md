@@ -66,6 +66,11 @@ The key decisions that this ADR captures are:
 
 **Decision**: Implement an [Eval Hub Adapter](https://github.com/eval-hub/eval-hub-sdk) to trigger the pipeline and capture results.  If Eval Hub is configured with MLFlow, an experiment is created there and artifacts linked.  Eval Hub should be the main customer entry point to the whole flow, and the place to view results.
 
+### How to access the S3 bucket
+**Context**: The S3 bucket needs to be accessible for all the components (within the kubeflow pipeline), with read and write operations.  Content written earlier in the pipeline (such as by sdg_hub) needs to be read by later components (garak).
+
+**Decision**: S3 will be accessed using boto3 from within the pipeline, with credentials stored in k8s secrets.
+
 This is achieved with the following overall architecture:
 
 ![image](./images/art_flow.jpg)
