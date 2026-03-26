@@ -72,12 +72,70 @@ Components:
 
 ## High Level architecture
 
-<!-- TODO: This diagram needs updating:
-  - Replace "oauth-proxy container" with "kube-rbac-proxy"
-  - Replace "service + route" with "HTTPRoute" (Gateway API)
-  - Review namespace naming (currently shows "redhat-ods-applications" and "rhods-notebooks")
--->
-![Workbenches High level Architecture Diagram](./high-level-workbench-arch.drawio.png)
+```mermaid
+flowchart TB
+    %% ── Top: user interaction ──
+    Actor([Actor])
+    Actor --> DashUI["UI Dashboard view\nwith all OOTB workbenches"]
+
+    %% ── Control plane ──
+    subgraph ControlPlane["Applications namespace (redhat-ods-applications)"]
+        DashDeploy["Dashboard\ndeployment"]
+        NBCtrl["Notebook Controller\ndeployment"]
+        ODHCtrl["ODH Notebook Controller\ndeployment"]
+    end
+
+    DashUI --> DashDeploy
+    DashDeploy -->|"Submit Notebook CR\n+ PVC creation"| NotebookCR["Notebook CR"]
+    DashDeploy -->|"PVC creation"| NBPVC
+    DashDeploy -->|"PVC creation"| NBPVCbw
+    NBCtrl -->|Watch| NotebookCR
+    ODHCtrl -->|Watch| NotebookCR
+
+    %% ── Controllers create resources ──
+    NBCtrl -->|"create StatefulSet, SA,\nsvc, cert, network policy"| NBSS
+    ODHCtrl -->|"create HTTPRoute,\nkube-rbac-proxy,\nnetwork policy"| NBSS
+    NBCtrl -->|"create StatefulSet, SA,\nsvc, cert, network policy"| NBSSbw
+    ODHCtrl -->|"create HTTPRoute,\nkube-rbac-proxy,\nnetwork policy"| NBSSbw
+
+    %% ── User namespace with DS Pipelines ──
+    subgraph UserNS["User namespace (DS Project)"]
+        direction LR
+        subgraph NotebookStack1[" "]
+            NBSS["Notebook (StatefulSet)"]
+            NBPod["Notebook Pod\n(main + kube-rbac-proxy)"]
+            NBSvc["Service + HTTPRoute"]
+            NBPVC[("PVC")]
+            NBSS --> NBPod
+            NBSS --> NBSvc
+            NBPVC --> NBPod
+        end
+        subgraph PipelineStack[" "]
+            DSPASvc["DSPA Pipeline Service"]
+            PipelinePod1["pipeline pod"]
+            PipelinePod2["pipeline pod"]
+            DSPASvc --> PipelinePod1
+            DSPASvc --> PipelinePod2
+        end
+        NBPod -.->|"HTTPS via Elyra / CLI"| DSPASvc
+    end
+
+    %% ── Basic workbench namespace ──
+    subgraph BasicWorkbenchNS["Basic workbench (rhods-notebooks)"]
+        direction LR
+        NBSSbw["Notebook (StatefulSet)"]
+        NBPodbw["Notebook Pod\n(main + kube-rbac-proxy)"]
+        NBSvcbw["Service + HTTPRoute"]
+        NBPVCbw[("PVC")]
+        NBSSbw --> NBPodbw
+        NBSSbw --> NBSvcbw
+        NBPVCbw --> NBPodbw
+    end
+
+    %% ── Actor accesses workbenches ──
+    Actor -->|"Access workbench"| NBSvc
+    Actor -->|"Access workbench"| NBSvcbw
+```
 
 ## Workbenches
 
@@ -85,26 +143,68 @@ Components:
 
 Each workbench image is a standalone multi-stage Dockerfile whose parent is referenced via `FROM`. The structure of the build chain is derived from the parent image. To better comprehend this concept, refer to the following graph.
 
-<!-- TODO: This diagram needs updating:
-  - Remove the Habana-AI branch (no longer a maintained workbench flavor)
-  - Add ROCm branch (minimal-rocm -> pytorch-rocm, tensorflow-rocm)
-  - Add PyTorch LLMCompressor under the CUDA branch
-  - Update Code-Server position in the hierarchy
-  - Update Python version references to 3.12
--->
-![workbenches Architecture](./workbenches-imagestreams.drawio.png)
+```mermaid
+flowchart TD
+    Base["ubi9/python3.12"]
+
+    Base --> CodeServer["ubi9-code-server"]
+    Base --> Minimal["python-3.12-minimal"]
+    Base --> CUDABase["python-3.12-cuda"]
+    Base --> ROCmBase["python-3.12-rocm"]
+
+    Minimal --> DataScience["python-3.12-standard\n-data-science"]
+    DataScience --> TrustyAI["python-3.12-trustyai"]
+
+    CUDABase --> MinCUDA["python-3.12-minimal\n-cuda"]
+    MinCUDA --> DSCUDA["python-3.12-standard\n-data-science-cuda"]
+    DSCUDA --> PyTorchCUDA["python-3.12-pytorch\n-cuda"]
+    DSCUDA --> TensorFlowCUDA["python-3.12-tensorflow\n-cuda"]
+    PyTorchCUDA --> LLMCompCUDA["python-3.12-pytorch\n-llmcompressor-cuda"]
+
+    ROCmBase --> MinROCm["python-3.12-minimal\n-rocm"]
+    MinROCm --> DSROCm["python-3.12-standard\n-data-science-rocm"]
+    DSROCm --> PyTorchROCm["python-3.12-pytorch\n-rocm"]
+    DSROCm --> TensorFlowROCm["python-3.12-tensorflow\n-rocm"]
+```
 
 Each notebook inherits the properties of its parent. For instance, the TrustyAI notebook inherits all the installed packages from the DataScience notebook, which in turn inherits the characteristics from its parent, the Minimal notebook.
 
-RStudio workbenches are shipped as pre-built container images based on CentOS Stream 9 (C9S), available in both CPU and CUDA variants.
+RStudio workbenches differ between ODH and RHOAI:
 
-<!-- TODO: This diagram needs updating:
-  - Replace the BuildConfig-based flow with a pre-built image hierarchy
-  - Show C9S as the base (not rhelx/python3.x)
-  - Show both CPU and CUDA RStudio variants
-  - Consider merging into the main workbenches-imagestreams diagram
--->
-![rstudio Architecture](./rstudio-imagestream.drawio.png)
+- **ODH:** RStudio is shipped as pre-built container images based on CentOS Stream 9 (C9S), available in both CPU and CUDA variants.
+- **RHOAI:** RStudio remains in **Dev Preview**. Instead of pre-built images, only BuildConfig definitions are provided. Customers must use these BuildConfig files to build the RStudio images themselves on their cluster.
+
+The ODH pre-built image hierarchy:
+
+```mermaid
+flowchart TD
+    C9SBase["c9s/python3.12"]
+    C9SBase --> RStudioCPU["rstudio-minimal\n-cpu-py312-c9s"]
+    C9SBase --> CUDALayer["c9s/python3.12-cuda"]
+    CUDALayer --> RStudioCUDA["rstudio-minimal\n-cuda-py312-c9s"]
+```
+
+The RHOAI BuildConfig-based flow (Dev Preview):
+
+In RHOAI, two BuildConfig/ImageStream pairs are provided via [manifests](https://github.com/red-hat-data-services/notebooks/tree/rhoai-3.3/manifests/base) -- one for CPU (`rstudio-server-rhel9`) and one for CUDA (`cuda-rstudio-server-rhel9`). Both use `registry.redhat.io/rhel9/python-312:latest` as the base image and clone the [red-hat-data-services/notebooks](https://github.com/red-hat-data-services/notebooks) repo as the build source. A RHEL subscription secret (`rhel-subscription-secret`) is required for the build. Customers apply the manifests to their cluster and trigger builds via `oc start-build`.
+
+```mermaid
+flowchart LR
+    BaseImage["registry.redhat.io/\nrhel9/python-312:latest"] -->|"BASE_IMAGE\nbuild arg"| BC_CPU["BuildConfig\nrstudio-server-rhel9\n(Dockerfile.cpu)"]
+    BaseImage -->|"BASE_IMAGE\nbuild arg"| BC_CUDA["BuildConfig\ncuda-rstudio-server-rhel9\n(Dockerfile.cuda)"]
+
+    GitRepo[("red-hat-data-services/\nnotebooks repo\n(rhoai branch)")] -->|"Git source"| BC_CPU
+    GitRepo -->|"Git source"| BC_CUDA
+
+    Secret["rhel-subscription\n-secret"] -.->|"Mounted\nduring build"| BC_CPU
+    Secret -.->|"Mounted\nduring build"| BC_CUDA
+
+    Customer([Customer]) -->|"oc start-build"| BC_CPU
+    Customer -->|"oc start-build"| BC_CUDA
+
+    BC_CPU -->|"InCluster Build"| IS_CPU["ImageStream\nrstudio-rhel9:latest"]
+    BC_CUDA -->|"InCluster Build"| IS_CUDA["ImageStream\ncuda-rstudio-rhel9:latest"]
+```
 
 
 ## Notebook Controller
@@ -116,13 +216,26 @@ The Notebook Controller is a two-controller design:
 - The **upstream Kubeflow notebook controller** manages the core lifecycle: creating the StatefulSet, Service, and handling idle culling (scaling to zero when idle, scaling back up on access).
 - The **ODH notebook controller** runs alongside and handles OpenShift-specific concerns: Gateway API routing (HTTPRoute), authentication (kube-rbac-proxy injection), network policies, and platform integrations (DSPA, Feast, MLflow).
 
-<!-- TODO: This diagram needs updating:
-  - Replace "OAuth" / "OAuth Secret" with kube-rbac-proxy
-  - Replace "Notebook Route" with "HTTPRoute" (Gateway API)
-  - Add NetworkPolicy, ClusterRoleBinding, ReferenceGrant to the created resources
-  - Add DSPA secret, Feast config, MLflow integration
--->
-![Notebook Controller](./notebook-controller.drawio.png)
+```mermaid
+flowchart TB
+    User([User / Dashboard]) -->|"1. New Notebook CR"| API["OpenShift API"]
+    API -->|"2. Webhook"| ODHCtrl["ODH Notebook Controller\n+ Webhook"]
+    API -->|"3. Store"| etcd[(etcd)]
+    API -->|"4. Watch NB"| KFCtrl["Notebook Controller"]
+    API -->|"5. Watch NB"| ODHCtrl
+
+    KFCtrl -->|"4.1 Create"| SS["Notebook StatefulSet"]
+    SS --> Pod["Notebook Environment (Pod)\nworkbench image +\nkube-rbac-proxy"]
+
+    ODHCtrl -->|"5.1 Create"| SA["Notebook SA"]
+    ODHCtrl -->|"5.1 Create"| AuthSecret["Auth Secret"]
+    ODHCtrl -->|"5.1 Create"| Svc["Notebook Service"]
+    ODHCtrl -->|"5.1 Create"| HTTPRoute["HTTPRoute"]
+    ODHCtrl -->|"5.1 Create"| Certs["Notebook Certificates"]
+    ODHCtrl -->|"5.1 Create"| NetPol["NetworkPolicy"]
+    ODHCtrl -->|"5.1 Create"| CRB["ClusterRoleBinding"]
+    ODHCtrl -->|"5.1 Create"| RefGrant["ReferenceGrant"]
+```
 
 ### Spec
 
