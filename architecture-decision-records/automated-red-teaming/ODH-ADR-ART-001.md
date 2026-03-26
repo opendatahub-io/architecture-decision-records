@@ -127,15 +127,6 @@ This is achieved with the following overall architecture:
 **Cons**:
 - Design and development time
 
-### How to trigger the pipelines, track the process and store results
-**Alternative 1**: Directly with kfp without Eval Hub.  This is not an alternative, but sub component of the existing implementation.
-
-**Pros**:
-- No need for Eval Hub deployment
-
-**Cons**:
-- No integration with the wider Eval Hub offering (MLFlow, Collections, UX, etc)
-
 ## Risks
 
 There is the risk that merging with upstream requires changes to the midstream codebase.  However, there are mitigation layers in this architecture via KFP and Eval Hub.
