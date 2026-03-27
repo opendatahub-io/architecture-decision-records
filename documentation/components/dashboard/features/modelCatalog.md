@@ -4,7 +4,7 @@
 
 - [Introduction](#introduction)
   - [Differences between Model Catalog and Model Registry](#differences-between-model-catalog-and-model-registry)
-  - [The Current Implementation Is Temporary](#the-current-implementation-is-temporary)
+  - [Implementation History](#implementation-history)
 - [Terms](#terms)
 - [Example Data](#example-data)
   - [`model-catalog-sources` ConfigMap (truncated)](#model-catalog-sources-configmap-truncated)

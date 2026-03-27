@@ -1,6 +1,6 @@
 # Model Registry
 
-> Introduced in 2.16 as Tech Preview and GA'ed in 2.25. Fully implemented with feature flag (`disableModelRegistry`) under tech preview feature flags.
+> Introduced in 2.16 as Tech Preview, GA'ed in 2.25. Controlled by the `disableModelRegistry` feature flag (configured in the tech preview flags section of the dashboard).
 
 - [Introduction](#introduction)
   - [A Model Registry is a Metadata Service Only](#a-model-registry-is-a-metadata-service-only)
@@ -187,7 +187,7 @@ Inconsistency note: while a ModelVersion references its parent with a `registere
 
 - **Model Registry Permissions** -- The Model Registry settings page also allows the administrator to configure permissions for access to a model registry. This "manage permissions" view uses the same functionality as managing permissions for a Project: the admin can add users or groups, which creates RoleBindings to give those entities a role granting them access to see that registry and use its REST API. The role
   - **Project permissions** -- A project can also be added to a registry in the manage permissions view. This gives all service accounts in the project permission to see and use the registry.
-- **Listing Model Registries via Services** -- The non-admin user does not have permission to view ModelRegistry CRs, but the dashboard needs to be able to list them in order to populate the registry selector. Each registry has an associated Service resource, and a user with access to a registry can view that Service. To list the registries a user can see, the dashboard makes a SelfServiceRulesRequest to get the names of Services in the registries namespace and then fetches each of those Services. The model registry operator automatically syncs some metadata from the ModelRegistry CR to the Service (such as the display name and description) so non-admins have access to those details.
+- **Listing Model Registries via Services** -- The non-admin user does not have permission to view ModelRegistry CRs, but the dashboard needs to be able to list them in order to populate the registry selector. Each registry has an associated Service resource, and a user with access to a registry can view that Service. To list the registries a user can see, the dashboard makes a SelfSubjectRulesReview to get the names of Services in the registries namespace and then fetches each of those Services. The model registry operator automatically syncs some metadata from the ModelRegistry CR to the Service (such as the display name and description) so non-admins have access to those details.
 - **Usage of Service Account** -- Non-cluster-admin users (including ODH admins) do not have permission to create or view resources in the registries namespace (except Services). Admin operations on the Model Registry Settings page use the dashboard's service account. A BFF (Backend-for-Frontend) layer has been implemented (`packages/model-registry/upstream/bff/` in Go) which provides RBAC via `SelfSubjectRulesReview` and is part of the modular architecture.
   - The writing and reading of Secrets and ConfigMaps associated with the ModelRegistry CR (as described above in [Terms](#terms)) are handled by the backend and performed by the service account. Requests to the backend pass along the database password or certificate information and the underlying resources are abstracted away.
 
