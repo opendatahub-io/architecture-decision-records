@@ -187,6 +187,7 @@ layers in this architecture via KFP and Eval Hub.
 | Reviewed by      | Date       | Notes           |
 | ---------------- | ---------- | --------------- |
 | Stuart Battersby | 2026-04-01 | Original author |
+| Henrique Nunes   | 2026-04-01 |                 |
 
 ## References
 
