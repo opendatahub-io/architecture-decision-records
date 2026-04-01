@@ -1,4 +1,4 @@
-[AcceleratorProfile]: ./README.md#acceleratorprofiles
+[AcceleratorProfile]: ./README.md#acceleratorprofiles-deprecated
 
 [`openshift.io/display-name`]: #openshiftiodisplay-name
 [`openshift.io/description`]: #openshiftiodescription
@@ -29,8 +29,11 @@ Dashboard has a reputation of using a lot of annotations and labels on various r
   * [ImageStreams](#imagestreams)
   * [Notebooks](#notebooks)
   * [ServingRuntime Templates](#servingruntime-templates)
+  * [InferenceServices](#inferenceservices)
   * [Storage Classes](#storage-classes)
+  * [HardwareProfiles](#hardwareprofiles)
   * [Model Registry](#model-registry)
+  * [Model Catalog](#model-catalog)
 
 ## Common Labels
 
@@ -129,8 +132,9 @@ For the Project Sharing feature specifically:
 * Annotations
   * [`openshift.io/display-name`]
   * [`openshift.io/description`]
-  * `opendatahub.io/connection-type` - Legacy value. Used to identify S3-compatible data connections; `s3` is the only supported value
-  * `opendatahub.io/connection-type-ref` - a reference to the connection type that is used to create the connection
+  * `opendatahub.io/connection-type` - Legacy fallback (pre-2.16). Used to identify S3-compatible data connections; `s3` is the only supported value. Still recognized as a fallback but superseded by `connection-type-ref`.
+  * `opendatahub.io/connection-type-ref` - (2.16+) The primary annotation referencing the connection type schema used to create the connection (e.g., `s3`, `uri-v1`, `oci-v1`)
+  * `opendatahub.io/connection-type-protocol` - (3.0+) Explicitly identifies the connection protocol for webhook validation and routing. Supported values: `s3`, `uri`, `oci`. Takes precedence over `connection-type-ref` when both are present.
 
 ### ImageStreams
 
@@ -156,13 +160,14 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
 > Note: This is a Workbench backed feature.
 
 * Labels
-  * `opendatahub.io/odh-managed` - (unknown, potential legacy without value)
+  * `opendatahub.io/odh-managed` - Set to `'true'` to mark notebooks created and managed by the Dashboard. This label is actively set during notebook creation.
   * `opendatahub.io/user` - a translated username; the Dashboard k8s-ifies the user's username so we can compare or look up by user in the future
 * Annotations
   * [`openshift.io/display-name`]
   * [`openshift.io/description`]
   * `opendatahub.io/username` - the actual username (related to the Label `opendatahub.io/user`)
   * [`opendatahub.io/accelerator-name`]
+  * `opendatahub.io/connections` - a comma-separated list of `<namespace>/<secret-name>` references connecting the workbench to Connection secrets. The namespace prefix allows the system to perform a SubjectAccessReview to verify the user has permission to access the Secret. The connection Secret must be in the same namespace as the Notebook.
   * `opendatahub.io/workbench-image-namespace` - This annotation is used to indicate the scope of a workbench image. If the workbench image is project-scoped, this annotation is added with the workbench image’s namespace. If it’s global-scoped, the annotation is omitted.
   * `opendatahub.io/hardware-profile-namespace` - This annotation is used to indicate the scope of a hardware profile. If the hardware profile is project-scoped, this annotation is added with the hardware profile’s namespace. If it’s global-scoped, the annotation is omitted.
   * `opendatahub.io/accelerator-profile-namespace` - This annotation is used to indicate the scope of a accelerator profile. If the accelerator profile is project-scoped, this annotation is added with the accelerator profile’s namespace. If it’s global-scoped, the annotation is omitted.
@@ -175,7 +180,7 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
 
 * Annotations (when configuring in the admin page)
   * [`openshift.io/display-name`]
-  * `opendatahub.io/modelServingSupport` - (managed by the UI) an JSON Array of supported platforms; options: 'single', 'multi'
+  * `opendatahub.io/modelServingSupport` - (managed by the UI) a JSON array string of supported platforms (e.g., `'["single"]'`); options: `'single'`, `'multi'`. Note: ModelMesh (`'multi'`) is deprecated.
   * `opendatahub.io/apiProtocol` - (managed by the UI) the api protocols available; options (one of): 'REST', 'gRPC' 
   * `opendatahub.io/disable-gpu` - (optional, typed in) if the ServingRuntime should not be used with GPUs (aka accelerators)
   * [`opendatahub.io/recommended-accelerators`] - (optional, typed in)
@@ -188,10 +193,25 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * `opendatahub.io/hardware-profile-namespace` -  This annotation is used to indicate the scope of a hardware profile. If the hardware profile is project-scoped, this annotation is added with the hardware profile’s namespace. If it’s global-scoped, the annotation is omitted.
   * `opendatahub.io/accelerator-profile-namespace` - This annotation is used to indicate the scope of a accelerator profile. If the accelerator profile is project-scoped, this annotation is added with the accelerator profile’s namespace. If it’s global-scoped, the annotation is omitted.
 
+### InferenceServices
+
+> Note: This is a Model Serving backed feature.
+
+* Annotations
+  * `opendatahub.io/connections` - a single connection reference (secret name, no namespace prefix needed) connecting the InferenceService to a Connection secret for model storage access. The connection Secret must be in the same namespace as the InferenceService.
+
 ### Storage Classes
 
 * Annotations
   * [`opendatahub.io/sc-config`] - (managed by the UI) a JSON Blob of storage class metadata
+
+### HardwareProfiles
+
+> Note: HardwareProfiles are GA (`hardwareprofiles.infrastructure.opendatahub.io/v1`) and replace the deprecated AcceleratorProfiles CRD.
+
+* Annotations
+  * [`openshift.io/display-name`]
+  * [`openshift.io/description`]
 
 ### Model Registry
 
@@ -201,3 +221,16 @@ These are configured by the admin in the UI and are provided as out-of-the-box e
   * `modelregistry.opendatahub.io/registered-model-id` and `modelregistry.opendatahub.io/model-version-id` - These labels identify InferenceServices deployed via the model registry UI and get the Model Registry Controller to sync the deployment. They are also used to filter InferenceServices when viewing the list of deployments for a specific model version.
 
   * `modelregistry.opendatahub.io/name` - This label provides a unique reference to InferenceServices deployed via a model registry. It ensures that models will be listed in the deployments tab of that specific registry, preventing incorrect listing across multiple registries with overlapping model IDs.  
+
+### Model Catalog
+
+Model catalog data is stored in ConfigMaps in the installation namespace (`opendatahub`):
+
+* ConfigMaps
+  * `model-catalog-sources` - The main managed ConfigMap containing catalog source and model metadata, defined by the dashboard's manifests. This is not editable by users.
+  * `model-catalog-unmanaged-sources` - A secondary editable ConfigMap with an empty `sources` array, used to populate additional sources/models for demonstration purposes.
+* Special Model Labels (within the `labels` array of a catalog model object)
+  * `featured` - The first 4 models with this label appear in the Model Catalog section of the dashboard home page.
+  * `lab-base` - Designates a model as an InstructLab starter model. Shown with special formatting (yellow color, "LAB starter" text) on the overview page.
+  * `lab-teacher` - Designates a model as an InstructLab teacher model. Shown with special formatting (purple color, "LAB teacher" text) on the overview page.
+  * `lab-judge` - Designates a model as an InstructLab judge model. Shown with special formatting (orange color, "LAB judge" text) on the overview page.

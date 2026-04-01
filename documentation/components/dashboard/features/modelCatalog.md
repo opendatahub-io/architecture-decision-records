@@ -1,10 +1,10 @@
 # Model Catalog
 
-> Introduced in 2.19 as Tech Preview
+> Introduced in 2.19 as Tech Preview, now GA
 
 - [Introduction](#introduction)
   - [Differences between Model Catalog and Model Registry](#differences-between-model-catalog-and-model-registry)
-  - [The Current Implementation Is Temporary](#the-current-implementation-is-temporary)
+  - [Implementation History](#implementation-history)
 - [Terms](#terms)
 - [Example Data](#example-data)
   - [`model-catalog-sources` ConfigMap (truncated)](#model-catalog-sources-configmap-truncated)
@@ -29,11 +29,13 @@ The Model Catalog feature provides a centralized list of AI models available for
 
 These are the differences as currently implemented. Some of this may change with future enhancements; for example, there is a desire to allow an admin to configure which models/sources a user has access to instead of the unrestricted access of the current implementation.
 
-### The Current Implementation Is Temporary
+### Implementation History
 
-The initial version of Model Catalog introduced in 2.19 and enhanced in 2.20 is built without a real backend API. Model metadata is stored in a ConfigMap on the cluster, which is [created automatically by the dashboard's manifests](https://github.com/opendatahub-io/odh-dashboard/tree/main/manifests/rhoai/shared/apps/model-catalog). No external sources are being accessed, we are hand-curating a set of models to be included with each release. This implementation is not sustainable and was only chosen to facilitate early demonstrations and user research. In the near future this ConfigMap approach will be replaced by the consumption of a new Model Catalog API provided alongside the Model Registry API. This will allow the dashboard to fetch and search/filter remote repositories of model metadata and present those models in the catalog.
+The initial version of Model Catalog introduced in 2.19 and enhanced in 2.20 was built without a real backend API. Model metadata was stored in ConfigMaps on the cluster, created automatically by the dashboard's manifests. No external sources were accessed; models were hand-curated and included with each release.
 
-For more details on the temporary ConfigMap implementation and how the model metadata is updated, see [this README in the model registry repo](https://github.com/opendatahub-io/model-registry/tree/main/model-catalog).
+A BFF-based Model Catalog API (`/api/model_catalog/v1alpha1`) now exists alongside the ConfigMap approach. The frontend continues to use the ConfigMaps (`model-catalog-sources` and `model-catalog-unmanaged-sources`) while the BFF layer provides a structured API for upstream integration. The long-term goal is for the API to fully replace the ConfigMap approach, allowing the dashboard to fetch and search/filter remote repositories of model metadata.
+
+For more details on the ConfigMap implementation and how the model metadata is updated, see [this README in the model registry repo](https://github.com/kubeflow/model-registry/tree/main/catalog).
 
 ## Terms
 

@@ -16,7 +16,7 @@
 
 There are three terms we are working with here:
 
-* **Data Connections** -- The "old" (no longer used) term. This indicated the S3-compatible Data Connection that we had prior to 2.16; moving forward these are _Connections_ based on the S3 _Connection Type_ (which comes [ootb](#out-of-the-box-ootb-offerings))
+* **Data Connections** -- The former term, fully replaced by _Connections_ in the UI as of 2.16. The old S3-compatible Data Connections are now _Connections_ based on the S3 _Connection Type_ (which comes [ootb](#out-of-the-box-ootb-offerings)). The term "Data Connections" no longer appears in the UI.
 * **Connection Types** -- These are like templates for new _Connections_. These are crafted & managed by the RHOAI admins and stored inside the deployment namespace; some come [ootb](#out-of-the-box-ootb-offerings)
 * **Connections** -- These are the instances inside a Data Science Project that can be connected to Workbenches & Model Serving Models, they are always based off a _Connection Type_
 
@@ -112,15 +112,18 @@ Connections don't do a lot by themselves; they effectively store configurations 
 
 ### Workbench Connections
 
-Workbenches are by far the most flexible of Connection consumers. All Connections are connected via `envFrom` (see below for an example), which injects all the keys of the Secret as environment variables. Consumption of the data can be done through the Workbenches' standard access to the environment variables (in Python that's `os.environ["ENV_NAME_HERE"]`).
+Workbenches are by far the most flexible of Connection consumers. All Connections are injected as environment variables, and consumption of the data can be done through the Workbenches' standard access to the environment variables (in Python that's `os.environ["ENV_NAME_HERE"]`).
 
-Under the hood -- the connectivity between a Connection and a Workbench exists as such:
+The primary mechanism for connecting a Workbench to Connections is the `opendatahub.io/connections` annotation on the Notebook resource. This annotation contains a comma-separated list of `<namespace>/<secret-name>` references:
 
 ```yaml
 apiVersion: kubeflow.org/v1
 kind: Notebook
 metadata:
   name: example-workbench
+  namespace: my-project
+  annotations:
+    opendatahub.io/connections: 'my-project/my-s3-connection,my-project/my-uri-connection'
   # ...other properties
 spec:
   template:
@@ -129,14 +132,18 @@ spec:
       containers:
         - name: the-notebook-container
           # ...other properties
-          envFrom:
-            - secretRef:
-                name: my-s3-connection
-            - secretRef:
-                name: my-uri-connection
 ```
 
-The `my-s3-connection` (using the ootb S3 Connection Type) & `my-uri-connection` (using the ootb URI Connection Type) are connected via the `envFrom` section on the notebook container. Since all Connections are secrets & are injected the same way as environment variables, it will always be mounted from `envFrom.secretRef.name` for each Connection irrespective of their structure.
+The namespace prefix in the annotation value allows the system to perform a SubjectAccessReview to verify that the user has permission to access the Secret. The operator controller then handles injecting the connection secrets as environment variables into the Notebook container.
+
+> Note: The legacy approach of directly specifying connections via `envFrom.secretRef` in the Notebook spec is still supported for backward compatibility:
+> ```yaml
+> containers:
+>   - name: the-notebook-container
+>     envFrom:
+>       - secretRef:
+>           name: my-s3-connection
+> ```
 
 > Note: It is important to note that since they are injected as environment variables, two Connections sharing the same variable will clobber each other and the "last one" wins. The UI will note this concern when you have two Connections overlapping.
 
@@ -150,6 +157,12 @@ Essentially we only have support for these types:
 * [OCI model cars](#oci-model-cars-connection)
 
 > Note: At this time there is not much else that can be done as it requires specific integration logic in order to connect a specific set of fields from the Connection to align it with the implementation of the Serving feature (KServe, Model Mesh, etc).
+
+> Note: In addition to the resource-level integration shown below, InferenceServices can also use the `opendatahub.io/connections` annotation (a single connection reference, no namespace prefix needed) to associate a connection with the serving resource. This annotation is consumed by the operator for validation and routing.
+
+**Supported workloads consuming connections:**
+* `InferenceService` (KServe Model Serving)
+* `LLMInferenceService` (LLM-D Model Serving)
 
 #### S3-compatible Connection
 
