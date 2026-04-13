@@ -7,7 +7,7 @@
 | Authors | TrustyAI |
 | Supersedes | N/A |
 | Superseded by: | N/A |
-| Tickets | [RHAISTRAT-979](https://issues.redhat.com/browse/RHAISTRAT-979), [RHAISTRAT-1147](https://issues.redhat.com/browse/RHAISTRAT-1147) |
+| Tickets | [RHAISTRAT-1109](https://redhat.atlassian.net/browse/RHAISTRAT-1109) |
 | Other docs: |  |
 
 ## **What**
@@ -65,42 +65,29 @@ In this case:
 
 The production of OCI Artifact can be done efficiently by re-using earlier “specialization” [RHAISTRAT-513](https://issues.redhat.com/browse/RHAISTRAT-513) in LMEval to produce the OCI Artifact, but now generalized for the eval-hub-sdk, and can be achieved with minimal efforts.
 
-The [eval-hub-sdk interface](https://github.com/eval-hub/eval-hub-sdk/blob/8642c90989b83aa7ced12dc1503542f4e7835809/src/evalhub/adapter/models/framework.py#L106) will be expanded with a function dedicated to point to the files which need to be persisted,  for example:
+The [eval-hub-sdk adapter interface](https://github.com/eval-hub/eval-hub-sdk/blob/b3e7ae0404ea6abf5ea374fb36ba73d588b0b65d/src/evalhub/adapter/models/adapter.py) provides a single abstract method `run_benchmark_job` that receives `JobCallbacks`, which include OCI artifact persistence capabilities:
 
 ```py
 @abstractmethod
-def job_files(self, job_id: str) -> EvaluationJobFilesLocation:
-    """Files location of an evaluation job.
-
-    Args:
-        job_id: The job identifier
-
-    Returns:
-        EvaluationJobFiles: the location of the files
-    """
+def run_benchmark_job(self, config: JobSpec, callbacks: JobCallbacks) -> JobResults:
+    “””Run a benchmark evaluation job.
+    ...
+    5. Persist results via callbacks.create_oci_artifact() if needed
+    6. Return JobResults with outcomes
+    ...
+    “””
     pass
-
 ```
 
-In this way, the user will provide only the location of the files, without knowing the internals of OCI production.
-
-The eval-hub-sdk will generalize [RHAISTRAT-513](https://issues.redhat.com/browse/RHAISTRAT-513) to produce the OCI Artifact, for example:
+The adapter implementation declares *what* needs to be persisted via an [`OCIArtifactSpec`]https://github.com/eval-hub/eval-hub-sdk/blob/b3e7ae0404ea6abf5ea374fb36ba73d588b0b65d/src/evalhub/adapter/models/job.py#L205), and the SDK handles *how* the OCI Artifact is produced through the [callbacks](https://github.com/eval-hub/eval-hub-sdk/blob/b3e7ae0404ea6abf5ea374fb36ba73d588b0b65d/src/evalhub/adapter/callbacks.py#L553):
 
 ```py
-async def persist_job_files_oci(self, job_id: str, oci_ref: str) -> PersistResponse | None:
-    """Persist all files of an evaluation job as OCI Artifact in the specified repository.
-
-    Args:
-        job_id: The job identifier
-    oci_ref: The location where to persist (Push) the OCI Artifact
-
-    Returns:
-        bool: The 
-    """
-
-    # ...
-    what_to_persist = self.job_files(job_id)
-    # ...
+oci_artifact = callbacks.create_oci_artifact(
+    OCIArtifactSpec(
+        files_path=output_dir,
+        coordinates=config.exports.oci.coordinates,
+    )
+)
 ```
 
 In this way, the end-user doesn’t need to be concerned about how the OCI Artifact needs to be produced, but only *what* needs to be persisted (declarative approach by User, and enacted by the \-sdk).
@@ -108,7 +95,7 @@ In this way, the end-user doesn’t need to be concerned about how the OCI Artif
 The credential for the OCI repository will use standard RHOAI OCI Connection mechanism, so that will work both in K8s and non-K8s environments.  
 In pragmatic terms:
 
-- as usual RHOAI Connection, OCI Connection will be mounted in standard K8s way to the workload, so that the function have access to the specific credentials  
+- as usual RHOAI Connection, OCI Connection will be mounted in standard Kubernetes way to the workload, so that the function have access to the specific credentials  
 - when running in non-K8s environment, standard docker/oci auth.json can be leveraged by the function as already demonstrated
 
 To map on the Eval-Hub overall, specific provision will be linked so that when the User submits the Eval task on Eval-Hub, the User can specify to opt-in to this capability, by also specifying the required RHOAI OCI Connection. 
@@ -127,13 +114,12 @@ The functionality when running on Kubernetes leverages the EvalHub sidecar capab
 
 * [RHAISTRAT-513](https://issues.redhat.com/browse/RHAISTRAT-513) (earlier “specialization” in LMEval)  
   * [https://www.youtube.com/watch?v=WqeSIbyLP8g](https://www.youtube.com/watch?v=WqeSIbyLP8g)   
-* 
 
 ## **Reviews**
 
 | Reviewed by | Date | Notes |
 | :---- | :---- | :---- |
-| name | date | ? |
+| name | date | https://redhat-internal.slack.com/archives/C09P3G66RGQ/p1768891778138479 |
 
 [^1]:  not to be confused with OTEL traces; by eval-traces this document refers to additional supporting files, dumps, logs in addition to the typical “results file” or report. Typically this eval-traces file(s) contains prompts and answers and any additional operation results in the specific format of the evaluation, supporting the computation of the overall results.
 
