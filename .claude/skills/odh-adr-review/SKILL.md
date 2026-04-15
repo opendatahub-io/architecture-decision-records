@@ -7,7 +7,7 @@ description: Review an Open Data Hub Architectural Decision Record (ADR) using a
 
 This skill runs a panel of specialist reviewer subagents over an Open Data Hub Architectural Decision Record (ADR) and produces a consolidated report in two formats: a PDF document and a PPTX slide deck.
 
-This is an ODH-specific adaptation of the generic `adr-review` skill. It adds a seventh reviewer focused on ODH ecosystem and downstream impact, injects ODH-specific context into all reviewers, and checks ADRs against the ODH template format.
+This is an ODH-specific adaptation of the generic [`adr-review`](https://github.com/opendatahub-io/ai-helpers/tree/main/helpers/skills/adr-review) skill. It adds a seventh reviewer focused on ODH ecosystem and downstream impact, injects ODH-specific context into all reviewers, and checks ADRs against the ODH template format.
 
 ## Why a panel of agents?
 

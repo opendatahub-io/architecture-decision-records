@@ -20,7 +20,15 @@ ADRs in this repo may affect one or more of these components:
 | **Distributed Workloads** | Ray, CodeFlare, Kueue for distributed training and compute | opendatahub-io/distributed-workloads |
 | **Model Registry** | Model metadata and version tracking | opendatahub-io/model-registry |
 | **TrustyAI / Explainability** | Fairness metrics and model explainability | trustyai-explainability/trustyai-explainability |
+| **EvalHub** | Unified evaluation service for orchestrating AI model evaluations across multiple frameworks (lm_evaluation_harness, ragas, garak, etc.). Managed by the TrustyAI operator. | opendatahub-io/eval-hub |
+| **AutoML** | Automated ML model building and optimization for tabular data using AutoGluon, orchestrated via Kubeflow Pipelines. Integrates with Model Registry and KServe. | opendatahub-io/automl |
+| **AutoRAG** | Automated RAG application optimization using ai4rag engine, orchestrated via Kubeflow Pipelines. Explores chunking, embedding, retrieval, and generation configurations. | opendatahub-io/autorag |
+| **RAG and Vector DB** | Document ingestion, chunking, embedding, and vector database management for retrieval-augmented generation workflows. Provides the runtime infrastructure that AutoRAG optimizes against. |
+| **Llama Stack** | LLM inference API layer providing unified access to language models and vector databases for AI workloads | opendatahub-io/llama-stack |
 | **Feature Store** | Feast-based feature management for training and serving | opendatahub-io/feast |
+| **Agent Ops** | Onboards agents and MCP servers to the platform. Facilitates configuration of sandboxes, workload identity using SPIFFE/SPIRE, credential management, authorization, and agent discovery. Implemented using OpenShell, Agent Operator, MCP Operator, Agent Sandbox, and MCP Gateway.
+| **Model and Agent Observability** | Collects traces and metadata about models and agents. Visualizes traces, creates evaluation datasets, evaluates expected vs. actual behavior.  Uses MLflow.
+| **Model as a Service** | Platform-managed LLM inference endpoints that provide shared, pre-deployed models to users without requiring them to provision their own model serving infrastructure. |
 
 ## Platform Assumptions
 
