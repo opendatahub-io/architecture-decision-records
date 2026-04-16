@@ -31,23 +31,6 @@ Read these files from the repository to get current context:
 Read all three at the start of every invocation. They are the source of
 truth; anything stated below is just guidance for applying them.
 
-## Markdown formatting rules
-
-The generated ADR must pass markdownlint with the repo's
-`.markdownlint.json` config. Follow these rules:
-
-* **Line length**: Wrap prose at 80 characters. Tables are exempt.
-* **No em-dashes**: Do not use the em-dash character. Use periods to
-  separate sentences, colons to introduce lists or explanations, or
-  semicolons to join related clauses.
-* **List markers**: Use `*` (asterisk) for unordered lists, not `-`.
-* **Blank lines around headings and lists**: Always include a blank line
-  before and after headings and lists.
-* **No trailing spaces or multiple blank lines**.
-* **Stakeholder Impacts table**: Keep the table compact with short
-  values in the "Impacted?" column (Yes, No, Maybe). Put explanations
-  in a bulleted "Notes on stakeholder impacts" list below the table.
-
 ## Workflow
 
 ### Step 1: Quick interview
@@ -163,14 +146,13 @@ make it a real sentence, not just "[TODO]".
 * Be direct and specific, not vague or hedging
 * Use the active voice
 * Use short, clear sentences. Avoid run-on sentences.
-* Do not use em-dashes. Use periods, colons, or semicolons instead.
+* Prefer periods, colons, or semicolons over em-dashes
 * Name specific components, CRDs, and APIs rather than speaking in
   abstractions
 * When discussing ODH ecosystem impacts, reference the actual components
   from the ecosystem table
 * Keep sections proportional; a simple decision doesn't need a 500-word
   How section
-* Wrap all prose at 80 characters
 
 ### Step 4: Write the file and iterate
 
