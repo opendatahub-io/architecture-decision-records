@@ -399,7 +399,7 @@ registry itself.
 | Group | Key Contacts | Date | Impacted? |
 | ----- | ------------ | ---- | --------- |
 | MLflow / Model and Agent Observability | Edson Tirelli, Matt Prahl | 2026-04-16 | Yes |
-| ODH Operator | unknown | 2026-04-16 | Probably not |
+| ODH Operator | | 2026-04-16 | No |
 | Dashboard / AI Hub | Eder Ignatowicz | 2026-04-16 | Yes |
 | AgentDev | Aakanksha Duggal | 2026-04-16 | Yes |
 | Model Serving & Registry (PM) | Adam Bellusci | 2026-04-16 | Yes |
