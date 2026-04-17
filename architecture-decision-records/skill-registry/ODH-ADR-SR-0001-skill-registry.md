@@ -398,14 +398,14 @@ registry itself.
 
 | Group | Key Contacts | Date | Impacted? |
 | ----- | ------------ | ---- | --------- |
-| MLflow / Model and Agent Observability | Matt Prahl | 2026-04-16 | Yes |
+| MLflow / Model and Agent Observability | Edson Tirelli, Matt Prahl | 2026-04-16 | Yes |
 | ODH Operator | unknown | 2026-04-16 | Probably not |
 | Dashboard / AI Hub | Eder Ignatowicz | 2026-04-16 | Yes |
 | AgentDev | Aakanksha Duggal | 2026-04-16 | Yes |
 | Model Serving & Registry (PM) | Adam Bellusci | 2026-04-16 | Yes |
 | Agentic AI (PM) | Peter Double, Adel Zaalouk | 2026-04-16 | Yes |
 | Model Serving (KServe) | | 2026-04-16 | No |
-| Data Science Pipelines | | 2026-04-16 | Maybe |
+| Data Science Pipelines | | 2026-04-16 | No |
 | Distributed Workloads | | 2026-04-16 | No |
 | TrustyAI / Explainability | | 2026-04-16 | No |
 
@@ -426,9 +426,6 @@ registry itself.
   strategy.
 * **Agentic AI (PM)**: Agents consume skills; the skill registry is
   core infrastructure for agentic AI workflows.
-* **Data Science Pipelines**: Pipelines that orchestrate agent workflows
-  may need to resolve skills from the registry.
-
 ## References
 
 * [Skill Registry MVP Design](https://github.com/B-Step62/mlflow/blob/ca5d1a2f6e55691077425b417c26f45380fbf623/.agent/skill-registry-mvp-design.md)
