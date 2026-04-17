@@ -5,7 +5,7 @@
 | Date           | 2026-04-16                                                                                                                                        |
 | Scope          | Skill Registry                                                                                                                                    |
 | Status         | Draft                                                                                                                                             |
-| Authors        | [Bill Murdock](@jwm4)                                                                                                                             |
+| Authors        | [Bill Murdock](https://github.com/jwm4)                                                                                                           |
 | Supersedes     | N/A                                                                                                                                               |
 | Superseded by: | N/A                                                                                                                                               |
 | Tickets        | RHAIRFE-1713                                                                                                                                      |
