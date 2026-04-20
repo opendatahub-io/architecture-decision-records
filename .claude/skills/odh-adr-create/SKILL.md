@@ -60,13 +60,18 @@ defaults they can revise.
 
 **Auto-detect the next ADR number** by scanning existing files:
 
-* **Global/org-level ADRs** live in `architecture-decision-records/` and
-  follow the pattern `ODH-ADR-NNNN-*.md`. Scan for the highest NNNN and
-  increment by 1.
+* **Global-numbered ADRs** use the pattern `ODH-ADR-NNNN-*.md`. Most
+  live in `architecture-decision-records/`, but some live in component
+  subdirectories (e.g., `automl/ODH-ADR-0001-automl.md`,
+  `operator/ODH-ADR-0004-odh-trusted-ca-configmap.md`). To find the
+  next available NNNN, scan **both** the root directory and all
+  subdirectories for `ODH-ADR-NNNN-*.md` files, take the highest NNNN
+  across all of them, and increment by 1.
 * **Component-scoped ADRs** live in subdirectories (e.g.,
   `architecture-decision-records/operator/`) and follow the pattern
   `ODH-ADR-ComponentCode-NNNN-*.md`. Scan the relevant subdirectory for
-  the highest NNNN and increment by 1.
+  the highest NNNN and increment by 1. Not all subdirectories use a
+  component code; check the table below.
 
 Component abbreviations used in this repo (scan the subdirectory to
 confirm the convention if unsure):
@@ -80,8 +85,14 @@ confirm the convention if unsure):
 | model-registry | MR |
 | eval-hub | EH |
 | explainability | XAI |
-| automl | (uses global numbering in subdirectory) |
-| autorag | (uses global numbering in subdirectory) |
+| automl | none (uses global `ODH-ADR-NNNN` numbering) |
+| autorag | none (uses global `ODH-ADR-NNNN` numbering) |
+
+Note: `operator/` mostly uses component-scoped numbering
+(`ODH-ADR-Operator-NNNN`), but also contains at least one global-numbered
+ADR (`ODH-ADR-0004`). When placing a new ADR in a subdirectory, follow
+the dominant convention in that subdirectory. When assigning a global
+number, always scan all directories to avoid collisions.
 
 If the component doesn't have existing ADRs or uses an unfamiliar
 convention, check the subdirectory contents and follow the pattern you
