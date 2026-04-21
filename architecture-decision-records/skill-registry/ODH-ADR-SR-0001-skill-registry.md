@@ -58,7 +58,7 @@ the downstream hardening scope.
 * Enable in-cluster, self-hosted operation for disconnected and
   air-gapped environments
 * Provide multi-tenant isolation so that project-scoped skills are not
-  accessible across namespace boundaries
+  accessible across tenant boundaries
 * Support skill versioning, aliasing (e.g., "champion" or "prod"), and
   tagging for lifecycle management
 * Integrate with MLflow tracing so that agent traces record which skill
@@ -125,10 +125,10 @@ design shows that this separation largely already exists:
 The decoupling work needed is modest. The main change would be making
 `install_skill()` pluggable for different target directories rather
 than hardcoding the Claude Code path. The core registry does not need
-redesigning. Whether this change goes upstream or is maintained
-downstream is an open question (see below). Edson Tirelli and Matt
-Prahl have indicated willingness to facilitate upstream discussions
-with Databricks.
+redesigning. The strategy is to contribute this generalization
+upstream first; Edson Tirelli and Matt Prahl have indicated willingness
+to facilitate discussions with Databricks. If upstream does not accept
+the change, ODH will maintain the generalization downstream.
 
 ### Value proposition without harness-specific integration
 
@@ -196,9 +196,10 @@ Databricks is making in MLflow's discovery UX. ODH should not build a
 separate skill catalog unless a concrete user need emerges that the
 MLflow UI cannot address.
 
-### Downstream hardening for RHOAI
+### RHOAI requirements
 
-On top of the upstream registry, RHOAI adds enterprise requirements:
+In addition to adopting the upstream registry, the following are
+required for RHOAI release:
 
 * **Disconnected/air-gapped operation**: The registry must function
   entirely in-cluster without external network access. Skill bundles are
@@ -206,25 +207,21 @@ On top of the upstream registry, RHOAI adds enterprise requirements:
   in OpenShift), not fetched from GitHub at runtime.
 * **FIPS compliance**: All cryptographic operations within the registry
   lifecycle must use FIPS-validated modules.
-* **Multi-tenant isolation**: RHOAI deploys a separate MLflow instance
-  per data science project (namespace). Because the upstream skill
-  registry schema is single-tenant (skill names are unique within an
-  MLflow instance, with no workspace or tenant column), namespace
-  isolation is achieved through these per-namespace MLflow instances,
-  not through workspace-level scoping within a shared instance.
-  Namespace RBAC ensures that project-scoped skills in one namespace
-  are not accessible from another. The registry also supports global
-  (org-wide) skills visible across namespaces; the mechanism for
-  cross-namespace skill sharing (e.g., a shared MLflow instance for
-  global skills or a federation approach) is not yet designed and will
-  be addressed in Phase 2.
-* **Operator integration**: The MLflow instance (and thus the skill
-  registry) is deployed and managed by the ODH Operator via the
-  `DataScienceCluster` CRD. No additional operator is needed for the
-  skill registry. It is a feature of the MLflow deployment. No changes
-  to the DataScienceCluster CRD schema are expected, though the
-  operator's MLflow manifests may need updates to accommodate new
-  database migrations or configuration flags shipped by upstream.
+* **Multi-tenant isolation**: RHOAI deploys a single multi-tenant
+  MLflow instance per cluster. The skill registry inherits this
+  deployment model. If the current upstream version does not yet
+  support multi-tenancy via workspaces, it will be addressed before
+  release. The ADR assumes the shipped version will support
+  workspace-based tenant isolation so that project-scoped skills are
+  not accessible across workspace boundaries.
+* **Operator integration**: The ODH Operator manages the MLflow
+  Operator, which in turn deploys and manages the MLflow instance(s).
+  The skill registry is a feature of the MLflow deployment, not a new
+  component. No changes to the DataScienceCluster CRD schema or the
+  ODH Operator are expected. The MLflow Operator will need updates to
+  enable the skill registry API endpoints, create appropriate
+  roles/role bindings for skill registry permissions, and possibly add
+  environment variables to the MLflow container.
 
 ### Operational considerations
 
@@ -233,7 +230,7 @@ existing MLflow deployment and inherits its operational posture
 (health probes, resource limits, Prometheus metrics, operator-managed
 lifecycle). The incremental resource impact is expected to be small:
 skill bundles are lightweight (typically under 1 MB), and the number
-of registered skills in Phase 1 is expected to be in the tens to low
+of registered skills at launch is expected to be in the tens to low
 hundreds. No new pods, services, or databases are required beyond the
 existing MLflow deployment.
 
@@ -247,40 +244,33 @@ Observability for the skill registry should follow the platform's
 established patterns (see ODH-ADR-Operator-0010 for component metrics
 scraping). Whether MLflow's existing `/metrics` endpoint covers skill
 registry API operations or whether new metrics are needed will be
-validated during Phase 1.
+validated during implementation.
 
-### Phased rollout
+### Work items
 
-1. **Phase 1 (near-term)**: Adopt upstream MLflow Skill Registry as
-   shipped by Databricks. Validate in ODH. Contribute
-   agent-harness-neutrality requirements upstream.
-2. **Phase 2**: Add RHOAI downstream hardening: disconnected support,
-   FIPS, multi-tenancy isolation, operator lifecycle management.
-3. **Phase 3**: Connect to the broader AI asset registry strategy (MCP
-   registry, agent registry). Evaluate whether the MLflow UI fully meets
-   user discovery needs or whether lightweight Dashboard integration is
-   warranted.
+The following are all required for release:
 
-## Open Questions
+* Adopt the upstream MLflow Skill Registry as shipped by Databricks
+  and validate in ODH.
+* Contribute agent-harness-neutrality requirements upstream (or
+  maintain the generalization downstream if upstream does not accept).
+* Enable disconnected/air-gapped operation with in-cluster artifact
+  storage.
+* Ensure FIPS compliance through the standard RHOAI MLflow deployment
+  configuration.
+* Validate multi-tenant isolation via workspace-based scoping in the
+  single MLflow instance.
+* Update the MLflow Operator to enable skill registry API endpoints,
+  create roles/role bindings, and configure environment variables.
+* Validate observability coverage for skill registry API operations.
 
-* The upstream design is already largely harness-neutral (see above),
-  with Claude Code coupling confined to `install_skill()` and trace
-  enrichment. The remaining question is whether Databricks will accept
-  a contribution to make `install_skill()` pluggable, or whether ODH
-  should maintain that generalization downstream.
-* Should the skill registry support a lockfile mechanism for
-  reproducible skill installations? In package managers like npm, a
-  lockfile records the exact versions that were resolved at install
-  time, so that anyone cloning the repo gets the same dependencies.
-  Applied to skills: a project might depend on the "copilot" skill at
-  alias "prod", which today resolves to version 3. A month later, "prod"
-  might point to version 5. A lockfile would pin the resolved version
-  and MLflow server URL so that `mlflow skills load` reproduces the
-  exact same skill set. Matt Prahl has proposed this, including content
-  hashes and workspace identifiers. If this is desirable, is it upstream
-  or downstream scope?
-* Does the downstream RHOAI MLflow team need to do anything beyond
-  their standard hardening process to support the skill registry?
+### Future work
+
+After initial release, the skill registry may connect to the broader
+AI asset registry strategy (MCP registry, agent registry). Whether the
+MLflow UI fully meets user discovery needs or whether lightweight
+Dashboard integration is warranted will be evaluated based on user
+feedback.
 
 ## Alternatives
 
@@ -353,9 +343,9 @@ registry itself.
 
 ## Security and Privacy Considerations
 
-* **Multi-tenancy isolation**: Skills scoped to a namespace must not be
-  accessible from other namespaces. The MLflow workspace-to-namespace
-  mapping enforced by RBAC provides this boundary.
+* **Multi-tenancy isolation**: Skills scoped to a workspace must not be
+  accessible across tenant boundaries. The single multi-tenant MLflow
+  instance enforces this through workspace-level isolation.
 * **Skill content trust**: The registry stores arbitrary files (SKILL.md,
   scripts, etc.) as artifacts. Skills may contain executable code
   (Python scripts, shell scripts). Organizations need a mechanism to
@@ -413,10 +403,10 @@ registry itself.
 
 * **MLflow**: Primary implementation target. The skill registry is a
   new MLflow feature.
-* **ODH Operator**: The skill registry is internal to MLflow, not a new
-  component. However, the operator's MLflow manifests may need updates
-  to accommodate new database migrations or configuration flags from
-  upstream.
+* **ODH Operator**: No impact on the ODH Operator itself. The MLflow
+  Operator (managed by the ODH Operator) will need updates to enable
+  skill registry API endpoints, roles/role bindings, and possibly
+  environment variables.
 * **Dashboard / AI Hub**: This ADR does not propose a separate skill
   catalog in the Dashboard, but the Dashboard team may want to embed
   or link to the MLflow skill registry experience in the future.
