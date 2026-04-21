@@ -325,7 +325,7 @@ lightweight registry, with skills versioned via Git tags.
 
 * Simple and fast to set up
 * Familiar workflow for developers
-* Has been discussed as a Phase 1 stopgap
+* Has been discussed as a short-term stopgap
 
 **Cons:**
 
@@ -352,7 +352,7 @@ registry itself.
   review and approve skill content before promoting it (e.g., tagging a
   version as "prod" or "approved"). The registry provides versioning and
   tagging but does not itself enforce content review workflows. As a
-  Phase 2 consideration, artifact signing for skill bundles should be
+  future consideration, artifact signing for skill bundles should be
   evaluated, using ODH-ADR-MR-0001-Sign as a potential model for the
   approach.
 * **Disconnected operation**: In air-gapped environments, skills must be
