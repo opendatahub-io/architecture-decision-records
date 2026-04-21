@@ -398,6 +398,7 @@ registry itself.
 | Data Science Pipelines | | 2026-04-16 | No |
 | Distributed Workloads | | 2026-04-16 | No |
 | TrustyAI / Explainability | | 2026-04-16 | No |
+| ProdSec | Lindani Phiri | 2026-04-21 | Yes |
 
 **Notes on stakeholder impacts:**
 
@@ -416,6 +417,10 @@ registry itself.
   strategy.
 * **Agentic AI (PM)**: Agents consume skills; the skill registry is
   core infrastructure for agentic AI workflows.
+* **ProdSec**: The skill registry stores and distributes executable
+  content (skills may contain scripts). Security review is needed for
+  the multi-tenancy isolation model, artifact trust, and FIPS
+  compliance.
 ## References
 
 * [Skill Registry MVP Design](https://github.com/B-Step62/mlflow/blob/ca5d1a2f6e55691077425b417c26f45380fbf623/.agent/skill-registry-mvp-design.md)
