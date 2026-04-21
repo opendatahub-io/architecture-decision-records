@@ -27,7 +27,7 @@ This architectural change addresses several design and operational concerns:
 
 ## Goals
 
-* Introduce namespace-scoped `MaaSTenant` CR for user-facing configuration
+* Introduce namespace-scoped `Tenant` CR for user-facing configuration
 * Retain `ModelsAsService` CR for internal ODH operator integration
 * Enable self-bootstrapping MaaS platform via `maas-controller`
 * Establish clear separation between operator integration and user configuration APIs
@@ -74,19 +74,19 @@ The migration moves implementation from the common platform API to the dedicated
 ## Alternatives
 
 ### Alternative 1: Single CR Approach (ModelsAsService only)
-**Pros**: Simpler architecture, single API surface, no additional complexity
+**Pros**: Simpler architecture, single API surface, no additional complexity  
 **Cons**: Continues using internal ODH operator CRs for user configuration, doesn't prepare for future multi-tenancy, maintains tight coupling between operator and component concerns, violates separation of internal vs user-facing APIs
 
 ### Alternative 2: Complete ModelsAsService Replacement
-**Pros**: Clean break, single user-facing API, removes internal CR complexity
+**Pros**: Clean break, single user-facing API, removes internal CR complexity  
 **Cons**: Breaks existing operator integration patterns, requires migration of all ODH operator component handling, higher risk and complexity for operator changes
 
 ### Alternative 3: Cluster-scoped Tenant CR  
-**Pros**: Simpler RBAC, consistent with current ModelsAsService scope, easier cross-namespace access
+**Pros**: Simpler RBAC, consistent with current ModelsAsService scope, easier cross-namespace access  
 **Cons**: CRD scope is immutable, would require complex migration path for future namespace-scoped multi-tenancy, doesn't align with future architecture direction, limits RBAC isolation
 
 ### Alternative 4: Enhanced ModelsAsService CR
-**Pros**: Leverages existing CR, no new API complexity, maintains operator integration
+**Pros**: Leverages existing CR, no new API complexity, maintains operator integration  
 **Cons**: Mixes internal operator concerns with user configuration, harder to evolve independently, doesn't prepare for namespace-scoped multi-tenancy
 
 ## Security and Privacy Considerations
