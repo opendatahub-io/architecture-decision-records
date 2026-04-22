@@ -13,7 +13,7 @@
 
 ## What
 
-Introduction of a new `MaaSTenant` custom resource for user-facing Models-as-a-Service platform configuration while retaining the existing `ModelsAsService` CR for internal operator integration.
+Introduction of a new `Tenant` custom resource for user-facing Models-as-a-Service platform configuration while retaining the existing `ModelsAsService` CR for internal operator integration.
 
 ## Why
 
