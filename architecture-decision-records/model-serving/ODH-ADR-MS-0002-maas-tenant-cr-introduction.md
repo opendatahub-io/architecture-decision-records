@@ -46,10 +46,10 @@ This architectural change addresses several design and operational concerns:
 The implementation involves a dual-CR architecture across the ODH Operator and MaaS repositories:
 
 ### ODH Operator Changes
-- Retain existing `ModelsAsService` controller and CRD for internal operator integration
-- Update component handling to support both internal (`ModelsAsService`) and external (`Tenant`) CRs
-- Maintain `DataScienceCluster` integration through existing `ModelsAsService` CR
-- Add operator install manifests for the new MaaS component integration
+- Remove existing ModelsAsService controller; retain CRD and component handler for DSC enablement checks and status aggregation  
+- Delegate Tenant CR creation to maas-controller; operator only reads Tenant status and deletes (eventually moved to maas-controller) it on MaaS disable  
+- Aggregate MaaS health into DataScienceCluster status by reading Tenant conditions (replaces previous ModelsAsService CR-based status)  
+- anifests to deploy maas-controller (CRDs, RBAC, Deployment) when MaaS is enabled in DSC
 
 ### Implementation Approach
 
@@ -69,7 +69,7 @@ The migration moves implementation from the common platform API to the dedicated
 - `ModelsAsService` CR (`components.platform.opendatahub.io`): Internal operator integration, cluster-scoped
 - `Tenant` CR (`maas.opendatahub.io`): User-facing configuration, namespace-scoped
 - MaaS controller reconciles user configuration from `Tenant` CR independently
-- ODH operator continues to manage component lifecycle through `ModelsAsService` CR
+- `ModelsAsService` CRD (components.platform.opendatahub.io): Retained for DSC enablement checks and status aggregation; no CR instance is created on-cluster. Planned to be updated as a follow up in 3.5
 
 ## Alternatives
 
