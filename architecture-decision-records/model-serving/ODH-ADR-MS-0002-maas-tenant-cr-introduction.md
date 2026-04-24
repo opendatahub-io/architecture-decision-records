@@ -49,7 +49,7 @@ The implementation involves a dual-CR architecture across the ODH Operator and M
 - Remove existing ModelsAsService controller; retain CRD and component handler for DSC enablement checks and status aggregation  
 - Delegate Tenant CR creation to maas-controller; operator only reads Tenant status and deletes (eventually moved to maas-controller) it on MaaS disable  
 - Aggregate MaaS health into DataScienceCluster status by reading Tenant conditions (replaces previous ModelsAsService CR-based status)  
-- anifests to deploy maas-controller (CRDs, RBAC, Deployment) when MaaS is enabled in DSC
+- Manifests to deploy maas-controller (CRDs, RBAC, Deployment) when MaaS is enabled in DSC
 
 ### Implementation Approach
 
