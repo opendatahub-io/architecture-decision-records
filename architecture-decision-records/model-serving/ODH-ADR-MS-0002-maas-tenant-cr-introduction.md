@@ -3,9 +3,9 @@
 |                |            |
 | -------------- | ---------- |
 | Date           | 2026-04-21 |
-| Scope          | Model Serving |
+| Scope          | Model Serving, Models As A Service |
 | Status         | Draft |
-| Authors        | Lindani Phiri |
+| Authors        | Lindani Phiri, Ishita Sequeira, Jamie Land |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | |
@@ -55,21 +55,21 @@ The implementation involves a dual-CR architecture across the ODH Operator and M
 
 The migration moves implementation from the common platform API to the dedicated maas.opendatahub.io API:
 
-* **Tenant CR Creation**: Establish a namespace-scoped `Tenant` Custom Resource that includes:
+* **Tenant ConfigurationCR Creation**: Establish a namespace-scoped `Tenant` Custom Resource. This is intended to be co-located with other CRs  (MaaSAuthPolicy, MaaSSubscription) in a tenant adminstration (control plane) namespace to customize:
   - API key configuration  
   - External OIDC settings
   - Gateway configuration
-  - Telemetry policies
-* **Singleton Pattern**: Enforce single tenant via CEL validation requiring name `default-tenant`
+  - Telemetry policies   
+* **Singleton Pattern**: Enforce single tenant via CEL validation requiring name `default-tenant`. This is a temporary measure until a full tenancy architecture is defined.
 * **Self-Bootstrapping**: maas-controller creates the default Tenant automatically
 * **Cross-Namespace Resource Management**: Use tracking labels (`maas.opendatahub.io/tenant-name` and `maas.opendatahub.io/tenant-namespace`) for resources across different namespaces
 
 
 ### Dual-CR Architecture
-- `ModelsAsService` CR (`components.platform.opendatahub.io`): Internal operator integration, cluster-scoped
+- `ModelsAsService` CR (`components.platform.opendatahub.io`): Internal operator integration, cluster-scoped. This is the Maas global controller CR and follows the established pattern for other RHOAI components.
 - `Tenant` CR (`maas.opendatahub.io`): User-facing configuration, namespace-scoped
 - MaaS controller reconciles user configuration from `Tenant` CR independently
-- `ModelsAsService` CRD (components.platform.opendatahub.io): Retained for DSC enablement checks and status aggregation; no CR instance is created on-cluster. Planned to be updated as a follow up in 3.5
+- `ModelsAsService` CRD (components.platform.opendatahub.io): Retained for DSC enablement checks and status aggregation; no CR instance is created on-cluster. Planned to be updated as a follow up in future releases.
 
 ## Alternatives
 
@@ -128,4 +128,4 @@ The migration moves implementation from the common platform API to the dedicated
 
 | Reviewed by                   | Date       | Notes |
 | ----------------------------- | ---------  | ------|
-|                               |            |       |
+|  Marius Danciu                    |     04-24-2026       |       |
