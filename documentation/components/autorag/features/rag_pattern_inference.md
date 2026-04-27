@@ -1,7 +1,6 @@
 # RAG Pattern Inference
 
 This page documents **AutoRAG pattern deployment** from optimization completion through production inference.
-For AutoRAG architecture decisions and optimization workflow, see the AutoRAG ADR: [ODH-ADR-0002-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0002-autorag.md).
 
 **RHOAI 3.4 (current)**
 
