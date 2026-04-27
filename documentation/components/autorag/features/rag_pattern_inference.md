@@ -352,13 +352,16 @@ The Dashboard aggregates KFP pipeline results and pattern artifacts for RHOAI us
 
 | Capability | Description                                                                                                                                                                           |
 |------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Responses preview** | Renders **`pattern.json`** `settings.responses_template` field (read-only)—including structured `input` and `file_search` when present—so users see the exact Responses API template. |
-| **Vector binding** | Shows **`settings.vector_store_binding`** in place of `vector_store`.                                                                                                                 |
-| **Hand-off to GenAI Studio** | Deep link or button to GenAI Studio “try me out” (requires configuration persistence described in https://redhat.atlassian.net/browse/RHAIRFE-912).                                   |
+| **Pattern listing and metrics** | Displays all optimized patterns from pipeline runs with evaluation metrics (faithfulness, answer correctness, final score) for comparison and selection. |
+| **Responses API preview** | Renders **`pattern.json`** `settings.responses_template` field (read-only)—including structured `input` and `file_search` when present—so users see the exact Responses API template. |
+| **Vector store binding info** | Shows **`settings.vector_store_binding`** details (provider, vector_store_id, collection) for understanding deployment requirements. |
+| **Code snippet export** | One-click export of Python/curl examples and download of `create_model_response.py` script for production use (see [Code snippet generation](#code-snippet-generation) below). |
+| **Pattern deployment** | “Deploy Pattern” button to save indexing pipeline to AI Pipelines project for vector store creation (see [Vector Store Creation](./rag_pattern_vector_store_creation.md)). |
+| **Hand-off to GenAI Studio** | Deep link or button to GenAI Studio “try me out” for interactive testing (see [Configuration Persistence for Gen AI Studio](./configuration_persistence_genai_studio.md)). |
 
 ### Code snippet generation
 
-The Dashboard provides one-click export of Python/curl examples that call **`POST /v1/responses`**, ready for use in production applications. Users can either:
+The **Code snippet export** capability provides one-click access to production-ready code examples that call **`POST /v1/responses`**. Users have multiple options:
 
 - **Download the ready-to-use script:** Export the **`create_model_response.py`** script directly from the pattern artifacts (see [Generated artifacts per pattern](#generated-artifacts-per-pattern)). This interactive client script embeds the Llama Stack base URL from environment variables, reads the Responses configuration from **`pattern.json`**, and provides a command-line interface for testing patterns.
   
@@ -448,11 +451,9 @@ curl -X POST https://llama-stack.apps.cluster.example.com/v1/responses \
 
 ## Configuration Persistence for Gen AI Studio
 
-Configuration persistence for Gen AI Studio, including pattern registration via Config, vector store configuration, and “Try me out” workflow integration, to be discussed in [RHAIRFE-912](https://issues.redhat.com/browse/RHAIRFE-912).
-
-**Key topics to be covered:**
-- Pattern config registration for discovery
-- GenAI Studio “Try me out” for AutoRAG Patterns
+Configuration persistence for Gen AI Studio, including pattern registration via Config, vector store configuration, 
+and “Try me out” workflow integration, to be discussed in [RHAIRFE-912](https://issues.redhat.com/browse/RHAIRFE-912)
+and [RHAIRFE-2122](https://issues.redhat.com/browse/RHAIRFE-2122) (AutoRAG Pattern Integration with GenAI Studio/Playground).
 
 ---
 

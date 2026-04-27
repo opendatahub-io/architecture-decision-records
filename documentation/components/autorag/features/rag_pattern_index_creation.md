@@ -86,7 +86,11 @@ RHOAI 3.5 introduces a **production-ready KFP pipeline** for vector store creati
 
 This pipeline automates the entire indexing workflow as a reusable, orchestrated, and observable Kubeflow Pipelines task. Instead of manually executing notebooks, operators can deploy patterns by simply running the pattern-specific compiled pipeline with a single click.
 
-**Architecture:** AutoRAG generates a **compiled, pre-configured pipeline YAML per pattern** with all settings from `pattern.json` baked in as defaults. This provides a superior user experience—operators just click "Deploy" without needing to provide configuration parameters.
+**Architecture:** 
+- AutoRAG image contains the index building pipeline & pipeline components source code.
+- AutoRAG generates a **compiled, pre-configured pipeline YAML per pattern** with all settings from `pattern.json` baked in as defaults. This provides a superior user experience—operators just click "Deploy" without needing to provide configuration parameters.
+- AutoRAG inject the currently used image digest to compiled pipeline.
+ 
 
 ### Per-pattern compiled pipelines
 
