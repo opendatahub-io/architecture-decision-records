@@ -156,12 +156,10 @@ The pipeline produces artifacts under each **`<pattern_subdir>/`** (one director
 | **`create_model_response.py`** | Python | Interactive client script for testing patterns (embeds Llama Stack base URL from env, reads Responses config from `pattern.json`) |
 | **`README.md`** | Markdown | How to run the test script, TLS / CA bundle notes, URL overrides |
 
-**Key change from 3.4:** The separate `v1_responses_body.json` artifact is eliminated. The Responses API request template is embedded in `pattern.json` under the `settings.responses_template` field, providing a single source of truth.
-
-**Status (RHOAI 3.5):**
-- Integration gaps remain in pattern config registration and Dashboard/Studio discovery ([RHAIRFE-912](https://issues.redhat.com/browse/RHAIRFE-912)).
-
-
+**Key change from 3.4:** 
+- The separate `v1_responses_body.json` artifact is eliminated
+- The Responses API request template is embedded in `pattern.json` under the `settings.responses_template` field, providing a single source of truth
+- `settings.vector_store_binding` introduced in place of out-dated `settings.vector_store` (properties aligned with LLS config)
 
 ### Target payloads (examples)
 
@@ -267,8 +265,6 @@ Illustrative shape for **`pattern.json`** with **Responses API template** and **
    "final_score":0.87
 }
 ```
-> **NOTE: braking change**: the `settings.vector_store_binding` replaces `vector_store`!.
-
 
 **Key fields (3.5 additions to 3.4 schema):**
 - **`settings.responses_template`:** Contains the complete **`POST /v1/responses`** request template that matches what the optimization engine used (ai4rag + Llama Stack). The `<user_query_placeholder>` in the `input` array is replaced with actual questions during inference. Dashboard and GenAI Studio extract this field to generate code snippets and enable "try me out."
