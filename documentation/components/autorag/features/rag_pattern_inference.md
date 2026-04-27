@@ -153,7 +153,7 @@ The pipeline produces artifacts under each **`<pattern_subdir>/`** (one director
 | **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
 | **`evaluation_results.json`** | JSON | Per-question evaluation metrics (context precision, answer relevance, faithfulness), traces, metadata—the dedicated evaluation file |
 | **`create_model_response.py`** | Python | Interactive client script for testing patterns (embeds Llama Stack base URL from env, reads Responses config from `pattern.json`) |
-| **`README.md`** | Markdown | How to run the test script, TLS / CA bundle notes, URL overrides |
+
 
 **Key change from 3.4:** 
 - The separate `v1_responses_body.json` artifact is eliminated
