@@ -1,8 +1,6 @@
 # RAG Pattern Vector Store Creation
 
-This page documents **AutoRAG pattern vector store creation** from optimization completion through production knowledge base building. It is split into **[current state (RHOAI 3.4)](#current-state-rhoai-34)**—what ships and how operators rebuild vector stores today—and **[planned work (RHOAI 3.5 and later)](#rhoai-35-and-later)**—KFP pipeline-based vector store creation for production deployment.
-
-For AutoRAG architecture decisions and optimization workflow, see the AutoRAG ADR: [ODH-ADR-0002-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0002-autorag.md). For pattern inference and deployment, see [RAG Pattern Inference](./rag_pattern_inference.md).
+This page documents **AutoRAG pattern vector store creation** from optimization completion through production knowledge base building.
 
 ## Table of contents
 
