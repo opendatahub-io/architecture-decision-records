@@ -35,7 +35,39 @@ AutoML and AutoRAG are deployed as separate packages in a monorepo, each contain
 
 ## How
 
-We will extract shared logic into a shared internal library package while each product maintains its own identity layer. The extraction will target highly reusable logic only (≥80% code reuse threshold) for both BFF and UI. At the BFF layer, autox-core will provide common low-level interfaces, utilities, clients, and services to be consumed by AutoML and AutoRAG. Domain-specific logic or divergent behavior will be handled in AutoML/AutoRAG services before delegating to core services from autox-core, with dependency injection patterns used for more complex customization needs. At the UI layer, autox-core will provide low-level composable primitives (hooks and components) that AutoML and AutoRAG compose into feature-specific components, avoiding monolithic shared components with extensive prop variants. The UI will leverage Module Federation with autox-core configured as a singleton shared dependency to ensure a single runtime instance and optimized bundle size. Local development will use Go workspaces for BFF packages and npm workspaces for UI packages, enabling seamless cross-package development without manual linking.
+We will extract shared logic into a shared internal library package (`autox-core`) while each product maintains its own identity layer. The extraction targets highly reusable logic only (≥80% code reuse threshold) for both BFF and UI.
+
+### BFF Layer
+
+**autox-core** provides:
+* Common low-level interfaces, utilities, clients, and services
+* Identity-agnostic business logic consumed by both AutoML and AutoRAG
+
+**AutoML/AutoRAG** services handle:
+* Domain-specific logic and divergent behavior
+* Orchestration and adaptation before delegating to autox-core services
+* Complex customization via dependency injection patterns
+
+### UI Layer
+
+**autox-core** provides:
+* Low-level composable primitives (hooks and components)
+* Reusable building blocks that products compose into feature-specific components
+* Avoids monolithic shared components with extensive prop variants
+
+**AutoML/AutoRAG** compose:
+* Feature-specific components built from autox-core primitives
+* Product-specific UI orchestration and page-level logic
+
+**Module Federation**:
+* autox-core configured as a singleton shared dependency
+* Ensures single runtime instance and optimized bundle size
+
+### Local Development
+
+* **BFF**: Go workspaces for seamless cross-package development
+* **UI**: npm workspaces for seamless cross-package development
+* No manual linking required
 
 ### Package Structure
 
