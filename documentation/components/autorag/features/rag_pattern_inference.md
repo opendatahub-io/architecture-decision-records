@@ -463,7 +463,7 @@ Configuration persistence for Gen AI Studio, including pattern registration via 
 
 ### End-to-end integration workflow
 
-The following diagram shows how all components work together from optimization to production:
+The following diagram shows how all components could integrate together:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
