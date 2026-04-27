@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHOAIENG-59342](https://redhat.atlassian.net/browse/RHOAIENG-59342) |
-| Other docs:    | none |
+| Other docs:    | (see RHOAIENG-59342 for additional research/planning documents) |
 
 ## What
 
