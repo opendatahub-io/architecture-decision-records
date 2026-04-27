@@ -1,4 +1,4 @@
-# Create "autox-core" Package to Address AutoML/AutoRAG Code Duplication
+# Create `autox-core` Package to Address AutoML/AutoRAG Code Duplication
 
 |                |            |
 | -------------- | ---------- |
@@ -35,46 +35,51 @@ AutoML and AutoRAG are deployed as separate packages in a monorepo, each contain
 
 ## How
 
-We will extract shared logic into a shared internal library package (`autox-core`) while each product maintains its own identity layer. The extraction targets highly reusable logic only (≥80% code reuse threshold) for both BFF and UI.
+We will address the 80-90% code duplication in AutoML and AutoRAG BFF layers by creating `autox-core` as a shared services-only library.
 
-### BFF Layer
+**What gets shared**:
+* Common Kubernetes, Pipelines, etc. logic extracted into reusable building blocks
+* Clean service-layer functions with explicit request/response types (not an HTTP framework)
+* Organized by feature domain (`kubernetes/`, `pipelines/`, etc.)
 
-**autox-core** provides:
-* Common low-level interfaces, utilities, clients, and services
-* Identity-agnostic business logic consumed by both AutoML and AutoRAG
+**What stays separate**:
+* Each product maintains its own App structs and HTTP handlers
+* Product-specific orchestration and business logic remain in AutoML/AutoRAG packages
 
-**AutoML/AutoRAG** services handle:
-* Domain-specific logic and divergent behavior
-* Orchestration and adaptation before delegating to autox-core services
-* Complex customization via dependency injection patterns
+**Architectural improvements**:
+* Establish clean boundaries: handlers → services → clients
+* Enable massive deduplication while preserving domain-specific customization flexibility
 
-### UI Layer
-
-**autox-core** provides:
-* Low-level composable primitives (hooks and components)
-* Reusable building blocks that products compose into feature-specific components
-* Avoids monolithic shared components with extensive prop variants
-
-**AutoML/AutoRAG** compose:
-* Feature-specific components built from autox-core primitives
-* Product-specific UI orchestration and page-level logic
-
-**Module Federation**:
-* autox-core configured as a singleton shared dependency
-* Ensures single runtime instance and optimized bundle size
-
-### Local Development
-
-* **BFF**: Go workspaces for seamless cross-package development
-* **UI**: npm workspaces for seamless cross-package development
-* No manual linking required
-
-### Package Structure
+### Package Structure (tentative)
 
 ```
-/packages/autox-core (or autox-shared)
-  /frontend     # common/core interfaces, utilities, hooks, components, etc. for UI
-  /bff          # common/core interfaces, utilities, clients, services, etc. for BFF
+packages/autox-core/
+├── bff/
+│   ├── kubernetes/             # Kubernetes integration
+│   │   ├── models.go           # Domain models (Namespace, Secret, RequestIdentity)
+│   │   ├── client.go           # K8s client interface
+│   │   ├── factory.go          # Unified factory (handles static vs token auth)
+│   │   ├── service.go          # KubernetesService (business logic)
+│   │   ├── validators.go       # Input validation (namespace format, RBAC checks)
+│   │   └── errors.go           # Custom errors (NotFoundError, ForbiddenError)
+│   │
+│   ├── pipelines/              # Kubeflow Pipelines integration
+│   │   ├── models.go           # Domain models (PipelineRun, Pipeline, DSPA)
+│   │   ├── client.go           # HTTP client for KFP API
+│   │   ├── service.go          # PipelinesService (discovery, caching, CRUD)
+│   │   ├── discovery.go        # DSPA discovery, pipeline discovery with LRU cache
+│   │   ├── validators.go       # Request validation
+│   │   └── errors.go           # Custom errors
+│   │
+│   ├── ...
+│   │
+│   └── common/                 # Shared utilities
+│       ├── errors/             # Base error types and helpers
+│       ├── validation/         # Generic validators (DNS-1123, URLs)
+│       └── cache/              # LRU cache implementation
+│
+└── frontend/
+    └── ...
 ```
 
 ### Identity Layer
