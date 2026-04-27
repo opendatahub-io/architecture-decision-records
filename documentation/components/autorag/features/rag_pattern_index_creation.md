@@ -286,16 +286,12 @@ The compiled indexing pipeline enables automated vector store deployment with se
    - User navigates to **Data Science Pipelines** → **Pipelines** in RHOAI
    - Locates the pattern indexing pipeline
    - Clicks "Create run" to start pipeline execution
-   - Provides runtime parameters:
-     - `document_source`: S3 bucket, PVC path, or HTTP URL
-     - `vector_store_dsn`: (optional if using default)
-     - Other overrides if needed (rare, since defaults are pre-configured)
+   - Provides runtime parameters
    - Monitors execution in Pipelines UI:
      - Real-time step progress
      - Component logs (chunking, embedding, indexing)
      - Metrics and artifacts
      - Error messages and debugging info
-
 4. **Post-completion:**
    - Pipeline run completes successfully → vector store is ready
    - User can view run artifacts (stats, logs) in Pipelines UI
@@ -330,31 +326,6 @@ Data Science Pipelines → Pipelines
 │                               (chunk_size: 512)                │
 │                                                                │
 │ [Create run] [View YAML]                                       │
-└────────────────────────────────────────────────────────────────┘
-```
-
-When creating a run, users provide minimal input:
-
-```
-Create Pipeline Run
-┌────────────────────────────────────────────────────────────────┐
-│ Pipeline: pattern-01-indexing                                  │
-│                                                                │
-│ Run name: pattern-01-indexing-run-20260427                     │
-│                                                                │
-│ Parameters (only user-specific values needed):                 │
-│ ─────────────────────────────────────────────────────────────  │
-│ document_source: [s3://my-docs/knowledge-base/        ]        │
-│ vector_store_dsn: [http://milvus.svc:19530 (default)  ]        │
-│                                                                │
-│ ℹ Pattern settings (pre-configured, no input needed):          │
-│   • chunk_size: 2048                                           │
-│   • chunk_overlap: 256                                         │
-│   • embedding_model: text-embedding-3-small                    │
-│   • collection_name: coll_pattern_01                           │
-│   • embedding_dimension: 768                                   │
-│                                                                │
-│ [Cancel]  [Create run]                                         │
 └────────────────────────────────────────────────────────────────┘
 ```
 
