@@ -14,11 +14,11 @@ This page documents **AutoRAG pattern vector store creation** from optimization 
 **RHOAI 3.5 and later (planned)**
 
 - [Documents Indexing Pipeline](#documents-indexing-pipeline)
-- [Relationship to AutoRAG optimization pipeline](#relationship-to-autorag-optimization-pipeline)
 - [Per-pattern compiled pipelines](#per-pattern-compiled-pipelines)
 - [Pipeline architecture](#pipeline-architecture)
 - [Generated artifacts](#generated-artifacts)
 - [Automated deployment workflow](#automated-deployment-workflow)
+  - [AutoRAG Dashboard → AI Pipelines integration](#autorag-dashboard--ai-pipelines-integration)
 
 ---
 
@@ -112,18 +112,6 @@ AutoRAG Optimization Completes
   ├── inference_notebook.ipynb
   └── indexing_pipeline.yaml                 # NEW: Compiled KFP pipeline
 ```
-
-**User workflow:**
-
-```bash
-# Simple deployment - just run the compiled pipeline
-# Pipeline is uploaded to KFP from the pattern folder
-kfp pipeline run \
-  --pipeline-id pattern-01-indexing \
-  --parameter document_source=s3://my-docs/
-  # All pattern settings (chunk_size, embedding_model, etc.) already configured
-```
-
 **Benefits:**
 
 - ✅ **One-click deployment** - Dashboard users just click "Deploy Pattern", no configuration needed
@@ -304,51 +292,6 @@ The compiled indexing pipeline enables automated vector store deployment with se
 - ✅ **Standard monitoring:** Users leverage existing AI Pipelines UI skills for monitoring
 - ✅ **Run history:** All indexing runs tracked in Pipelines UI, enabling auditing and comparison
 - ✅ **Easy re-runs:** Clone existing runs to rebuild vector stores when documents change
-
-**What users see in AI Pipelines UI:**
-
-After AutoRAG Dashboard saves the pipeline to the AI Pipelines project, users see:
-
-```
-Data Science Pipelines → Pipelines
-┌────────────────────────────────────────────────────────────────┐
-│ Pipelines in "my-autorag-project"                              │
-├────────────────────────────────────────────────────────────────┤
-│                                                                │
-│ Name                          Description          Uploaded    │
-│ ───────────────────────────────────────────────────────────    │
-│ pattern-01-indexing           AutoRAG pattern 01   2026-04-27  │
-│                               indexing pipeline                │
-│                               (chunk_size: 2048)               │
-│                                                                │
-│ pattern-02-indexing           AutoRAG pattern 02   2026-04-27  │
-│                               indexing pipeline                │
-│                               (chunk_size: 512)                │
-│                                                                │
-│ [Create run] [View YAML]                                       │
-└────────────────────────────────────────────────────────────────┘
-```
-
-During execution, standard Pipelines UI shows:
-
-```
-Run: pattern-01-indexing-run-20260427
-┌────────────────────────────────────────────────────────────────┐
-│ Status: Running (Step 3 of 6)                                  │
-│                                                                │
-│ Graph View:                                                    │
-│   [✓] Load Pattern Config                                      │
-│   [✓] Document Ingestion (1523 docs loaded)                    │
-│   [▶] Chunking (in progress...)                                │
-│   [ ] Embedding Generation                                     │
-│   [ ] Vector Store Indexing                                    │
-│   [ ] Validation & Metrics                                     │
-│                                                                │
-│ Logs | Artifacts | Metrics                                     │
-│                                                                │
-│ [Stop run] [Clone run]                                         │
-└────────────────────────────────────────────────────────────────┘
-```
 
 **Pipeline execution options:**
 
