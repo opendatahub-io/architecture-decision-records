@@ -35,6 +35,8 @@ AutoML and AutoRAG are deployed as separate packages in a monorepo, each contain
 
 ## How
 
+### BFF Layer
+
 We will address the 80-90% code duplication in AutoML and AutoRAG BFF layers by creating `autox-core` as a shared services-only library.
 
 **What gets shared**:
@@ -49,6 +51,30 @@ We will address the 80-90% code duplication in AutoML and AutoRAG BFF layers by 
 **Architectural improvements**:
 * Establish clean boundaries: handlers → services → clients
 * Enable massive deduplication while preserving domain-specific customization flexibility
+
+### UI Layer
+
+We will address UI code duplication by creating `autox-core/ui` as a shared library of low-level composable primitives.
+
+**What gets shared**:
+* Low-level hooks and components that products compose into features
+* Common utilities (validation helpers, formatters, domain logic)
+* Organized by technical layer (components, hooks, layouts, utils, types) to support cross-feature composition
+
+**What stays separate**:
+* Each product maintains its own pages, routes, and navigation structure
+* Product-specific feature composition and orchestration logic remain in AutoML/AutoRAG packages
+
+**Architectural improvements**:
+* Establish clear composition hierarchy: primitives → features → pages
+* Module Federation singleton configuration ensures single runtime instance and optimized bundle size
+* Avoid monolithic shared components with extensive prop variants in favor of composable primitives
+
+### Local Development
+
+* **BFF**: Go workspaces for seamless cross-package development
+* **UI**: npm workspaces for seamless cross-package development
+* No manual linking required
 
 ### Package Structure (tentative)
 
@@ -79,7 +105,11 @@ packages/autox-core/
 │       └── cache/              # LRU cache implementation
 │
 └── ui/
-    └── ...
+    ├── components/             # Shared UI primitives
+    ├── hooks/                  # Shared hooks
+    ├── layouts/                # Shared layouts
+    ├── utils/                  # Validation, formatting, helpers
+    └── types/                  # Shared TypeScript types
 ```
 
 ### Identity Layer
