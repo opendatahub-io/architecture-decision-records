@@ -745,7 +745,7 @@ Security patches to `autox-core` must propagate to both AutoML and AutoRAG deplo
 
 **Notes**:
 - Timelines apply to both AutoML and AutoRAG. Products cannot release patches independently for shared library CVEs (violates coordinated patch tracking).
-- If a CVE requires breaking API changes in `autox-core`, SLA may be extended by mutual agreement between RHOAI SRE and product teams, with interim mitigation steps documented (see [Version Pinning Policy](#version-pinning-policy)).
+- If a CVE requires breaking API changes in `autox-core`, SLA may be extended by mutual agreement between RHOAI SRE and product teams, with interim mitigation steps documented (see [Version Pinning Policy](#4-version-pinning-policy)).
 
 ##### 3. Emergency Coordinated Release Process
 
