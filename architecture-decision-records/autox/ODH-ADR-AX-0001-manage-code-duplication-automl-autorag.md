@@ -218,14 +218,16 @@ type PipelinesConfig struct {
     // Products extend with their own config wrapper
 }
 
-type PipelinesService struct {
+// pipelinesService is the concrete implementation (unexported)
+type pipelinesService struct {
     config PipelinesConfig
     client PipelinesClient
     cache  *lru.Cache
 }
 
-func NewPipelinesService(config PipelinesConfig, client PipelinesClient) *PipelinesService {
-    return &PipelinesService{
+// NewPipelinesService returns a new PipelinesService implementation
+func NewPipelinesService(config PipelinesConfig, client PipelinesClient) PipelinesService {
+    return &pipelinesService{
         config: config,
         client: client,
         cache:  lru.New(config.CacheTTL),
