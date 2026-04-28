@@ -465,7 +465,6 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
     "0.9": 0.8912
   },
   "metadata": {
-    "backtest_strategy": "expanding_window",
     "num_items": 1000,
     "avg_series_length": 365,
     "total_predictions": 21000,
@@ -481,7 +480,6 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
   - Returns dict with keys from `AVAILABLE_METRICS`: `{'WQL': 0.234, 'MAPE': 12.34, 'MASE': 0.876, 'RMSE': 45.67, 'MAE': 34.21}`
 - **`per_series_summary`**: Optional summary; **derived from** `predictor.backtest_predictions()` and custom per-series metric computation (not built-in AutoGluon)
 - **`quantile_coverage`**: Actual empirical coverage of predicted quantiles; **derived from** comparing `backtest_predictions()` quantile columns (`0.1`, `0.5`, `0.9`) against `backtest_targets()`
-- **`backtest_strategy`**: `"expanding_window"` (train set grows, default) or `"sliding_window"` (fixed train size via `max_history_length`)
 - **AutoGluon methods used**:
   - `predictor.backtest_predictions(test_data, num_val_windows=3)` → list of TimeSeriesDataFrame (predictions per window)
   - `predictor.backtest_targets(test_data, num_val_windows=3)` → list of TimeSeriesDataFrame (targets per window)
