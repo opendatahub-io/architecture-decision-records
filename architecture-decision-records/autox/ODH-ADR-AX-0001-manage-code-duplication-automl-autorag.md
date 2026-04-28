@@ -54,7 +54,7 @@ We will address the 80-90% code duplication in AutoML and AutoRAG BFF layers by 
 
 ```
 packages/autox-core/
-├── bff/
+├── services/
 │   ├── kubernetes/             # Kubernetes integration
 │   │   ├── models.go           # Domain models (Namespace, Secret, RequestIdentity)
 │   │   ├── client.go           # K8s client interface
@@ -78,7 +78,7 @@ packages/autox-core/
 │       ├── validation/         # Generic validators (DNS-1123, URLs)
 │       └── cache/              # LRU cache implementation
 │
-└── frontend/
+└── ui/
     └── ...
 ```
 
@@ -155,14 +155,49 @@ To prevent the shared layer from accumulating product-specific logic:
 
 ## Security and Privacy Considerations
 
-The `autox-core` shared library may contain authorization logic that is common to both AutoML and AutoRAG. This consolidation reduces duplication of security-critical code, but requires careful governance to ensure:
+The `autox-core` shared library consolidates authorization and secret-handling logic common to both AutoML and AutoRAG. This reduces duplication of security-critical code, but requires explicit safeguards against shared-library failure modes.
 
-* **Authorization logic must be identity-agnostic**: Shared authorization code should operate on generic permissions and roles, not product-specific policies. Product-specific authorization rules must remain in the product packages.
-* **Security reviews apply to shared code**: Changes to authorization logic in `autox-core` affect both products, so security reviews must consider cross-product impact.
-* **Testing coverage**: Authorization logic in the shared library must have comprehensive test coverage, as failures would impact both products.
-* **Deployment independence preserved**: Each product is still deployed as separate container sets with independent security boundaries. Vulnerabilities in one product's deployment do not automatically affect the other.
+### Authorization Composition Failure Modes
 
-This approach reduces the risk of authorization inconsistencies between AutoML and AutoRAG, but requires discipline to ensure shared authorization code does not become a source of coupling or introduce product-specific security assumptions.
+**Shared authorization code must prevent incorrect composition and cross-product privilege escalation:**
+
+* **CWE-285 (Improper Authorization)** - Shared RBAC logic in `autox-core` must not allow product-specific policy bypasses. Example failure: AutoML grants access to a namespace based on role X, but AutoRAG incorrectly composes the same shared check with weaker preconditions, allowing unauthorized access.
+* **CWE-863 (Incorrect Authorization)** - Shared token validation or SAR/SSAR checks must not introduce privilege escalation when products apply different authorization policies. Example failure: Shared code assumes namespace-scoped permissions, but one product incorrectly applies it to cluster-scoped resources.
+
+**Requirements:**
+
+1. **Authorization logic must be identity-agnostic**: Shared authorization code operates on generic permissions and roles, not product-specific policies. Product-specific authorization rules remain in product packages.
+2. **Explicit composition contracts**: All shared authorization functions must document their assumptions (e.g., "assumes namespace-scoped access check") and validate inputs (e.g., reject cluster-scoped resource requests if only namespace-scoped checks are implemented).
+3. **Mandatory product-policy tests**: Test suite must include scenarios exercising `autox-core` shared authz code with different product policies. Example: AutoML allows role X to create pipelines in namespace Y, AutoRAG denies role X in namespace Y — shared code must correctly enforce both policies.
+4. **Security reviews apply to shared code**: Changes to authorization logic in `autox-core` affect both products. Reviews must verify no cross-product privilege escalation or policy bypass.
+
+### Secret and Credential Handling
+
+**Shared code handling tokens, secrets, and credentials must prevent leakage and enforce safe lifecycle:**
+
+* **CWE-209 (Generation of Error Message Containing Sensitive Information)** - Error messages from `autox-core` must not expose tokens, secrets, Kubernetes API responses containing sensitive data, or internal system details.
+* **CWE-532 (Insertion of Sensitive Information into Log File)** - Logs from `autox-core` must not contain tokens, secret material, user credentials, or unredacted Kubernetes resource content.
+
+**Requirements:**
+
+1. **Log redaction rules**:
+   - Kubernetes tokens/bearer credentials: MUST be redacted before logging (replace with `[REDACTED]` or hash prefix for correlation).
+   - Secret resource content: MUST NOT be logged. Log resource metadata only (name, namespace, type).
+   - Pipeline API responses: MUST redact any embedded credentials or sensitive parameters before logging.
+   - User identity headers: Log identity type (e.g., "token-based auth") but NEVER log raw token values.
+
+2. **Non-retention and safe handling for secrets**:
+   - Tokens/secrets used by Kubernetes/pipeline clients: MUST use short-lived credentials where possible. MUST NOT persist to disk or in-memory caches beyond request lifetime.
+   - Secrets passed to pipelines: MUST be handled in-memory only during request processing. MUST NOT be stored in logs, debug output, or error messages.
+   - Error handling: When validation or client operations fail, error messages MUST redact secret material. Example: "Invalid token" instead of "Invalid token: eyJhbGciOi...".
+
+3. **Testing coverage**:
+   - Unit tests must verify that error messages and logs from `autox-core` do NOT contain sensitive data when operations fail.
+   - Integration tests must verify that shared Kubernetes/pipeline client code redacts tokens in logs and does not persist secret material.
+
+### Deployment Independence
+
+Each product is still deployed as separate container sets with independent security boundaries. Vulnerabilities in one product's deployment do not automatically affect the other. However, shared library vulnerabilities affect both products — all security patches to `autox-core` must be coordinated across AutoML and AutoRAG releases.
 
 ## Risks
 
