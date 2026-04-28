@@ -123,11 +123,481 @@ The shared `autox-core` library remains **identity-agnostic** and contains only 
 
 ### Boundary Discipline
 
-To prevent the shared layer from accumulating product-specific logic:
+To prevent the shared layer from accumulating product-specific logic, we enforce boundaries through automated controls and manual review:
+
+#### Automated Enforcement (CI Gates)
+
+**Architecture Unit Tests** (Go layer):
+* Use `go-arch` or custom import analysis to assert that packages under `autox-core/services/*` do not import from `automl/*` or `autorag/*`
+* Tests fail if any code in `autox-core` imports product-specific packages
+* Example test pattern:
+  ```go
+  // autox-core/services/arch_test.go
+  func TestNoCrossProductImports(t *testing.T) {
+      packages := analysis.LoadPackages("./...")
+      for _, pkg := range packages {
+          if strings.HasPrefix(pkg.Path, "autox-core/services/") {
+              for _, imp := range pkg.Imports {
+                  if strings.Contains(imp, "automl/") || strings.Contains(imp, "autorag/") {
+                      t.Errorf("autox-core package %s imports product-specific package %s", pkg.Path, imp)
+                  }
+              }
+          }
+      }
+  }
+  ```
+
+**Linting Rules** (Go layer):
+* Custom linter or `golangci-lint` configuration to forbid imports from `automl/*` and `autorag/*` into `autox-core`
+* Configured as error-level (not warning) to block merges
+* Example `.golangci.yml` rule:
+  ```yaml
+  linters-settings:
+    depguard:
+      rules:
+        autox-core-isolation:
+          files:
+            - "**/autox-core/**/*.go"
+          deny:
+            - pkg: "automl"
+              desc: "autox-core must not import product-specific automl packages"
+            - pkg: "autorag"
+              desc: "autox-core must not import product-specific autorag packages"
+  ```
+
+**TypeScript/UI Linting** (UI layer):
+* ESLint rule to forbid imports from `@odh-dashboard/automl` or `@odh-dashboard/autorag` into `autox-core/ui`
+* Example ESLint configuration:
+  ```js
+  {
+    "rules": {
+      "no-restricted-imports": ["error", {
+        "patterns": [{
+          "group": ["@odh-dashboard/automl*", "@odh-dashboard/autorag*"],
+          "message": "autox-core/ui must not import product-specific packages"
+        }]
+      }]
+    },
+    "overrides": [{
+      "files": ["packages/autox-core/ui/**/*.ts", "packages/autox-core/ui/**/*.tsx"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "patterns": ["@odh-dashboard/automl*", "@odh-dashboard/autorag*"]
+        }]
+      }
+    }]
+  }
+  ```
+
+**CI/CD Integration**:
+* Architecture tests and linting rules run as required CI checks on all PRs
+* PRs that violate boundary rules are blocked from merging
+* Test failures surface with clear error messages identifying the violating import
+
+#### Manual Review Guidelines
+
 * Code reviews must verify that additions to `autox-core` are genuinely shared
 * Product-specific behavior must live in the product packages, not in `autox-core`
 * The shared library should expose extension points (configuration, hooks, adapters) rather than conditional logic
 * Regular refactoring reviews to identify and extract incorrectly placed product-specific code
+
+### Extension Patterns
+
+`autox-core` remains identity-agnostic by exposing extension points that products compose. Prefer these patterns over conditional logic:
+
+#### Pattern 1: Configuration Objects
+
+Shared services accept configuration objects that products control:
+
+```go
+// autox-core/services/pipelines/service.go
+type PipelinesConfig struct {
+    CacheTTL          time.Duration
+    EnableAutoRefresh bool
+    DefaultNamespace  string
+    // Products extend with their own config wrapper
+}
+
+type PipelinesService struct {
+    config PipelinesConfig
+    client PipelinesClient
+    cache  *lru.Cache
+}
+
+func NewPipelinesService(config PipelinesConfig, client PipelinesClient) *PipelinesService {
+    return &PipelinesService{
+        config: config,
+        client: client,
+        cache:  lru.New(config.CacheTTL),
+    }
+}
+```
+
+**Product usage** (AutoML):
+```go
+// packages/automl/bff/internal/services/pipelines.go
+type AutoMLPipelinesConfig struct {
+    autoxcore.PipelinesConfig
+    EnableExperimentTracking bool // AutoML-specific
+}
+
+func NewAutoMLPipelinesService(cfg AutoMLPipelinesConfig) *AutoMLPipelinesService {
+    coreService := autoxcore.NewPipelinesService(cfg.PipelinesConfig, client)
+    return &AutoMLPipelinesService{
+        PipelinesService: coreService,
+        trackExperiments: cfg.EnableExperimentTracking,
+    }
+}
+```
+
+#### Pattern 2: Service Composition for Simple Operations
+
+For simple operations with no product-specific logic, products call autox-core services directly from handlers:
+
+```go
+// autox-core/services/pipelines/service.go
+type PipelinesService interface {
+    ListPipelineRuns(ctx context.Context, httpClient *http.Client, baseURL string, req ListPipelineRunsRequest) ([]*PipelineRun, string, error)
+    GetPipelineRun(ctx context.Context, httpClient *http.Client, baseURL string, req GetPipelineRunRequest) (*PipelineRun, error)
+    DeletePipelineRun(ctx context.Context, httpClient *http.Client, baseURL string, req DeletePipelineRunRequest) error
+}
+
+type ListPipelineRunsRequest struct {
+    Identity          *kubernetes.RequestIdentity
+    Namespace         string
+    PipelineVersionID string
+    PageSize          int32
+    PageToken         string
+}
+```
+
+**Product usage** (AutoML) - thin handler delegates directly to autox-core:
+```go
+// packages/automl/bff/internal/api/pipeline_runs_handler.go
+func (app *App) ListPipelineRunsHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+    ctx := r.Context()
+    
+    // Extract entities from context (added by middleware)
+    identity := ctx.Value(constants.RequestIdentityKey).(*k8s.RequestIdentity)
+    namespace := ctx.Value(constants.NamespaceKey).(string)
+    dspa := ctx.Value(constants.DSPAKey).(*pipelines.DSPA)
+    discoveredPipeline := ctx.Value(constants.DiscoveredPipelineKey).(*pipelines.DiscoveredPipeline)
+    
+    // Parse HTTP parameters
+    pageSize := parseInt32(r.URL.Query().Get("pageSize"), 10)
+    pageToken := r.URL.Query().Get("pageToken")
+    
+    // Call autox-core directly (no product-specific logic needed)
+    runs, nextToken, err := app.pipelinesService.ListPipelineRuns(
+        ctx,
+        app.httpClient,
+        dspa.BaseURL,
+        pipelines.ListPipelineRunsRequest{
+            Identity:          identity,
+            Namespace:         namespace,
+            PipelineVersionID: discoveredPipeline.VersionID,
+            PageSize:          pageSize,
+            PageToken:         pageToken,
+        },
+    )
+    if err != nil {
+        app.handleError(w, err)
+        return
+    }
+    
+    // Map to API response and return
+    app.WriteJSON(w, http.StatusOK, PipelineRunsResponse{
+        Runs:          mapPipelineRunsToAPI(runs),
+        NextPageToken: nextToken,
+    }, nil)
+}
+```
+
+#### Pattern 3: Product Domain Services for Complex Orchestration
+
+For complex operations requiring product-specific orchestration, products create domain services that compose autox-core primitives:
+
+```
+packages/automl/bff/internal/services/
+└── automl_pipeline_service.go    # AutoML-specific orchestration
+
+packages/autorag/bff/internal/services/
+└── autorag_pipeline_service.go   # AutoRAG-specific orchestration
+```
+
+**Product domain service** (AutoML):
+```go
+// packages/automl/bff/internal/services/automl_pipeline_service.go
+type AutoMLPipelineService struct {
+    pipelinesService pipelines.PipelinesService  // autox-core service
+    storageService   storage.StorageService      // autox-core service
+    logger           *slog.Logger
+}
+
+// AutoML-specific request with domain-specific fields
+type CreateAutoMLPipelineRunRequest struct {
+    Identity           *kubernetes.RequestIdentity
+    Namespace          string
+    DSPA               *pipelines.DSPA
+    DiscoveredPipeline *pipelines.DiscoveredPipeline
+    
+    // AutoML-specific fields
+    DatasetPath        string
+    TargetColumn       string
+    ProblemType        string  // classification, regression, time-series
+    MaxTrials          int
+    TrainingBudget     string
+    S3Credentials      *storage.S3Credentials
+}
+
+func (s *AutoMLPipelineService) CreateAutoMLPipelineRun(
+    ctx context.Context,
+    httpClient *http.Client,
+    s3Client *storage.S3Client,
+    req CreateAutoMLPipelineRunRequest,
+) (*pipelines.PipelineRun, error) {
+    // 1. Product-specific validation
+    if err := s.validateAutoMLParams(req); err != nil {
+        return nil, err
+    }
+    
+    // 2. Product-specific pre-checks (using autox-core storage service)
+    exists, err := s.storageService.ObjectExists(ctx, s3Client, storage.ObjectExistsRequest{
+        Bucket: extractBucket(req.DatasetPath),
+        Key:    extractKey(req.DatasetPath),
+    })
+    if err != nil || !exists {
+        return nil, errors.New("dataset not found")
+    }
+    
+    // 3. Build product-specific pipeline parameters
+    pipelineParams := map[string]string{
+        "dataset_path":    req.DatasetPath,
+        "target_column":   req.TargetColumn,
+        "problem_type":    req.ProblemType,
+        "max_trials":      strconv.Itoa(req.MaxTrials),
+        "training_budget": req.TrainingBudget,
+    }
+    
+    // 4. Delegate core operation to autox-core service
+    run, err := s.pipelinesService.CreatePipelineRun(
+        ctx,
+        httpClient,
+        req.DSPA.BaseURL,
+        pipelines.CreatePipelineRunRequest{
+            Identity:     req.Identity,
+            Namespace:    req.Namespace,
+            PipelineID:   req.DiscoveredPipeline.PipelineID,
+            VersionID:    req.DiscoveredPipeline.VersionID,
+            Name:         generateAutoMLRunName(req),
+            Parameters:   pipelineParams,
+        },
+    )
+    if err != nil {
+        return nil, fmt.Errorf("failed to create AutoML pipeline run: %w", err)
+    }
+    
+    // 5. Product-specific post-processing
+    s.logger.Info("Created AutoML pipeline run",
+        "run_id", run.ID,
+        "namespace", req.Namespace,
+        "problem_type", req.ProblemType,
+    )
+    
+    return run, nil
+}
+
+func (s *AutoMLPipelineService) validateAutoMLParams(req CreateAutoMLPipelineRunRequest) error {
+    // AutoML-specific validation logic
+    validTypes := []string{"classification", "regression", "time-series"}
+    if !contains(validTypes, req.ProblemType) {
+        return &common.ValidationError{
+            Field:   "problem_type",
+            Message: "must be classification, regression, or time-series",
+        }
+    }
+    if req.MaxTrials < 1 || req.MaxTrials > 100 {
+        return &common.ValidationError{
+            Field:   "max_trials",
+            Message: "must be between 1 and 100",
+        }
+    }
+    return nil
+}
+```
+
+**Handler delegates to domain service**:
+```go
+// packages/automl/bff/internal/api/pipeline_runs_handler.go
+func (app *App) CreatePipelineRunHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+    ctx := r.Context()
+    
+    // Extract entities from context
+    identity := ctx.Value(constants.RequestIdentityKey).(*k8s.RequestIdentity)
+    namespace := ctx.Value(constants.NamespaceKey).(string)
+    dspa := ctx.Value(constants.DSPAKey).(*pipelines.DSPA)
+    discoveredPipeline := ctx.Value(constants.DiscoveredPipelineKey).(*pipelines.DiscoveredPipeline)
+    
+    // Parse HTTP request body
+    var apiReq CreateAutoMLRunAPIRequest
+    if err := json.NewDecoder(r.Body).Decode(&apiReq); err != nil {
+        app.badRequestResponse(w, r, "invalid request body")
+        return
+    }
+    
+    // Delegate to AutoML domain service (owns orchestration)
+    run, err := app.autoMLPipelineService.CreateAutoMLPipelineRun(
+        ctx,
+        app.httpClient,
+        app.s3Client,
+        services.CreateAutoMLPipelineRunRequest{
+            Identity:           identity,
+            Namespace:          namespace,
+            DSPA:               dspa,
+            DiscoveredPipeline: discoveredPipeline,
+            DatasetPath:        apiReq.DatasetPath,
+            TargetColumn:       apiReq.TargetColumn,
+            ProblemType:        apiReq.ProblemType,
+            MaxTrials:          apiReq.MaxTrials,
+            TrainingBudget:     apiReq.TrainingBudget,
+            S3Credentials:      app.s3Credentials,
+        },
+    )
+    if err != nil {
+        app.handleError(w, err)
+        return
+    }
+    
+    // Map to API response and return
+    app.WriteJSON(w, http.StatusCreated, mapPipelineRunToAPI(run), nil)
+}
+```
+
+**Key benefits of this approach**:
+- Products own complex orchestration logic (no forced standardization)
+- Full flexibility for product-specific validation, pre-checks, parameter building
+- Clear separation: handlers (HTTP) → domain services (orchestration) → autox-core services (primitives)
+- Easy to test product logic in isolation from HTTP layer
+- No hook proliferation or hidden control flow
+
+#### Pattern 4: UI Composition Primitives
+
+UI layer provides composable hooks and components that products orchestrate:
+
+```typescript
+// autox-core/ui/hooks/usePipelinesList.ts
+export const usePipelinesList = (namespace: string, options?: PipelinesListOptions) => {
+  const [data, loaded, error, refresh] = useFetchState(
+    React.useCallback(
+      async () => {
+        const response = await fetch(`/api/pipelines?namespace=${namespace}`);
+        return response.json();
+      },
+      [namespace]
+    ),
+    []
+  );
+  
+  return { pipelines: data, loaded, error, refresh };
+};
+```
+
+**Product usage** (AutoML):
+```typescript
+// packages/automl/frontend/src/pages/PipelinesPage.tsx
+const PipelinesPage: React.FC = () => {
+  const { namespace } = useAutoMLContext();
+  
+  // Compose shared primitive with product-specific behavior
+  const { pipelines, loaded, error, refresh } = usePipelinesList(namespace);
+  const { experiments } = useExperimentTracking(pipelines); // AutoML-specific
+  
+  // Product-specific filtering/transformation
+  const filteredPipelines = React.useMemo(
+    () => pipelines.filter(p => p.type === 'automl'),
+    [pipelines]
+  );
+  
+  return (
+    <PipelinesList
+      pipelines={filteredPipelines}
+      experiments={experiments} // AutoML-specific prop
+      onRefresh={refresh}
+    />
+  );
+};
+```
+
+#### Example Package Layouts
+
+**BFF Extension Layout**:
+```
+packages/automl/bff/
+├── internal/
+│   ├── services/                    # Product domain services (orchestration)
+│   │   ├── automl_pipeline_service.go
+│   │   └── automl_storage_service.go
+│   ├── config/                      # Product-specific configuration
+│   │   └── config.go
+│   └── api/                         # HTTP handlers (thin, delegate to services)
+│       ├── app.go                   # Owns autox-core services + domain services
+│       ├── pipelines_handler.go     # Simple ops → autox-core; complex → domain service
+│       └── middleware.go
+└── ...
+
+packages/autorag/bff/
+├── internal/
+│   ├── services/                    # AutoRAG domain services (different orchestration)
+│   │   ├── autorag_pipeline_service.go
+│   │   └── autorag_retrieval_service.go
+│   ├── config/
+│   │   └── config.go
+│   └── api/
+│       ├── app.go
+│       ├── pipelines_handler.go
+│       └── middleware.go
+└── ...
+
+packages/autox-core/services/
+├── pipelines/                       # Shared service primitives
+│   ├── service.go                   # Core operations (list, create, delete)
+│   ├── models.go                    # Domain models (PipelineRun, DSPA)
+│   ├── client.go                    # HTTP client for KFP API
+│   ├── discovery.go                 # DSPA/pipeline discovery with caching
+│   └── validators.go                # Input validation
+├── kubernetes/                      # K8s integration primitives
+│   ├── service.go
+│   ├── client.go
+│   ├── factory.go                   # Unified factory (static vs token auth)
+│   └── models.go
+└── storage/                         # S3 integration primitives
+    ├── service.go
+    ├── client.go
+    └── models.go
+```
+
+**UI Extension Layout**:
+```
+packages/automl/frontend/src/
+├── pages/                 # Product-specific pages
+│   └── PipelinesPage.tsx
+├── features/              # Product-specific feature composition
+│   └── experiments/       # AutoML-specific feature
+│       ├── ExperimentsList.tsx
+│       └── useExperimentTracking.ts
+└── config/                # Product-specific configuration
+
+packages/autox-core/ui/
+├── hooks/                 # Shared composable hooks
+│   ├── usePipelinesList.ts
+│   └── useKubernetesClient.ts
+├── components/            # Shared UI primitives
+│   ├── PipelineCard.tsx
+│   └── StatusBadge.tsx
+└── utils/                 # Shared utilities
+    ├── validation.ts
+    └── formatters.ts
+```
 
 ## Alternatives
 
