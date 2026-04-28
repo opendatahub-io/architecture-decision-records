@@ -669,6 +669,12 @@ The `autox-core` shared library consolidates authorization and secret-handling l
 1. **Authorization logic must be identity-agnostic**: Shared authorization code operates on generic permissions and roles, not product-specific policies. Product-specific authorization rules remain in product packages.
 2. **Explicit composition contracts**: All shared authorization functions must document their assumptions (e.g., "assumes namespace-scoped access check") and validate inputs (e.g., reject cluster-scoped resource requests if only namespace-scoped checks are implemented).
 3. **Mandatory product-policy tests**: Test suite must include scenarios exercising `autox-core` shared authz code with different product policies. Example: AutoML allows role X to create pipelines in namespace Y, AutoRAG denies role X in namespace Y — shared code must correctly enforce both policies.
+   
+   **Test ownership and synchronization:**
+   - Each product (AutoML, AutoRAG) maintains integration tests exercising `autox-core` authorization functions with their current product policies.
+   - `autox-core` maintains policy-agnostic unit tests for auth invariants: token validation, input sanitization, input-scope checks (e.g., namespace vs. cluster scope).
+   - CI gating: Both product test suites run against any `autox-core` changes before merge. Changes that break product tests are blocked.
+   - Policy change workflow: Any product policy change MUST open a review task that verifies and updates `autox-core` composition contracts (documented assumptions in shared auth functions) and corresponding tests. This prevents removal or drift of cross-product scenarios.
 4. **Security reviews apply to shared code**: Changes to authorization logic in `autox-core` affect both products. Reviews must verify no cross-product privilege escalation or policy bypass.
 
 ### Secret and Credential Handling
