@@ -703,7 +703,141 @@ The `autox-core` shared library consolidates authorization and secret-handling l
 
 ### Deployment Independence
 
-Each product is still deployed as separate container sets with independent security boundaries. Vulnerabilities in one product's deployment do not automatically affect the other. However, shared library vulnerabilities affect both products — all security patches to `autox-core` must be coordinated across AutoML and AutoRAG releases.
+Each product is still deployed as separate container sets with independent security boundaries. Vulnerabilities in one product's deployment do not automatically affect the other. However, shared library vulnerabilities affect both products — all security patches to `autox-core` must be coordinated across AutoML and AutoRAG releases (see [Security Patch Coordination](#security-patch-coordination) below for detailed procedures).
+
+#### Security Patch Coordination
+
+Because `autox-core` is a shared dependency of both AutoML and AutoRAG, vulnerabilities in the shared library require coordinated patching across both products to prevent security gaps. The following procedures ensure timely, synchronized remediation.
+
+##### 1. Incident Ownership and Escalation
+
+**Responsible Party**: Red Hat OpenShift AI SRE/Security Team (RHOAI SRE)  
+**Primary Contact**: RHOAI SRE on-call rotation (escalate via PagerDuty)  
+**Secondary Contact**: Dashboard Purple Team tech lead (@daniduong, @chrjones)
+
+**Escalation Path**:
+1. **Initial Triage** (within 2 hours of CVE publication or detection):
+   - RHOAI SRE reviews CVE impact on `autox-core` dependencies (Go modules, npm packages, container base images).
+   - Determine severity (Critical, High, Moderate, Low) using Red Hat Product Security's scoring and impact assessment.
+   - If CVE affects `autox-core`: Create coordinated patch tracking issue in Jira (RHOAIENG project) and notify both product teams (see [Notification Procedure](#notification-procedure)).
+
+2. **Coordinated Response** (within 4 hours of triage):
+   - RHOAI SRE assigns patching tasks to AutoML and AutoRAG teams via Jira subtasks.
+   - Dashboard Purple Team tech lead confirms patch timeline feasibility and identifies blockers (e.g., breaking API changes, missing upstream patches).
+
+3. **Executive Escalation** (if SLA at risk):
+   - If patch cannot meet SLA due to technical blockers or resource constraints, RHOAI SRE escalates to Red Hat Product Security and Engineering Management (VP level) with mitigation plan.
+
+##### 2. Patch SLA
+
+Security patches to `autox-core` must propagate to both AutoML and AutoRAG deployments within the following timelines from CVE publication or internal detection:
+
+| Severity  | Patch Deadline (from CVE publication) | Testing Requirement | Deployment Target |
+|-----------|--------------------------------------|---------------------|-------------------|
+| **Critical** (CVSS 9.0-10.0) | **48 hours** | Smoke tests + contract tests (BFF) + critical path E2E | Emergency hotfix release |
+| **High** (CVSS 7.0-8.9) | **7 days** | Full regression test suite (unit + contract + E2E) | Next scheduled patch release |
+| **Moderate** (CVSS 4.0-6.9) | **30 days** | Full regression test suite | Next scheduled minor/patch release |
+| **Low** (CVSS 0.1-3.9) | **90 days** | Standard CI checks | Next scheduled minor release |
+
+**Notes**:
+- Timelines apply to both AutoML and AutoRAG. Products cannot release patches independently for shared library CVEs (violates coordinated patch tracking).
+- If a CVE requires breaking API changes in `autox-core`, SLA may be extended by mutual agreement between RHOAI SRE and product teams, with interim mitigation steps documented (see [Version Pinning Policy](#version-pinning-policy)).
+
+##### 3. Emergency Coordinated Release Process
+
+For **Critical** and **High** severity CVEs, the following synchronized hotfix process is triggered:
+
+**Phase 1: Patch Development** (Parallel work across teams)
+1. **autox-core patch** (Dashboard Purple Team):
+   - Create emergency branch from latest release tag: `security/CVE-YYYY-XXXXX`
+   - Apply minimal patch (backport fix from upstream or vendor-provided patch)
+   - Run `autox-core` unit tests and architecture boundary tests
+   - Publish pre-release version: `autox-core@X.Y.Z-cve-XXXXX-rc1`
+
+2. **Product integration** (AutoML and AutoRAG teams in parallel):
+   - Update dependency to pre-release version in respective `go.mod` and `package.json`
+   - Run contract tests (BFF) and critical path E2E tests
+   - Identify integration issues and report to Dashboard Purple Team
+
+**Phase 2: Release Coordination** (within SLA deadline)
+1. **Final release**:
+   - Dashboard Purple Team publishes stable patch: `autox-core@X.Y.Z+1` (semantic versioning patch bump)
+   - Both product teams update to stable version and run full regression tests
+
+2. **Synchronized deployment**:
+   - AutoML and AutoRAG release coordinated hotfix builds on the same day
+   - RHOAI SRE validates both products' container images scan clean for the CVE (using Red Hat Advanced Cluster Security or equivalent)
+   - Deployment to production environments coordinated via shared deployment window
+
+**Phase 3: Validation and Closure**
+1. **Post-deployment verification**:
+   - RHOAI SRE runs vulnerability scans on deployed containers
+   - AutoML and AutoRAG teams verify applications remain functional (smoke tests in staging)
+
+2. **Incident closure**:
+   - RHOAI SRE updates Jira tracking issue with remediation evidence (container scan reports, deployment timestamps)
+   - Incident retrospective scheduled if SLA was missed or blockers encountered
+
+##### 4. Version Pinning Policy
+
+**Default Policy**: AutoML and AutoRAG must use the **latest stable release** of `autox-core` at all times. Version pinning to older releases is **prohibited** in production deployments except under the conditions below.
+
+**Exception: Temporary Emergency Pinning**
+
+Products may temporarily pin to an older `autox-core` version **only** if:
+1. **Breaking change in latest release**: A new `autox-core` release introduces breaking API changes that require extensive product refactoring, AND a Critical/High CVE has been disclosed in the current version.
+2. **Approval required**: RHOAI SRE and Dashboard Purple Team tech lead jointly approve pinning with documented mitigation plan.
+3. **Maximum pin duration**: **14 days** (2 sprint cycles). After 14 days, products MUST upgrade to the patched version or implement equivalent mitigation.
+4. **Mitigation steps during pinning**:
+   - Backport security patch to pinned version (if feasible)
+   - Deploy compensating controls (e.g., WAF rules, network segmentation, input validation)
+   - Daily check-ins with RHOAI SRE to track upgrade progress
+
+**Enforcement**:
+- CI pipeline checks enforce that both AutoML and AutoRAG use the same `autox-core` version (within 1 patch version).
+- Deployments using pinned versions older than 14 days are **blocked** by CI gates unless override is approved by Engineering Management.
+
+##### 5. Vulnerability Disclosure and Notification Procedure {#notification-procedure}
+
+**Notification Channels**:
+1. **Primary**: Jira tracking issue (RHOAIENG project)
+   - Title format: `[CVE-YYYY-XXXXX] autox-core Security Patch - AutoML + AutoRAG Coordination`
+   - Issue type: Security Bug
+   - Linked to AutoML and AutoRAG subtasks (one per product)
+
+2. **Secondary**: Slack notification
+   - Channel: `#odh-dashboard-alerts` (real-time notifications)
+   - Mention: `@dashboard-purple-team`, `@rhoai-sre-oncall`
+
+3. **Email**: For Critical severity only
+   - Recipients: Dashboard Purple Team tech leads, AutoML/AutoRAG product owners, RHOAI SRE manager
+   - Template: "URGENT: CVE-YYYY-XXXXX affects autox-core - Coordinated patch required within 48 hours"
+
+**Notification Timeline**:
+- **Critical/High CVEs**: Notification within **2 hours** of triage completion
+- **Moderate/Low CVEs**: Notification within **24 hours**
+
+**Remediation Status Tracking**:
+
+Each Jira tracking issue must maintain the following status fields:
+
+| Field | Values | Updated By |
+|-------|--------|------------|
+| **Patch Status** | Not Started / In Progress / Merged / Released | Dashboard Purple Team |
+| **AutoML Integration Status** | Not Started / Testing / Blocked / Deployed | AutoML Team |
+| **AutoRAG Integration Status** | Not Started / Testing / Blocked / Deployed | AutoRAG Team |
+| **Deployment Status** | Pending / Staging / Production / Verified | RHOAI SRE |
+| **Blockers** | Free-text field for issues preventing timely patch | Any team |
+
+**Status Update Cadence**:
+- **Critical CVEs**: Daily standup (async via Jira comment) until remediation complete
+- **High CVEs**: Every 2 days
+- **Moderate/Low CVEs**: Weekly
+
+**Closure Criteria**:
+- Both AutoML and AutoRAG deployed to production with patched `autox-core` version
+- Container vulnerability scans confirm CVE remediated
+- RHOAI SRE validates no regression in staging environment
 
 ## Risks
 
