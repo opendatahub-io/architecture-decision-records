@@ -339,7 +339,7 @@ in the company's customer service policy document. The refund process takes
 }
 ```
 
-doe**When to use contextual retrieval:**
+**When to use contextual retrieval:**
 - **Long, complex documents**: Technical manuals, research papers, legal documents where chunks lose meaning when isolated
 - **Multi-section documents**: Books, reports with many chapters/sections
 - **Ambiguous content**: Documents where similar text appears in different contexts (e.g., "the system" referring to different systems)
