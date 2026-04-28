@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-04-01 |
 | Scope          | Red Teaming (`garak`)|
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | [Stuart Battersby](@blastStu) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
