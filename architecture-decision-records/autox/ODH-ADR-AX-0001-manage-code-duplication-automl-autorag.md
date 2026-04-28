@@ -713,7 +713,7 @@ Because `autox-core` is a shared dependency of both AutoML and AutoRAG, vulnerab
 
 **Responsible Party**: Red Hat OpenShift AI SRE/Security Team (RHOAI SRE)  
 **Primary Contact**: RHOAI SRE on-call rotation (escalate via PagerDuty)  
-**Secondary Contact**: Dashboard Purple Team tech lead (@daniduong, @chrjones)
+**Secondary Contact**: Dashboard Purple Team tech lead (@chrjones)
 
 **Escalation Path**:
 1. **Initial Triage** (within 2 hours of CVE publication or detection):
@@ -846,10 +846,40 @@ Each Jira tracking issue must maintain the following status fields:
 Without strict governance, the `autox-core` library may gradually accumulate product-specific logic disguised as shared utilities. This erosion of boundaries would undermine the benefits of structural separation.
 
 **Mitigation**:
-* Establish clear ownership and code review guidelines for `autox-core`
-* Regular architecture reviews to identify boundary violations
-* Document extension patterns that preserve identity-agnosticism
-* Prefer configuration/composition over conditional logic in shared code
+
+**1. Code Ownership and Mandatory Review**:
+* **CODEOWNERS assignment**: The `autox-core` package is owned by the Dashboard Purple Team
+* **Mandatory architect review**: All changes to `autox-core` MUST receive approval from the Dashboard Purple Team approvers (@chrjones, @nmazzite, @GAUNSD) before merge
+* **Review focus**: Reviewers must verify that additions to `autox-core` are genuinely shared and do not contain product-specific logic (see Extension Patterns section for guidance)
+
+**2. Quarterly Architecture Review**:
+* **Cadence**: Quarterly audits of all `autox-core` changes from the previous quarter
+* **Responsible party**: Dashboard Purple Team
+* **Review scope**:
+  - All merged changes to `autox-core/services/` and `autox-core/ui/`
+  - Verification that no product-specific logic has been introduced
+  - Identification of boundary violations requiring remediation
+  - Assessment of extension pattern usage (configuration/hooks/adapters vs conditional logic)
+* **Output**: Jira issues created for any violations, with remediation plan and owner assignment
+* **Timeline**: Review completed within first 2 weeks of each quarter (Q1: Jan 1-14, Q2: Apr 1-14, Q3: Jul 1-14, Q4: Oct 1-14)
+
+**3. Extension Pattern Documentation**:
+* **Reference**: See the [Extension Patterns](#extension-patterns) section of this ADR (lines 204-600) for detailed guidance on how to keep `autox-core` identity-agnostic
+* **Key patterns documented**:
+  - Configuration Objects (Pattern 1)
+  - Service Composition for Simple Operations (Pattern 2)
+  - Product Domain Services for Complex Orchestration (Pattern 3)
+  - UI Composition Primitives (Pattern 4)
+* **Developer guidance**: When adding to `autox-core`, prefer these extension patterns over conditional logic (`if product == "automl"`)
+
+**4. Violation Remediation SLA**:
+* **Detection**: Violations identified via quarterly review, PR review, or ad-hoc discovery
+* **Remediation timeline**: Product-specific code MUST be removed from `autox-core` within **one sprint (2 weeks)** of identification
+* **Enforcement**:
+  - Owner: Dashboard Purple Team tech lead assigns remediation task to the developer who introduced the violation
+  - Escalation: If remediation is blocked or delayed beyond one sprint, escalate to Engineering Management with mitigation plan
+  - Temporary exemptions: May be granted by Dashboard Purple Team tech lead if removal requires extensive refactoring, with documented mitigation (e.g., TODO comments, tracking issue, target remediation date)
+* **Accountability**: Repeated violations from the same developer trigger review of code review process and potential training requirement
 
 ## Stakeholder Impacts
 
