@@ -2,7 +2,7 @@
 
 This page documents **AutoRAG pattern deployment** from optimization completion through production inference.
 
-**RHOAI 3.4 (current)**
+**RHOAI 3.4**
 
 - [Pattern artifacts](#pattern-artifacts)
   - [`rag_patterns` artifact](#1-rag_patterns-artifact-rag_templates_optimization)
@@ -11,7 +11,7 @@ This page documents **AutoRAG pattern deployment** from optimization completion 
 - [GenAI Studio integration](#genai-studio-integration)
 - [Deployment today](#deployment-today)
 
-**RHOAI 3.5 and later (planned)**
+**RHOAI 3.5 and later**
 
 - [AutoRAG Backend (Optimization Pipeline)](#autorag-backend-optimization-pipeline)
 - [Generated artifacts per pattern](#generated-artifacts-per-pattern)
@@ -28,7 +28,7 @@ This page documents **AutoRAG pattern deployment** from optimization completion 
 
 ---
 
-## Current state (RHOAI 3.4)
+## RHOAI 3.4
 
 ### Pattern artifacts
 

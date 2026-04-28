@@ -4,14 +4,14 @@ This page documents **AutoRAG pattern vector store creation** from optimization 
 
 ## Table of contents
 
-**RHOAI 3.4 (current)**
+**RHOAI 3.4**
 
 - [Current approach](#current-approach)
 - [Indexing notebook artifacts](#indexing-notebook-artifacts)
 - [Manual vector store rebuild workflow](#manual-vector-store-rebuild-workflow)
 - [Limitations](#limitations)
 
-**RHOAI 3.5 and later (planned)**
+**RHOAI 3.5 and later**
 
 - [Documents Indexing Pipeline](#documents-indexing-pipeline)
 - [Per-pattern compiled pipelines](#per-pattern-compiled-pipelines)
@@ -22,7 +22,7 @@ This page documents **AutoRAG pattern vector store creation** from optimization 
 
 ---
 
-## Current state (RHOAI 3.4)
+## RHOAI 3.4
 
 ### Current approach
 
