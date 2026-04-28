@@ -280,6 +280,7 @@ func (app *App) ListPipelineRunsHandler(w http.ResponseWriter, r *http.Request, 
     ctx := r.Context()
     
     // Extract entities from context (added by middleware)
+    // Note: Production code should use checked type assertions with the ok pattern to prevent panics. Simplified here for clarity.
     identity := ctx.Value(constants.RequestIdentityKey).(*k8s.RequestIdentity)
     namespace := ctx.Value(constants.NamespaceKey).(string)
     dspa := ctx.Value(constants.DSPAKey).(*pipelines.DSPA)
@@ -435,6 +436,7 @@ func (app *App) CreatePipelineRunHandler(w http.ResponseWriter, r *http.Request,
     ctx := r.Context()
     
     // Extract entities from context
+    // Note: Production code should use checked type assertions with the ok pattern to prevent panics. Simplified here for clarity.
     identity := ctx.Value(constants.RequestIdentityKey).(*k8s.RequestIdentity)
     namespace := ctx.Value(constants.NamespaceKey).(string)
     dspa := ctx.Value(constants.DSPAKey).(*pipelines.DSPA)
