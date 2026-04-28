@@ -67,7 +67,7 @@ We will address UI code duplication by creating `autox-core/ui` as a shared libr
 
 **Architectural improvements**:
 * Establish clear composition hierarchy: primitives → features → pages
-* Module Federation singleton configuration ensures single runtime instance and optimized bundle size
+* Configure `autox-core` as a Module Federation shared singleton to prevent duplicate bundle loading
 * Avoid monolithic shared components with extensive prop variants in favor of composable primitives
 
 ### Local Development
@@ -150,9 +150,9 @@ To prevent the shared layer from accumulating product-specific logic:
 
 **Rejected because**: This approach conflicts with the core requirement to maintain distinct product identities. Over time, runtime branching leads to tangled conditional logic that makes it difficult to diverge products safely. The structural separation provided by the recommended approach makes boundaries explicit and enforceable.
 
-### Alternative 2: Shared Platform API + Module Federation UI Architecture
+### Alternative 2: Shared Platform API + Module Federation Remote UI Architecture
 
-**Approach**: Introduce a separately deployed platform API service that handles cross-cutting concerns (auth, logging, telemetry, shared orchestration), while each product maintains its own BFF. UI components are shared via Module Federation with dynamically loaded modules.
+**Approach**: Introduce a separately deployed platform API service that handles cross-cutting concerns (auth, logging, telemetry, shared orchestration), while each product maintains its own BFF. UI components are shared via a new Module Federation remote that both products load at runtime.
 
 **Pros**:
 * Strong separation between platform and product concerns
@@ -162,14 +162,14 @@ To prevent the shared layer from accumulating product-specific logic:
 * Encourages platform engineering maturity
 
 **Cons**:
-* High system complexity (API + federation layer + runtime integration)
+* High system complexity (API + new federated remote + runtime integration)
 * More moving parts in CI/CD and deployment
-* Module Federation introduces runtime dependency coupling
+* New Module Federation remote introduces runtime dependency coupling
 * Harder local development experience
 * Versioning and compatibility management overhead
-* Additional dependency surface requiring teams to integrate platform API clients and configure federation remotes
+* Additional dependency surface requiring teams to integrate platform API clients and configure remote loading
 
-**Rejected because**: While this approach offers architectural flexibility, it introduces significant operational and integration complexity that is not justified by current scale. The overhead of maintaining a separate platform API service, managing Module Federation runtime contracts, and coordinating versioning across multiple deployment units outweighs the benefits for two products. This approach should be reconsidered if ODH adds more similar products or if team boundaries require stronger runtime isolation.
+**Rejected because**: While this approach offers architectural flexibility, it introduces significant operational and integration complexity that is not justified by current scale. The overhead of maintaining a separate platform API service, creating and deploying a new Module Federation remote for shared UI, and coordinating versioning across multiple deployment units outweighs the benefits for two products. This approach should be reconsidered if ODH adds more similar products or if team boundaries require stronger runtime isolation.
 
 ### Comparison Summary
 
