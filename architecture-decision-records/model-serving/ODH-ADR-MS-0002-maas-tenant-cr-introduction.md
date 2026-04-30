@@ -13,7 +13,7 @@
 
 ## What
 
-Introduction of a new `Tenant` custom resource for user-facing Models-as-a-Service platform configuration while retaining the existing `ModelsAsService` CR for internal operator integration.
+Introduction of a new `Tenant` custom resource for user-facing Models-as-a-Service platform configuration while retaining the existing `ModelsAsService` CR for internal ODH operator integration.
 
 ## Why
 
@@ -55,8 +55,8 @@ The implementation involves a dual-CR architecture across the ODH Operator and M
 
 The migration moves implementation from the common platform API to the dedicated maas.opendatahub.io API:
 
-* **Tenant ConfigurationCR Creation**: Establish a namespace-scoped `Tenant` Custom Resource. This is intended to be co-located with other CRs  (MaaSAuthPolicy, MaaSSubscription) in a tenant adminstration (control plane) namespace to customize:
-  - API key configuration  
+* **Tenant Configuration CR Creation**: Establish a namespace-scoped `Tenant` Custom Resource. This is intended to be co-located with other CRs  (MaaSAuthPolicy, MaaSSubscription) in a tenant adminstration (control plane) namespace to customize:
+  - API key policies  
   - External OIDC settings
   - Gateway configuration
   - Telemetry policies   
@@ -99,7 +99,7 @@ The migration moves implementation from the common platform API to the dedicated
 
 * **Migration Complexity**: Risk of configuration inconsistencies during the transition period
 * **Cross-Namespace Resource Management**: Potential for resource orphaning if tracking labels are not properly managed
-* **Terminology Confusion**: Using "Tenant" terminology before full multi-tenancy implementation may confuse operators and developers
+* **Terminology Confusion**: Using "Tenant" terminology before full multi-tenancy implementation may confuse operators and developers. Recommend comprehensive documentation to clarify usage for our customers.
 
 
 ## Stakeholder Impacts
