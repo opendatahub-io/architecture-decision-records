@@ -1,6 +1,6 @@
 # RAG Pattern Inference
 
-This page documents **AutoRAG pattern deployment** from optimization completion through production inference.
+This page documents **AutoRAG pattern inference** from optimization completion through production inference.
 
 **RHOAI 3.4**
 
