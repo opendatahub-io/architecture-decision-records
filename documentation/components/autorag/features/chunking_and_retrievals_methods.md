@@ -8,10 +8,11 @@ This page documents the **chunking strategies** and **retrieval methods** suppor
   - [Recursive Chunking](#recursive-chunking)
   - [Docling: Markdown export vs native chunking](#docling-markdown-export-vs-native-chunking)
   - [Hierarchical Chunking (RHOAI 3.5+)](#hierarchical-chunking-rhoai-35)
+  - [LLM contextual enrichment (index time, RHOAI 3.5+)](#llm-contextual-enrichment-index-time-rhoai-35)
+  - [Chunking parameters reference](#chunking-parameters-reference)
 - [Retrieval Methods](#retrieval-methods)
   - [Simple Retrieval](#simple-retrieval)
   - [Hybrid Search](#hybrid-search)
-  - [Contextual Retrieval (RHOAI 3.5+)](#contextual-retrieval-rhoai-35)
   - [Retrieval Parameters](#retrieval-parameters)
   - [Optimization Workflow](#optimization-workflow)
 - [Related Documentation](#related-documentation)
@@ -22,6 +23,8 @@ This page documents the **chunking strategies** and **retrieval methods** suppor
 ## Chunking Methods
 
 Chunking splits source documents into smaller segments (chunks) that fit within embedding model and LLM context windows while preserving semantic coherence. AutoRAG supports multiple chunking strategies during optimization to find the best approach for your documents.
+
+**Where settings live:** boundaries and **Docling** serialization (`include_context`, native chunkers) are **`chunking`** fields. **[Anthropic-style contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)** (an LLM writes short document-situating text **before** embedding) is also configured under **`chunking`** as **`contextual_enrichment`**, because it runs during **indexing** (documents indexing pipeline / vector store build), not during the query-time retrieval step. Query behavior (`number_of_chunks`, `search_mode`, fusion) stays under **`retrieval`**.
 
 ### Recursive Chunking
 
@@ -63,7 +66,7 @@ Official Docling documentation distinguishes **two** chunking strategies in prin
 1. **Document parsing**: Docling parses PDF/DOCX/HTML to structured `DoclingDocument` with detected elements (headings, paragraphs, tables, figures, lists)
 2. **Hierarchical chunking**: `HierarchicalChunker` traverses the document tree, creating chunks that respect structural boundaries
 3. **Structure preservation**: Chunks align with document sections, keeping related content together
-4. **Contextualization**: Optional `contextualize()` method enriches chunks with metadata (section path, heading hierarchy, document context)
+4. **Contextualization**: Optional `contextualize()` serializes **structural metadata** (section path, heading hierarchy) with chunk text for embedding—**no** whole-document LLM summary
 5. **Embedding**: Structure-aware chunks are embedded for vector store indexing
 
 **Example configuration (RHOAI 3.5):**
@@ -179,13 +182,13 @@ Combines hierarchical structure awareness with tokenizer limits:
 
 ```json
 {
-  “chunking”: {
+  "chunking": {
     "method": "hybrid",
     "chunk_size": 512,
     "chunk_overlap": 50,
-    "tokenizer": “granite-embedding”,
+    "tokenizer": "granite-embedding",
     "merge_lists": true,
-    "table_strategy": “keep_headers_with_rows”
+    "table_strategy": "keep_headers_with_rows"
   }
 }
 ```
@@ -211,7 +214,7 @@ Combines hierarchical structure awareness with tokenizer limits:
 - ❌ **Chunker configuration complexity**: More parameters to tune (list merging, table strategies, depth limits)
 - ❌ **Depends on Docling quality**: Poor heading detection → poor chunk boundaries
 
-**Combining hierarchical chunking with contextual retrieval (3.5+ recommended):**
+**Combining hierarchical chunking with LLM contextual enrichment (3.5+ recommended):**
 
 For maximum accuracy with structured documents:
 
@@ -221,11 +224,15 @@ For maximum accuracy with structured documents:
     "method": "hybrid",
     "chunk_size": 1024,
     "merge_lists": true,
-    "include_context": true
+    "include_context": true,
+    "contextual_enrichment": {
+      "enabled": true,
+      "context_generation_model": "granite-3.1-8b-instruct"
+    }
   },
   "retrieval": {
-    "method": "contextual",
-    "context_generation_model": "granite-3.1-8b-instruct",
+    "method": "simple",
+    "number_of_chunks": 5,
     "search_mode": "hybrid",
     "ranker_strategy": "rrf"
   }
@@ -234,11 +241,109 @@ For maximum accuracy with structured documents:
 
 This combines:
 1. **Hierarchical/hybrid chunking**: Structure-aware chunks from Docling
-2. **Docling contextualization**: Chunks enriched with section path, headings
-3. **Contextual retrieval**: LLM-generated context prepended to chunks before embedding
-4. **Hybrid search**: Vector + keyword retrieval with RRF fusion
+2. **Docling `contextualize()` / `include_context`**: deterministic metadata (headings, section path) concatenated with chunk text—**no LLM**
+3. **LLM contextual enrichment**: optional LLM-generated situating sentences **prepended before embedding and BM25 indexing** (same idea as [Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval))
+4. **Hybrid search** (query time): vector + keyword retrieval with RRF fusion
 
-**Result**: Best-in-class retrieval for complex, structured documents (technical manuals, research papers, legal documents).
+**Result**: Strong retrieval for complex, structured documents (technical manuals, research papers, legal documents) when ingestion cost is acceptable.
+
+
+### LLM contextual enrichment (index time, RHOAI 3.5+)
+
+This pattern is often called **contextual retrieval** in blog posts; in **`pattern.json`** it should appear under **`chunking.contextual_enrichment`**, not under **`retrieval`**, because the LLM runs while **building the index** (after chunk boundaries are fixed), not when serving a user query.
+
+**Docling vs LLM:** Docling’s **`contextualize()`** only serializes **structured metadata** plus chunk text (see [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)). **`contextual_enrichment`** is a **separate** optional step: an LLM writes 1–2 sentences that place the chunk in the **whole document**, then that text is stored and embedded.
+
+**How it works:**
+1. **Context generation (at ingestion time)**: For each chunk, use an LLM (e.g., Claude, Granite) to generate a brief description that "situates" the chunk within its source document
+2. **Contextual embeddings**: Prepend the generated context to the chunk before embedding, creating richer vector representations
+3. **Contextual BM25**: Index the same **enriched** string for sparse search where applicable
+4. **Query time**: Use normal **`retrieval`** settings (`search_mode`, top‑k, ranker)—no extra LLM call for context generation per query
+
+**Example context generation prompt:**
+```
+<document>
+{ENTIRE_DOCUMENT}
+</document>
+
+Here is the chunk we want to situate within the whole document:
+<chunk>
+{CHUNK_CONTENT}
+</chunk>
+
+Provide a brief 1-2 sentence context that explains what this chunk is about 
+within the document. Only output the context, nothing else.
+```
+
+**Example output:**
+```
+Original chunk: "The refund process takes 5-7 business days."
+
+Generated context: "This chunk describes the refund processing timeline 
+in the company's customer service policy document."
+
+Stored for embedding: "This chunk describes the refund processing timeline 
+in the company's customer service policy document. The refund process takes 
+5-7 business days."
+```
+
+**Example configuration (RHOAI 3.5):**
+```json
+{
+  "chunking": {
+    "method": "recursive",
+    "chunk_size": 1024,
+    "chunk_overlap": 128,
+    "contextual_enrichment": {
+      "enabled": true,
+      "context_generation_model": "granite-3.1-8b-instruct"
+    }
+  },
+  "retrieval": {
+    "method": "simple",
+    "number_of_chunks": 5,
+    "search_mode": "hybrid"
+  }
+}
+```
+
+**When to use LLM contextual enrichment:**
+- **Long, complex documents**: Technical manuals, research papers, legal documents where chunks lose meaning when isolated
+- **Multi-section documents**: Books, reports with many chapters/sections
+- **Ambiguous content**: Documents where similar text appears in different contexts (e.g., "the system" referring to different systems)
+- **High-precision requirements**: Critical applications where retrieval accuracy is paramount
+- **Production RAG systems**: Maximum accuracy justifies the additional ingestion cost
+
+**Advantages:**
+- ✅ **Significantly better accuracy**: 49-67% reduction in failed retrievals
+- ✅ **Rich context**: Chunks include document-level context automatically
+- ✅ **No query-time overhead**: Context generated once at ingestion, not per query
+- ✅ **Compatible with hybrid search**: Can combine with vector + keyword + RRF
+- ✅ **Handles ambiguity**: Disambiguates chunks that would be unclear in isolation
+
+**Limitations:**
+- ❌ **Higher ingestion cost**: Requires LLM call per chunk to generate context (mitigated with prompt caching)
+- ❌ **Increased storage**: Context text adds to chunk size (typically 1-2 sentences)
+- ❌ **Slower indexing**: Context generation adds latency during vector store creation
+- ❌ **Requires entire document**: LLM needs full document context to generate chunk context
+
+**Cost optimization:**
+- Use **prompt caching** (e.g., Claude prompt caching) to reduce cost of passing entire document multiple times
+- Generate contexts in **batch** for all chunks from same document in single LLM call
+- Consider **selective contextualization**: Apply only to documents where chunks are likely ambiguous
+
+### Chunking parameters reference
+
+Common **`chunking`** fields (exact names may match the pipeline / ai4rag template version in use):
+
+| Parameter | Description | Notes |
+|-----------|-------------|--------|
+| `method` | Chunking algorithm | e.g. `recursive`, `hierarchical`, `hybrid` |
+| `chunk_size` / `chunk_overlap` | Size and overlap for token- or char-aware splitters | Depends on method |
+| `merge_lists`, `include_context`, `max_heading_depth`, … | Docling-native options | `include_context` relates to **serialization for embed**, not an LLM |
+| **`contextual_enrichment`** | Object controlling **LLM** situating text before embed | Consumed by **documents indexing** / vector store build |
+| **`contextual_enrichment.enabled`** | Turn LLM enrichment on or off | Default off where unsupported |
+| **`contextual_enrichment.context_generation_model`** | Model id or endpoint for context sentences | Runs at **ingestion**, not retrieval |
 
 ---
 
@@ -290,87 +395,13 @@ Retrieval methods determine how chunks are selected from the vector store to ans
 
 **Search modes:** `vector` (semantic only), `keyword` (BM25 only), `hybrid` (fused, recommended for production)
 
-### Contextual Retrieval (RHOAI 3.5+)
-
-**Contextual retrieval** enhances traditional RAG by adding chunk-specific explanatory context to each chunk before generating embeddings and keyword indices. This approach addresses the problem of chunks lacking sufficient context when isolated from their source documents.
-
-**How it works:**
-1. **Context generation (at ingestion time)**: For each chunk, use an LLM (e.g., Claude, Granite) to generate a brief description that "situates" the chunk within its source document
-2. **Contextual Embeddings**: Prepend the generated context to the chunk before embedding, creating richer vector representations
-3. **Contextual BM25**: Use the same chunk-specific context with BM25 keyword indexing
-4. **Query time**: Retrieve using standard vector/hybrid search—context is already embedded, no LLM call needed per query
-
-**Example context generation prompt:**
-```
-<document>
-{ENTIRE_DOCUMENT}
-</document>
-
-Here is the chunk we want to situate within the whole document:
-<chunk>
-{CHUNK_CONTENT}
-</chunk>
-
-Provide a brief 1-2 sentence context that explains what this chunk is about 
-within the document. Only output the context, nothing else.
-```
-
-**Example output:**
-```
-Original chunk: "The refund process takes 5-7 business days."
-
-Generated context: "This chunk describes the refund processing timeline 
-in the company's customer service policy document."
-
-Stored for embedding: "This chunk describes the refund processing timeline 
-in the company's customer service policy document. The refund process takes 
-5-7 business days."
-```
-
-**Example configuration (RHOAI 3.5):**
-```json
-{
-  "retrieval": {
-    "method": "contextual",
-    "context_generation_model": "granite-3.1-8b-instruct",
-    "number_of_chunks": 5,
-    "search_mode": "hybrid"
-  }
-}
-```
-
-**When to use contextual retrieval:**
-- **Long, complex documents**: Technical manuals, research papers, legal documents where chunks lose meaning when isolated
-- **Multi-section documents**: Books, reports with many chapters/sections
-- **Ambiguous content**: Documents where similar text appears in different contexts (e.g., "the system" referring to different systems)
-- **High-precision requirements**: Critical applications where retrieval accuracy is paramount
-- **Production RAG systems**: Maximum accuracy justifies the additional ingestion cost
-
-**Advantages:**
-- ✅ **Significantly better accuracy**: 49-67% reduction in failed retrievals
-- ✅ **Rich context**: Chunks include document-level context automatically
-- ✅ **No query-time overhead**: Context generated once at ingestion, not per query
-- ✅ **Compatible with hybrid search**: Can combine with vector + keyword + RRF
-- ✅ **Handles ambiguity**: Disambiguates chunks that would be unclear in isolation
-
-**Limitations:**
-- ❌ **Higher ingestion cost**: Requires LLM call per chunk to generate context (mitigated with prompt caching)
-- ❌ **Increased storage**: Context text adds to chunk size (typically 1-2 sentences)
-- ❌ **Slower indexing**: Context generation adds latency during vector store creation
-- ❌ **Requires entire document**: LLM needs full document context to generate chunk context
-
-**Cost optimization:**
-- Use **prompt caching** (e.g., Claude prompt caching) to reduce cost of passing entire document multiple times
-- Generate contexts in **batch** for all chunks from same document in single LLM call
-- Consider **selective contextualization**: Apply only to documents where chunks are likely ambiguous
-
 ### Retrieval Parameters
 
 AutoRAG optimizes these retrieval parameters during pattern evaluation:
 
 | Parameter | Description | Typical Range                        | Default | Impact |
 |-----------|-------------|--------------------------------------|---------|--------|
-| `method` | Retrieval strategy | `simple`, `contextual`               | `simple` | Determines retrieval algorithm complexity. |
+| `method` | Query-time retrieval strategy | `simple` (and future values aligned with the inference stack) | `simple` | How the stack fetches chunks from the vector store at **query** time. **LLM contextual enrichment** is **not** selected here; configure it under **`chunking.contextual_enrichment`**. |
 | `number_of_chunks` | Top-k chunks to retrieve | 3-20                                 | 5 | More chunks: more context but potential noise. Fewer chunks: precise but may miss relevant info. |
 | `search_mode` | Search type | `vector`, `keyword`, `hybrid`        | `hybrid` | Hybrid provides best accuracy for most use cases. |
 | `ranker_strategy` | Ranking fusion algorithm | `rrf`, `weighted` | Not set | RRF (Reciprocal Rank Fusion) recommended for hybrid search. |                                                                                                
@@ -383,7 +414,7 @@ AutoRAG optimizes these retrieval parameters during pattern evaluation:
 
 AutoRAG automatically tests combinations of these parameters during optimization:
 
-1. **Define search space**: Specify ranges for chunk_size, chunk_overlap, number_of_chunks, search_mode, ranker parameters
+1. **Define search space**: Specify ranges for chunk_size, chunk_overlap, optional **`contextual_enrichment`** (e.g. `enabled` grid), number_of_chunks, search_mode, ranker parameters
 2. **Run optimization**: AutoRAG evaluates all combinations against evaluation questions
 3. **Measure metrics**: Faithfulness, answer correctness, context precision/recall
 4. **Select best pattern**: Highest-scoring combination becomes the recommended pattern
@@ -395,7 +426,11 @@ AutoRAG automatically tests combinations of these parameters during optimization
   "chunking": {
     "method": ["recursive"],
     "chunk_size": [512, 1024, 2048],
-    "chunk_overlap": [100, 200, 256]
+    "chunk_overlap": [100, 200, 256],
+    "contextual_enrichment": {
+      "enabled": [false, true],
+      "context_generation_model": ["granite-3.1-8b-instruct"]
+    }
   },
   "retrieval": {
     "method": ["simple"],
@@ -408,7 +443,7 @@ AutoRAG automatically tests combinations of these parameters during optimization
 }
 ```
 
-This generates up to `3 × 3 × 3 × 2 × 3 × 3 = 486` combinations to evaluate (AutoRAG samples based on `max_combinations` parameter).
+This generates up to `3 × 3 × 2 × 1 × 3 × 2 × 3 × 3 = 972` combinations before any AutoRAG sampling cap (AutoRAG samples based on `max_combinations` and product-specific search-space rules).
 
 ---
 
@@ -416,7 +451,7 @@ This generates up to `3 × 3 × 3 × 2 × 3 × 3 = 486` combinations to evaluate
 
 - [RAG Pattern Inference](./rag_pattern_inference.md) - Pattern deployment and inference workflow
 - [RAG Pattern Vector Store Creation](./rag_pattern_vector_store_creation.md) - Vector store indexing with optimized patterns
-- [AutoRAG ADR](../../../architecture-decision-records/autorag/ODH-ADR-0002-autorag.md) - Architecture decisions and optimization workflow
+- [AutoRAG ADR](../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md) - Architecture decisions and optimization workflow
 - [Documents RAG Optimization Pipeline](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline) - Pipeline implementation
 
 ## External Resources
