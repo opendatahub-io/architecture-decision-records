@@ -2,14 +2,12 @@
 
 This page documents **AutoRAG pattern vector store creation** from optimization completion through production knowledge base building.
 
-## Table of contents
+## Table of Contents
 
 **RHOAI 3.4**
 
 - [Current approach](#current-approach)
 - [Indexing notebook artifacts](#indexing-notebook-artifacts)
-- [Manual vector store rebuild workflow](#manual-vector-store-rebuild-workflow)
-- [Limitations](#limitations)
 
 **RHOAI 3.5 and later**
 
@@ -18,7 +16,10 @@ This page documents **AutoRAG pattern vector store creation** from optimization 
 - [Pipeline architecture](#pipeline-architecture)
 - [Generated artifacts](#generated-artifacts)
 - [Automated deployment workflow](#automated-deployment-workflow)
-  - [AutoRAG Dashboard → AI Pipelines integration](#autorag-dashboard--ai-pipelines-integration)
+
+**Related**
+
+- [Related Documentation](#related-documentation)
 
 ---
 
@@ -45,37 +46,6 @@ Each optimized pattern's artifact directory (`<pattern_subdir>/`) includes an **
 - Vector store connection and indexing code for the specified `datasource_type` (e.g., Milvus, PGVector)
 - Collection/index creation with the optimized settings (distance metric, dimension, etc.)
 
-### Manual vector store rebuild workflow
-
-Operators and data scientists follow a **manual** notebook-based workflow:
-
-1. **Pipeline completes** → artifacts written to object storage, including `indexing_notebook.ipynb` per pattern
-2. **Download** the indexing notebook from the pipeline UI or object store
-3. **Configure environment:**
-   - Set vector store connection credentials (DSN, API keys, certificates)
-   - Mount or configure access to source documents
-   - Ensure embedding model endpoint is accessible
-4. **Execute notebook:**
-   - Run cells sequentially to process documents
-   - Monitor progress (chunking, embedding, indexing)
-   - Handle errors manually (connection failures, quota limits, etc.)
-5. **Verify vector store:**
-   - Check collection exists and has expected document count
-   - Test retrieval with sample queries
-   - Validate embeddings and metadata
-
-### Limitations
-
-The notebook-based approach has several limitations for production deployments:
-
-1. **Manual execution:** Requires human intervention to run cells, handle errors, and verify completion
-2. **No orchestration:** Cannot be triggered automatically when source documents change or patterns are updated
-3. **Limited observability:** No standardized logging, metrics, or progress tracking across notebook executions
-4. **Environment dependencies:** Requires setting up Jupyter environment with correct libraries, credentials, and network access
-5. **No versioning:** Difficult to track which version of the indexing code was used for a given vector store build
-6. **Error handling:** Manual error recovery; no automatic retries or failure notifications
-7. **Scalability:** Notebook kernel resource limits; difficult to parallelize chunking or embedding for large document sets
-
 ---
 
 ## RHOAI 3.5 and later
@@ -89,7 +59,7 @@ This pipeline automates the entire indexing workflow as a reusable, orchestrated
 **Architecture:** 
 - AutoRAG image contains the index building pipeline & pipeline components source code.
 - AutoRAG generates a **compiled, pre-configured pipeline YAML per pattern** with all settings from `pattern.json` baked in as defaults. This provides a superior user experience—operators just click "Deploy" without needing to provide configuration parameters.
-- AutoRAG inject the currently used image digest to compiled pipeline.
+- AutoRAG injects the currently used image digest to compiled pipeline.
  
 
 ### Per-pattern compiled pipelines
@@ -258,65 +228,6 @@ The compiled indexing pipeline enables automated vector store deployment with se
 │    └─> /v1/responses API ready for queries                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-#### AutoRAG Dashboard → AI Pipelines integration
-
-**Step-by-step user workflow:**
-
-1. **Pattern selection in AutoRAG Dashboard:**
-   - User completes pattern optimization (or views existing patterns)
-   - Dashboard displays optimized patterns with evaluation metrics
-   - User selects a pattern to deploy
-
-2. **Save to AI Pipelines:**
-   - User clicks "Deploy Pattern" or "Save to Pipelines" button
-   - Dashboard uploads `indexing_pipeline.yaml` to Data Science Pipelines (KFP)
-   - Pipeline is registered in the user's AI Pipelines project
-   - Pipeline appears in RHOAI Pipelines UI with pattern name (e.g., "pattern-01-indexing")
-
-3. **Run and monitor via AI Pipelines UI:**
-   - User navigates to **Data Science Pipelines** → **Pipelines** in RHOAI
-   - Locates the pattern indexing pipeline
-   - Clicks "Create run" to start pipeline execution
-   - Provides runtime parameters
-   - Monitors execution in Pipelines UI:
-     - Real-time step progress
-     - Component logs (chunking, embedding, indexing)
-     - Metrics and artifacts
-     - Error messages and debugging info
-4. **Post-completion:**
-   - Pipeline run completes successfully → vector store is ready
-   - User can view run artifacts (stats, logs) in Pipelines UI
-   - User can trigger re-runs (e.g., when source documents update) by clicking "Clone run"
-
-**Benefits of this integration:**
-
-- ✅ **Single platform experience:** AutoRAG optimization → AI Pipelines deployment, all within RHOAI UI
-- ✅ **No manual pipeline upload:** Dashboard automates KFP registration
-- ✅ **Standard monitoring:** Users leverage existing AI Pipelines UI skills for monitoring
-- ✅ **Run history:** All indexing runs tracked in Pipelines UI, enabling auditing and comparison
-- ✅ **Easy re-runs:** Clone existing runs to rebuild vector stores when documents change
-
-**Pipeline execution options:**
-
-1. **AutoRAG Dashboard → AI Pipelines UI (recommended):**
-   - **Step 1:** AutoRAG Dashboard "Deploy Pattern" button saves compiled pipeline to AI Pipelines project
-   - **Step 2:** User navigates to Data Science Pipelines UI in RHOAI
-   - **Step 3:** User creates and monitors pipeline runs via standard Pipelines UI
-   - **Benefits:** Integrated RHOAI experience, visual monitoring, run history, easy re-runs
-   - **Target users:** Data scientists and operators using RHOAI Dashboard
-
-2. **Direct API invocation (automation/CI/CD):**
-   - CI/CD pipelines or automation scripts call the KFP API directly
-   - Example: `kfp run create --pipeline-id pattern-01-indexing --parameter document_source=s3://my-docs/`
-   - **Benefits:** Scriptable, automated, GitOps-friendly
-   - **Target users:** Platform teams, DevOps engineers
-
-3. **Scheduled (batch processing):**
-   - Cron-based pipeline runs to keep vector store in sync with changing documents
-   - Configured via KFP recurring runs or external schedulers
-   - **Benefits:** Regular refresh without manual intervention
-   - **Target users:** Knowledge bases with daily/weekly document updates
 
 ---
 

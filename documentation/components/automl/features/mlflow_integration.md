@@ -1,8 +1,7 @@
 # AutoML MLflow integration
 
-This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML** workflows implemented in [opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components) under **`components/training/automl`** and **`pipelines/training/automl`**, with product goals: **experiment tracking, comparison, reproducibility, optional enablement, low overhead, and air-gapped support**.
+This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML** workflows implemented in [opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components) under **`components/training/automl`** and **`pipelines/training/automl`**, with product goals: **experiment tracking, comparison, reproducibility**.
 
-For architecture context (goals, workflow, ADR-level intent for MLflow), see [ODH-ADR-0001-automl](../../../../architecture-decision-records/automl/ODH-ADR-0001-automl.md) and the [AutoML component overview](../README.md).
 
 ## Table of Contents
 
@@ -32,17 +31,6 @@ For architecture context (goals, workflow, ADR-level intent for MLflow), see [OD
   - [Dashboard Integration Workflow](#dashboard-integration-workflow)
   - [Alternative: HTML Artifact Metadata (Fallback)](#alternative-html-artifact-metadata-fallback)
   - [Benefits of Dedicated Artifact vs Metadata-Only](#benefits-of-dedicated-artifact-vs-metadata-only)
-- [MLflow UI visualization example](#mlflow-ui-visualization-example)
-  - [Run hierarchy in MLflow UI](#run-hierarchy-in-mlflow-ui)
-  - [Parent run view](#parent-run-view)
-  - [Child run example (tabular)](#child-run-example-tabular)
-  - [Timeseries example](#timeseries-example)
-  - [Experiments table view](#experiments-table-view)
-  - [Compare runs view](#compare-runs-view)
-  - [Key UI features](#key-ui-features)
-- [AutoML Dashboard integration with MLflow](#automl-dashboard-integration-with-mlflow)
-  - [Dashboard-MLflow connection](#dashboard-mlflow-connection)
-  - [MLflow UI integration](#mlflow-ui-integration)
 - [References](#references)
   - [AutoML Implementation](#automl-implementation)
   - [MLflow on RHOAI](#mlflow-on-rhoai)
@@ -496,95 +484,6 @@ The artifact is a JSON file written to `mlflow_tracking_artifact.path` with the 
 
 ---
 
-## MLflow UI visualization example
-
-### Run hierarchy in MLflow UI
-
-```mermaid
-graph TD
-    A[Experiment: automl_autogluon_tabular] --> B[Parent Run: automl_pipeline_abc123]
-    B --> C[Child: WeightedEnsemble_L3]
-    B --> D[Child: CatBoost_BAG_L2]
-    B --> E[Child: LightGBM_BAG_L2]
-    
-    style A fill:#e1f5ff,stroke:#01579b,stroke-width:2px
-    style B fill:#fff9c4,stroke:#f57f17,stroke-width:2px
-    style C fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px
-    style D fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px
-    style E fill:#c8e6c9,stroke:#2e7d32,stroke-width:1px
-```
-
-### Parent run view
-
-**Run:** `automl_pipeline_abc123` | **Status:** ✅ FINISHED | **Duration:** 3m 24s
-
-**Key parameters:** `eval_metric=accuracy`, `preset=medium_quality`, `top_n=3`, `task_type=binary`
-
-**Key metrics:** `best_model_score=0.947`, `total_training_time=187.3s`, `num_models_trained=15`, `n_features=47`, `train_rows=8000`
-
-**Artifacts:** `leaderboard.html`
-
-### Child run example (tabular)
-
-**Run:** `WeightedEnsemble_L3` | **Parent:** `automl_pipeline_abc123` | **Duration:** 42.5s
-
-**Parameters:** `model_type=WeightedEnsemble`, `stack_level=3`, `fit_time=42.5s`, `predict_time=0.8s`
-
-**Metrics (classification):** `score_val=0.947`, `accuracy=0.947`, `f1=0.935`, `roc_auc=0.982`
-
-**Artifacts:** `WeightedEnsemble_L3_metrics.json`, `WeightedEnsemble_L3_feature_importance.json`
-
-### Timeseries example
-
-**Parent run:** `automl_timeseries_pipeline_ghi789` | `eval_metric=WQL`, `prediction_length=7`
-
-**Metrics:** `best_model_score=0.234 (WQL)`, `n_unique_series=1000`, `total_rows_loaded=50000`
-
-**Child run:** DeepAR model with `WQL=0.234`, `MAPE=0.145`, `RMSE=12.4`
-
-### Experiments table view
-
-| Run Name | Created | Duration | best_model_score | preset |
-|----------|---------|----------|------------------|--------|
-| automl_pipeline_abc123 | 2026-04-22 14:35 | 3m 24s | **0.947** | medium_quality |
-| automl_pipeline_xyz789 | 2026-04-21 09:12 | 4m 18s | 0.932 | good_quality |
-
-### Compare runs view
-
-Select multiple child runs to compare side-by-side metrics (e.g., `roc_auc`, `fit_time`) and parameters (e.g., `stack_level`, `model_type`).
-
-### Key UI features
-
-- **Experiment-level view:** Compare pipeline runs across dates, presets, datasets
-- **Parent/child hierarchy:** Drill into pipeline config and per-model performance
-- **Compare runs:** Side-by-side metric charts for multiple models
-- **Search/filter:** By tags, parameters, or metrics (e.g., `best_model_score > 0.94`)
-- **Artifact browser:** Download leaderboard HTML, metrics JSON, feature importance
-
-**Navigation:** Experiment → Parent run (pipeline) → Child runs (models) → Artifacts
-
----
-
-## AutoML Dashboard integration with MLflow
-
-The **AutoML Dashboard** in RHOAI 3.5+ provides seamless integration with MLflow for viewing training results, comparing models, and accessing experiment artifacts.
-
-### Dashboard-MLflow connection
-
-When MLflow tracking is enabled, the AutoML Dashboard:
-
-1. **Connects to the MLflow tracking server** using the same settings as pipeline components
-2. **Retrieves run metadata** (parent runs and nested child runs per model) to display in the dashboard UI
-
-### MLflow UI integration
-
-The dashboard provides **deep-links** to the MLflow tracking server UI for advanced analysis.
-
-**Example deep-link URL format:**
-```
-https://mlflow-server.example.com/#/experiments/{experiment_id}/runs/{run_id}
-```
----
 
 ## References
 
