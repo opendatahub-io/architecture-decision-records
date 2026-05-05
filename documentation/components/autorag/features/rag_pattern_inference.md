@@ -20,11 +20,7 @@ This page documents **AutoRAG pattern deployment** from optimization completion 
 - [LLama-Stack /v1/responses API](#llama-stack-v1responses-api)
   - [Request payload](#request-payload)
   - [Response format](#response-format)
-- [AutoRAG Dashboard (UI)](#autorag-dashboard-ui)
-  - [Dashboard capabilities](#dashboard-capabilities)
-  - [Code snippet generation](#code-snippet-generation)
-- [Configuration Persistence for Gen AI Studio](#configuration-persistence-for-gen-ai-studio)
-  - [End-to-end integration workflow](#end-to-end-integration-workflow)
+- [Code snippet generation](#code-snippet-generation)
 
 ---
 
@@ -340,152 +336,109 @@ The backend uses **`POST /v1/responses`** for both optimization and inference, f
 
 **Consumers (Dashboard, GenAI Studio, tests):** parse **`output`** (and any convenience fields such as **`output_text`** when using the official SDK) instead of **`choices[].message`** from chat completions.
 
----
-
-## AutoRAG Dashboard (UI)
-
-The **OpenShift AI AutoRAG Dashboard** provides data scientists with visibility into optimization runs and enables pattern export.
-
-### Dashboard capabilities
-
-The Dashboard aggregates KFP pipeline results and pattern artifacts for RHOAI users:
-
-| Capability | Description                                                                                                                                                                           |
-|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Pattern listing and metrics** | Displays all optimized patterns from pipeline runs with evaluation metrics (faithfulness, answer correctness, final score) for comparison and selection. |
-| **Responses API preview** | Renders **`pattern.json`** `settings.responses_template` field (read-only)—including structured `input` and `file_search` when present—so users see the exact Responses API template. |
-| **Vector store binding info** | Shows **`settings.vector_store_binding`** details (provider, vector_store_id, collection) for understanding deployment requirements. |
-| **Code snippet export** | One-click export of Python/curl examples and download of `create_model_response.py` script for production use (see [Code snippet generation](#code-snippet-generation) below). |
-| **Pattern deployment** | “Deploy Pattern” button to save indexing pipeline to AI Pipelines project for vector store creation (see [Vector Store Creation](./rag_pattern_vector_store_creation.md)). |
-| **Hand-off to GenAI Studio** | Deep link or button to GenAI Studio “try me out” for interactive testing (see [Configuration Persistence for Gen AI Studio](./configuration_persistence_genai_studio.md)). |
-
 ### Code snippet generation
 
-The **Code snippet export** capability provides one-click access to production-ready code examples that call **`POST /v1/responses`**. Users have multiple options:
+After optimization, you can call **`POST /v1/responses`** in two straightforward ways:
 
-- **Download the ready-to-use script:** Export the **`create_model_response.py`** script directly from the pattern artifacts (see [Generated artifacts per pattern](#generated-artifacts-per-pattern)). This interactive client script embeds the Llama Stack base URL from environment variables, reads the Responses configuration from **`pattern.json`**, and provides a command-line interface for testing patterns.
-  
-- **Copy inline code snippets:** Generate Python or curl examples on-demand for integration into existing applications.
+1. **Download the Python helper** — Take **`create_model_response.py`** from the pattern output (see [Generated artifacts per pattern](#generated-artifacts-per-pattern)) or export it from the AutoRAG Dashboard. The script reads **`pattern.json`**, applies your Llama Stack base URL and credentials from the environment, and drives **`/v1/responses`** interactively so you do not have to assemble the JSON by hand.
 
-- **Run the code snippet:** Execute REST API example on-demand and render the results.
+2. **Build the request from `settings.responses_template`** — In RHOAI 3.5+, **`pattern.json`** already contains the same **`POST /v1/responses`** body the optimizer used, under **`settings.responses_template`** (see [Example pattern.json](#example-patternjson)). Treat that object as your request body: point your HTTP client at **`/v1/responses`**, send it as JSON, and only substitute the user question—typically by replacing the **`<user_query_placeholder>`** token in the structured **`input`** (or whatever placeholder your build emits). No need to re-specify **`tools`**, **`instructions`**, or **`metadata`** unless you intentionally change the recipe.
 
-**Python example:**
+The Dashboard can still offer copy/export actions; whether you paste from the UI or read **`pattern.json`** from disk, the source of truth for the request shape is **`settings.responses_template`**.
+
+**Python (load template, swap placeholder, POST):**
 
 ```python
+import copy
+import json
+import os
+from pathlib import Path
+
 import requests
 
-# LLama-Stack inference endpoint (RHOAI 3.5)
-LLAMA_STACK_URL = “https://llama-stack.apps.cluster.example.com/v1/responses”
+LLAMA_STACK_RESPONSES_URL = "https://llama-stack.apps.cluster.example.com/v1/responses"
+PATTERN_JSON = Path("pattern.json")
 
-# Pattern ID from AutoRAG optimization
-PATTERN_ID = “autorag-pattern-12345-v1”
 
-def query_rag_pattern(user_query: str) -> dict:
-    “””
-    Query a deployed RAG pattern via Llama Stack Responses API.
-    “””
-    payload = {
-        “model”: “granite-3.1-8b-instruct”,
-        “input”: user_query,
-        “tools”: [
-            {
-                “type”: “retrieval”,
-                “retrieval”: {
-                    “pattern_id”: PATTERN_ID,
-                    “top_k”: 5,
-                    “rerank”: {“enabled”: True, “top_n”: 3},
-                },
-            }
-        ],
-        “temperature”: 0.7,
-        “max_output_tokens”: 512,
-    }
+def build_responses_body(pattern: dict, user_query: str) -> dict:
+    """Return POST /v1/responses JSON from pattern.settings.responses_template."""
+    body = copy.deepcopy(pattern["settings"]["responses_template"])
+    for block in body.get("input", []):
+        if block.get("type") != "message":
+            continue
+        for part in block.get("content", []):
+            if part.get("type") == "input_text" and part.get("text") == "<user_query_placeholder>":
+                part["text"] = user_query
+    return body
 
-    response = requests.post(LLAMA_STACK_URL, json=payload)
-    response.raise_for_status()
-    result = response.json()
 
-    # Parsing is build-specific: many stacks expose `output_text` via SDK;
-    # raw JSON often includes an `output` list (assistant message + tool payloads).
-    answer = result.get(“output_text”) or “”
-    chunks: list = []
-    for item in result.get(“output”, []):
-        if item.get(“type”) == “retrieval”:
-            chunks.extend(item.get(“chunks”, []))
+def query_pattern(user_query: str) -> dict:
+    pattern = json.loads(PATTERN_JSON.read_text())
+    payload = build_responses_body(pattern, user_query)
+    r = requests.post(
+        LLAMA_STACK_RESPONSES_URL,
+        json=payload,
+        headers={"Authorization": f"Bearer {os.environ['LLAMA_STACK_API_KEY']}"},
+        timeout=120,
+    )
+    r.raise_for_status()
+    return r.json()
 
-    return {“answer”: answer, “chunks”: chunks, “raw”: result}
 
-# Example usage
-if __name__ == “__main__”:
-    result = query_rag_pattern(“What is the refund policy?”)
-    print(f”Answer: {result['answer']}”)
-    print(f”Retrieved {len(result['chunks'])} chunks”)
+if __name__ == "__main__":
+    out = query_pattern("What is the refund policy?")
+    # Parsing is server-specific; often inspect `output` or SDK helpers like `output_text`.
+    print(out)
 ```
 
-**curl equivalent:**
+**curl:** Same payload shape as **`settings.responses_template`** from **`pattern.json`**, with the user question inlined in **`input`** instead of **`<user_query_placeholder>`**. Adjust **`model`**, **`vector_store_ids`**, and **`metadata`** to match your pattern and deployment.
 
 ```bash
-curl -X POST https://llama-stack.apps.cluster.example.com/v1/responses \
-  -H “Content-Type: application/json” \
+curl -X POST "https://llama-stack.apps.cluster.example.com/v1/responses" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${LLAMA_STACK_API_KEY}" \
   -d '{
-    “model”: “granite-3.1-8b-instruct”,
-    “input”: “What is the refund policy?”,
-    “tools”: [{
-      “type”: “retrieval”,
-      “retrieval”: {
-        “pattern_id”: “autorag-pattern-12345-v1”,
-        “top_k”: 5,
-        “rerank”: {“enabled”: true, “top_n”: 3}
+  "model": "gpt-4.1-mini",
+  "stream": false,
+  "store": true,
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "What is the refund policy?"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "autorag_run_id": "012345678",
+    "rag_pattern_name": "pattern_01"
+  },
+  "instructions": "Please answer the question using only information found in file_search results. If the question is unanswerable, say you cannot answer. Respond in the same language as the user question.",
+  "tools": [
+    {
+      "type": "file_search",
+      "vector_store_ids": ["vs_coll_pattern_01"],
+      "max_num_results": 5,
+      "ranking_options": {
+        "search_mode": "hybrid",
+        "ranker_strategy": "rrf",
+        "ranker_k": 60,
+        "ranker_alpha": 0.5
       }
-    }],
-    “temperature”: 0.7,
-    “max_output_tokens”: 512
-  }'
+    }
+  ],
+  "tool_choice": {
+    "type": "file_search"
+  },
+  "include": ["file_search_call.results"]
+}'
 ```
 
-**Portability:** Examples use plain **`requests`** / **`curl`** for portability. 
+**Portability:** The examples use plain **`requests`** and **`curl`**; add TLS options or a service mesh sidecar as required by your cluster.
 
----
-
----
-
-## Configuration Persistence for Gen AI Studio
-
-Configuration persistence for Gen AI Studio, including pattern registration via Config, vector store configuration, 
-and “Try me out” workflow integration, to be discussed in [RHAIRFE-912](https://issues.redhat.com/browse/RHAIRFE-912)
-and [RHAIRFE-2122](https://issues.redhat.com/browse/RHAIRFE-2122) (AutoRAG Pattern Integration with GenAI Studio/Playground).
-
----
-
-### End-to-end integration workflow
-
-The following diagram shows how all components could integrate together:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. AutoRAG Backend (Optimization Pipeline)                      │
-│    └─> Evaluates candidates                                     │
-│    └─> Generates pattern.json (with Responses API template)     │
-│    └─> Artifacts written to object storage                      │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 2. AutoRAG Dashboard                                            │
-│    └─> Lists optimization runs and patterns                     │
-│    └─> Displays pattern.json (including Responses API template) │
-│    └─> Provides code snippets (Python/curl)                     │
-│    └─> Links to GenAI Studio for try-out (saves configs)        │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. GenAI Studio / Playground (Optional)                         │                    │
-│    └─> Loads persisted AutoRAG config                           │
-│    └─> Injects test query into template                         │
-│    └─> Sends POST /v1/responses to Llama Stack                  │
-│    └─> Displays results and retrieved chunks                    │
-└─────────────────────────────────────────────────────────────────┘
-```
 
 ---
