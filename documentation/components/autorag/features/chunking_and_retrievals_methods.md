@@ -7,6 +7,7 @@ This page documents the **chunking strategies** and **retrieval methods** suppor
 - [Chunking Methods](#chunking-methods)
   - [Recursive Chunking](#recursive-chunking)
   - [Docling: Markdown export vs native chunking](#docling-markdown-export-vs-native-chunking)
+  - [Extraction persistence and optimization flow](#extraction-persistence-and-optimization-flow)
   - [Hierarchical Chunking (RHOAI 3.5+)](#hierarchical-chunking-rhoai-35)
   - [LLM contextual enrichment (index time, RHOAI 3.5+)](#llm-contextual-enrichment-index-time-rhoai-35)
   - [Chunking parameters reference](#chunking-parameters-reference)
@@ -57,6 +58,90 @@ Official Docling documentation distinguishes **two** chunking strategies in prin
 | **Native Docling chunkers on `DoclingDocument`** | Call chunkers that **iterate over the parsed document model**, not over a single pre-flattened string. **`HierarchicalChunker`** uses detected structure (headings, captions, elements; list merging is configurable). **`HybridChunker`** adds tokenizer-aware split/merge on top of hierarchical chunks (aligned with embedding limits; table header behavior is configurable). | **Structure-aware** chunks and **`contextualize()`** for metadata-enriched strings for embeddings. **`BaseChunker`** allows **custom or third-party** implementations and is the integration surface for frameworks such as LlamaIndex (same concepts page). Examples: [Hybrid chunking](https://docling-project.github.io/docling/examples/hybrid_chunking/), [Advanced chunking and serialization](https://docling-project.github.io/docling/examples/advanced_chunking_and_serialization/). |
 
 **Implication for AutoRAG:** the optimization surface documented on this page (recursive / token limits / `pattern.json`) remains valid for **whatever text (or chunk stream)** the ingestion path feeds into the vector store. Longer-term quality improvements for complex corpora may come from **keeping structure in `DoclingDocument` longer** and using **native hierarchical (or hybrid) chunking** plus custom serialization, rather than relying on **”everything to Markdown first”** as the only path—consistent with Docling’s own split between export-based and native chunking approaches.
+
+### Extraction persistence and optimization flow
+
+This section describes the **recommended end-to-end shape** for [`pipelines-components`](https://github.com/red-hat-data-services/pipelines-components) when the **search space** includes more than one chunking family (for example **recursive on flat text** vs **Docling native hierarchical / hybrid**).
+
+#### 1. Text extraction persists `DoclingDocument` (JSON or YAML)
+
+After Docling parses a source file, the **`text_extraction`** step should write a **canonical serialized document** per input (object store prefix or shared workspace, then upload). Use **docling-core** APIs so reload round-trips through the same schema.
+
+**Save to JSON**
+
+```python
+from pathlib import Path
+from docling_core.types.doc.base import ImageRefMode
+from docling_core.types.doc.document import DoclingDocument
+
+doc: DoclingDocument = ...  # e.g. result.document from DocumentConverter
+
+out_path = Path("/workspace/parsed/<doc_id>/docling.json")
+doc.save_as_json(
+    out_path,
+    artifacts_dir=out_path.parent / "artifacts",
+    image_mode=ImageRefMode.REFERENCED,  # smaller JSON; ship `artifacts/` with the file
+    indent=2,
+)
+```
+
+**Save to YAML** (equivalent; choose one format per product convention)
+
+```python
+from pathlib import Path
+from docling_core.types.doc.base import ImageRefMode
+from docling_core.types.doc.document import DoclingDocument
+
+doc: DoclingDocument = ...
+
+out_path = Path("/workspace/parsed/<doc_id>/docling.yaml")
+doc.save_as_yaml(
+    out_path,
+    artifacts_dir=out_path.parent / "artifacts",
+    image_mode=ImageRefMode.REFERENCED,
+)
+```
+
+**Load back** (same document for downstream chunking or export)
+
+```python
+from docling_core.types.doc.document import DoclingDocument
+
+doc = DoclingDocument.load_from_json("/workspace/parsed/<doc_id>/docling.json")
+# or: doc = DoclingDocument.load_from_yaml("/workspace/parsed/<doc_id>/docling.yaml")
+```
+
+**Notes**
+
+- Prefer **`ImageRefMode.REFERENCED`** plus **`artifacts_dir`** for large PDFs so the JSON/YAML stays smaller; the pipeline must preserve **both** the main file and the **artifacts** directory for reloads.
+- Optional: gzip the file in object storage; the **loader** task decompresses before `load_from_json` / `load_from_yaml`.
+- Record **docling / docling-core version** (or a content hash) in a sidecar manifest so upgrades do not silently break deserialization.
+
+#### 2. ai4rag consumes persisted documents and branches on the search space
+
+**`rag_templates_optimization`** (ai4rag) receives **paths or URIs** to the extracted corpus (for example a **manifest** listing each `doc_id` and its `docling.json` / `docling.yaml` path). It does **not** need to re-parse PDFs for each trial if the persisted **`DoclingDocument`** is the single source of truth.
+
+For **each optimization trial**, ai4rag reads the **search space / template** and applies the trial’s **`chunking.method`** and related parameters:
+
+| Trial `chunking.method` (examples) | Working representation | Where “flat” conversion happens |
+|-----------------------------------|-------------------------|--------------------------------|
+| **`hierarchical`**, **`hybrid`**, or other **native Docling** chunkers | Deserialize **`DoclingDocument`** from JSON/YAML | **No** Markdown intermediate required; chunkers run on the document model, then optional **`contextualize()`** for embed strings. |
+| **`recursive`** (or any splitter that needs a **single string**) | Start from the same **`DoclingDocument`** | **On demand** in the trial path: call **`export_to_markdown()`** (or reuse a **Markdown file** produced once during extraction if you want to avoid repeated export). Then apply recursive / token splitting with the trial’s **`chunk_size`** / **`chunk_overlap`**. |
+
+So: **persistence is always the structured model**; **flattening to Markdown (or plain text) is a conversion step** only for chunkers that require it, driven by the **search space** rather than by a separate manual corpus fork—unless you explicitly pre-derive Markdown during extraction to save CPU (then the manifest lists **both** URIs and the trial picks the appropriate input).
+
+**Flow summary**
+
+```
+text_extraction  →  DoclingDocument.save_as_json|yaml  →  manifest + object store
+                                                      ↘
+rag_templates_optimization (ai4rag)  →  load DoclingDocument per trial input
+                                     →  branch on chunking.method
+                                     →  native path: chunk on model
+                                     →  recursive path: export_to_markdown (or read pre-derived MD) → split string
+```
+
+This keeps **one parse per document** while still letting AutoRAG **explore** chunking methods in the optimization loop.
 
 ### Hierarchical Chunking (RHOAI 3.5+)
 
