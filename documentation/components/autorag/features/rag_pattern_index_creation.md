@@ -215,7 +215,7 @@ The compiled indexing pipeline enables automated vector store deployment with se
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 6. Pattern Inference Deployment                                 │
+│ 6. Pattern Inference                                            │
 │    └─> Llama Stack references the populated vector store        │
 │    └─> /v1/responses API ready for production queries           │
 └─────────────────────────────────────────────────────────────────┘

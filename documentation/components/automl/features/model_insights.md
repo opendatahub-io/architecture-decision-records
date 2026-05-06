@@ -353,9 +353,10 @@ Per-class baselines shown as horizontal lines at respective precision values
 
 Under each **`{model_name}_FULL/metrics/`**:
 
-| Path | Content (planned) |
-|------|---------------------|
-| `metrics/back_testing.json` | **Back-testing** summary (for example per-window or per-series holdout results, scores, and identifiers) aligned with AutoGluon time-series validation / backtest behavior once wired in the refit step. |
+| Path                         | Content (planned)                                                                                                                                                                                        |
+|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `metrics/back_testing.json`  | **Back-testing** summary (for example per-window or per-series holdout results, scores, and identifiers) aligned with AutoGluon time-series validation / backtest behavior once wired in the refit step. |
+| `metrics/forecast_data.json` | **Back-testing** data points grouped by window and id (best 3 and worst 3) aligned with AutoGluon time-series validation / backtest behavior once wired in the refit step.                               |
 
 Leaderboard steps may later be extended to **surface links or summaries** from these files; until then they remain **companion files** alongside **`metrics/metrics.json`**.
 
@@ -585,6 +586,394 @@ Calibration Quality:
 
 Overall: Model is well-calibrated (avg deviation: 1.2%)
 ```
+
+#### Example: `forecast_data.json` (time series)
+
+```json
+{
+  "metadata": {
+    "prediction_length": 24,
+    "num_backtest_windows": 3,
+    "total_series": 147,
+    "metric_used_for_ranking": "MAPE"
+  },
+  "best_performer": {
+    "item_id": "series_042",
+    "avg_metrics": {
+      "MAPE": 2.45,
+      "RMSE": 13.1,
+      "MAE": 8.7,
+      "SMAPE": 2.2,
+      "MASE": 0.89
+    },
+    "windows": [
+      {
+        "window_id": 0,
+        "metrics": {
+          "MAPE": 2.58,
+          "RMSE": 13.8,
+          "MAE": 9.1,
+          "SMAPE": 2.3,
+          "MASE": 0.92
+        },
+        "backtest_window": {
+          "train_end": "2026-02-14T23:00:00Z",
+          "test_start": "2026-02-15T00:00:00Z",
+          "test_end": "2026-02-15T23:00:00Z"
+        },
+        "forecast_data": [
+          {
+            "timestamp": "2026-02-15T00:00:00Z",
+            "actual": 515.2,
+            "predicted": 512.8,
+            "lower_bound": 496.5,
+            "upper_bound": 529.1,
+            "quantile_0.1": 499.3,
+            "quantile_0.5": 512.8,
+            "quantile_0.9": 526.3
+          },
+          {
+            "timestamp": "2026-02-15T01:00:00Z",
+            "actual": 510.5,
+            "predicted": 509.2,
+            "lower_bound": 493.0,
+            "upper_bound": 525.4,
+            "quantile_0.1": 495.7,
+            "quantile_0.5": 509.2,
+            "quantile_0.9": 522.7
+          },
+          {
+            "timestamp": "2026-02-15T02:00:00Z",
+            "actual": 507.8,
+            "predicted": 506.5,
+            "lower_bound": 490.4,
+            "upper_bound": 522.6,
+            "quantile_0.1": 493.1,
+            "quantile_0.5": 506.5,
+            "quantile_0.9": 519.9
+          }
+        ]
+      },
+      {
+        "window_id": 1,
+        "metrics": {
+          "MAPE": 2.41,
+          "RMSE": 12.9,
+          "MAE": 8.5,
+          "SMAPE": 2.2,
+          "MASE": 0.88
+        },
+        "backtest_window": {
+          "train_end": "2026-03-07T23:00:00Z",
+          "test_start": "2026-03-08T00:00:00Z",
+          "test_end": "2026-03-08T23:00:00Z"
+        },
+        "forecast_data": [
+          {
+            "timestamp": "2026-03-08T00:00:00Z",
+            "actual": 520.8,
+            "predicted": 519.3,
+            "lower_bound": 502.9,
+            "upper_bound": 535.7,
+            "quantile_0.1": 505.7,
+            "quantile_0.5": 519.3,
+            "quantile_0.9": 532.9
+          },
+          {
+            "timestamp": "2026-03-08T01:00:00Z",
+            "actual": 516.4,
+            "predicted": 517.1,
+            "lower_bound": 500.8,
+            "upper_bound": 533.4,
+            "quantile_0.1": 503.6,
+            "quantile_0.5": 517.1,
+            "quantile_0.9": 530.6
+          },
+          {
+            "timestamp": "2026-03-08T02:00:00Z",
+            "actual": 513.2,
+            "predicted": 514.8,
+            "lower_bound": 498.6,
+            "upper_bound": 531.0,
+            "quantile_0.1": 501.4,
+            "quantile_0.5": 514.8,
+            "quantile_0.9": 528.2
+          }
+        ]
+      },
+      {
+        "window_id": 2,
+        "metrics": {
+          "MAPE": 2.34,
+          "RMSE": 12.5,
+          "MAE": 8.2,
+          "SMAPE": 2.1,
+          "MASE": 0.85
+        },
+        "backtest_window": {
+          "train_end": "2026-03-31T23:00:00Z",
+          "test_start": "2026-04-01T00:00:00Z",
+          "test_end": "2026-04-01T23:00:00Z"
+        },
+        "forecast_data": [
+          {
+            "timestamp": "2026-04-01T00:00:00Z",
+            "actual": 523.4,
+            "predicted": 521.8,
+            "lower_bound": 505.2,
+            "upper_bound": 538.4,
+            "quantile_0.1": 508.3,
+            "quantile_0.5": 521.8,
+            "quantile_0.9": 535.3
+          },
+          {
+            "timestamp": "2026-04-01T01:00:00Z",
+            "actual": 518.2,
+            "predicted": 519.5,
+            "lower_bound": 502.9,
+            "upper_bound": 536.1,
+            "quantile_0.1": 505.8,
+            "quantile_0.5": 519.5,
+            "quantile_0.9": 533.2
+          },
+          {
+            "timestamp": "2026-04-01T02:00:00Z",
+            "actual": 512.8,
+            "predicted": 514.2,
+            "lower_bound": 497.8,
+            "upper_bound": 530.6,
+            "quantile_0.1": 500.5,
+            "quantile_0.5": 514.2,
+            "quantile_0.9": 527.9
+          }
+        ]
+      }
+    ]
+  },
+  "worst_performer": {
+    "item_id": "series_104",
+    "avg_metrics": {
+      "MAPE": 42.58,
+      "RMSE": 253.4,
+      "MAE": 158.7,
+      "SMAPE": 37.2,
+      "MASE": 4.68
+    },
+    "windows": [
+      {
+        "window_id": 0,
+        "metrics": {
+          "MAPE": 41.23,
+          "RMSE": 245.8,
+          "MAE": 152.4,
+          "SMAPE": 35.7,
+          "MASE": 4.52
+        },
+        "backtest_window": {
+          "train_end": "2026-02-14T23:00:00Z",
+          "test_start": "2026-02-15T00:00:00Z",
+          "test_end": "2026-02-15T23:00:00Z"
+        },
+        "forecast_data": [
+          {
+            "timestamp": "2026-02-15T00:00:00Z",
+            "actual": 89.4,
+            "predicted": 198.7,
+            "lower_bound": 168.3,
+            "upper_bound": 229.1,
+            "quantile_0.1": 172.5,
+            "quantile_0.5": 198.7,
+            "quantile_0.9": 224.9
+          },
+          {
+            "timestamp": "2026-02-15T01:00:00Z",
+            "actual": 92.1,
+            "predicted": 203.5,
+            "lower_bound": 172.8,
+            "upper_bound": 234.2,
+            "quantile_0.1": 177.1,
+            "quantile_0.5": 203.5,
+            "quantile_0.9": 229.9
+          },
+          {
+            "timestamp": "2026-02-15T02:00:00Z",
+            "actual": 87.6,
+            "predicted": 207.2,
+            "lower_bound": 176.0,
+            "upper_bound": 238.4,
+            "quantile_0.1": 180.4,
+            "quantile_0.5": 207.2,
+            "quantile_0.9": 234.0
+          }
+        ]
+      },
+      {
+        "window_id": 1,
+        "metrics": {
+          "MAPE": 44.85,
+          "RMSE": 265.3,
+          "MAE": 168.2,
+          "SMAPE": 39.4,
+          "MASE": 4.92
+        },
+        "backtest_window": {
+          "train_end": "2026-03-07T23:00:00Z",
+          "test_start": "2026-03-08T00:00:00Z",
+          "test_end": "2026-03-08T23:00:00Z"
+        },
+        "forecast_data": [
+          {
+            "timestamp": "2026-03-08T00:00:00Z",
+            "actual": 82.7,
+            "predicted": 205.3,
+            "lower_bound": 174.2,
+            "upper_bound": 236.4,
+            "quantile_0.1": 178.6,
+            "quantile_0.5": 205.3,
+            "quantile_0.9": 232.0
+          },
+          {
+            "timestamp": "2026-03-08T01:00:00Z",
+            "actual": 78.5,
+            "predicted": 210.8,
+            "lower_bound": 179.3,
+            "upper_bound": 242.3,
+            "quantile_0.1": 183.8,
+            "quantile_0.5": 210.8,
+            "quantile_0.9": 237.8
+          },
+          {
+            "timestamp": "2026-03-08T02:00:00Z",
+            "actual": 75.2,
+            "predicted": 214.5,
+            "lower_bound": 182.7,
+            "upper_bound": 246.3,
+            "quantile_0.1": 187.2,
+            "quantile_0.5": 214.5,
+            "quantile_0.9": 241.8
+          }
+        ]
+      },
+      {
+        "window_id": 2,
+        "metrics": {
+          "MAPE": 41.65,
+          "RMSE": 249.1,
+          "MAE": 155.6,
+          "SMAPE": 36.5,
+          "MASE": 4.61
+        },
+        "backtest_window": {
+          "train_end": "2026-03-31T23:00:00Z",
+          "test_start": "2026-04-01T00:00:00Z",
+          "test_end": "2026-04-01T23:00:00Z"
+        },
+        "forecast_data": [
+          {
+            "timestamp": "2026-04-01T00:00:00Z",
+            "actual": 95.8,
+            "predicted": 211.2,
+            "lower_bound": 179.5,
+            "upper_bound": 242.9,
+            "quantile_0.1": 184.0,
+            "quantile_0.5": 211.2,
+            "quantile_0.9": 238.4
+          },
+          {
+            "timestamp": "2026-04-01T01:00:00Z",
+            "actual": 91.3,
+            "predicted": 216.5,
+            "lower_bound": 184.4,
+            "upper_bound": 248.6,
+            "quantile_0.1": 188.9,
+            "quantile_0.5": 216.5,
+            "quantile_0.9": 244.1
+          },
+          {
+            "timestamp": "2026-04-01T02:00:00Z",
+            "actual": 88.7,
+            "predicted": 220.3,
+            "lower_bound": 187.9,
+            "upper_bound": 252.7,
+            "quantile_0.1": 192.4,
+            "quantile_0.5": 220.3,
+            "quantile_0.9": 248.2
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Schema notes (aligned with AutoGluon TimeSeriesPredictor API):**
+- **`best_performer`** and **`worst_performer`**: Single series ranked by average MAPE across all windows
+- **`avg_metrics`**: Average performance metrics across all backtest windows for the series
+- **`windows`**: Array containing all backtest windows (typically 3) for the series
+- **`forecast_data`**: Array of timestamp-level predictions with actual values, point forecasts, confidence bounds, and quantiles
+  - **`actual`**: Ground truth value from test data
+  - **`predicted`**: Point forecast (typically median/quantile 0.5)
+  - **`lower_bound`** / **`upper_bound`**: Prediction interval (e.g., 90% confidence interval)
+  - **`quantile_0.1`**, **`quantile_0.5`**, **`quantile_0.9`**: Probabilistic forecasts at different quantile levels
+- **AutoGluon methods used**:
+  - `predictor.backtest_predictions(test_data, num_val_windows=3)` → predictions per window
+  - `predictor.backtest_targets(test_data, num_val_windows=3)` → actual values per window
+  - Per-series metrics computed by filtering predictions/targets by `item_id`
+
+**Visualization: Best vs Worst Performer Comparison**
+
+```
+Forecast Quality Comparison - DeepAR_FULL
+Best: series_042 (MAPE=2.45%) | Worst: series_104 (MAPE=42.58%)
+
+Best Performer (series_042) - Window 2
+Value │
+  550 ┤                                    ●
+      │                                  ●   ●
+      │                                ●       ●
+  525 ┤                              ●           ●
+      │                            ●               ●
+      │                          ●                   ●
+  500 ┤                        ●─────────────────────●
+      │                      ●  90% Confidence
+      │                    ●
+  475 ┤                  ●
+      └──────────────────────────────────────────────
+      00:00          01:00          02:00   Time
+
+● Actual    ─ Predicted    ··· Confidence Bounds
+
+Worst Performer (series_104) - Window 2  
+Value │
+  250 ┤                              ─────────────
+      │                            ─
+      │                          ─
+  200 ┤                        ─
+      │                      ─  ············· 90% Confidence
+      │                    ─    ·           ·
+  150 ┤                  ─      ·           ·
+      │                ─        ·           ·
+      │              ─          ·           ·
+  100 ┤            ─            ·           ·
+      │          ●──────────────●───────────●
+   50 ┤
+      └──────────────────────────────────────────────
+      00:00          01:00          02:00   Time
+
+● Actual (severely underpredicted)    ─ Predicted
+··· Confidence bounds don't capture actuals
+
+Issues Detected:
+⚠️  Outliers in test period - actual values 50-60% below predictions
+⚠️  Seasonality mismatch - model pattern doesn't match data
+⚠️  Extreme variance - high prediction uncertainty
+```
+
+**Use Cases:**
+- **Identify series-specific issues**: Worst performers may need custom preprocessing or different models
+- **Temporal consistency analysis**: Compare performance across windows (e.g., series_042 improves from MAPE=2.58% to 2.34%)
+- **Confidence calibration**: Verify quantiles capture actual values (best performer has tight, accurate bounds)
+- **Root cause analysis**: `issues_detected` flags guide debugging (outliers, structural breaks, variance)
 
 #### Visualization Use Cases
 
