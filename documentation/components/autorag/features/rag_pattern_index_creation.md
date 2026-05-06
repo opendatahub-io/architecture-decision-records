@@ -66,16 +66,6 @@ This pipeline automates the entire indexing workflow as a reusable, orchestrated
 
 AutoRAG generates a **compiled, pre-configured KFP pipeline YAML** per optimized pattern. Each pipeline has all `pattern.json` values **pre-filled as defaults** in the pipeline specification, enabling one-click deployment without parameter configuration.
 
-**Architecture:**
-
-```
-AutoRAG Optimization Completes
-    │
-    ├─> Generates pattern.json (settings/configuration)
-    │
-    └─> Compiles indexing_pipeline.yaml
-          (pipeline with defaults pre-filled from pattern.json)
-```
 
 **Artifacts per pattern:**
 
