@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| Date | April, 2026 |
+| Date | May, 2026 |
 | Scope | EvalHub (TrustyAI) |
 | Status | Draft |
-| Authors | TrustyAI |
+| Authors | Marius Danciu - mdanciu@redhat.com |
 | Supersedes | N/A |
 | Superseded by | N/A |
 | Tickets | https://redhat.atlassian.net/browse/RHOAIENG-53360 |
