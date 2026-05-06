@@ -920,60 +920,91 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
   - `predictor.backtest_targets(test_data, num_val_windows=3)` → actual values per window
   - Per-series metrics computed by filtering predictions/targets by `item_id`
 
-**Visualization: Best vs Worst Performer Comparison**
+**Visualization: Best vs Worst Performer Across Backtest Windows**
+
+Similar to AutoGluon's `predictor.plot()` output, showing observed time series with predictions from all backtest windows overlaid.
 
 ```
-Forecast Quality Comparison - DeepAR_FULL
-Best: series_042 (MAPE=2.45%) | Worst: series_104 (MAPE=42.58%)
+═══════════════════════════════════════════════════════════════════════════════
+Best Performer: series_042 (Avg MAPE = 2.45%)
+Backtest predictions across 3 validation windows
+═══════════════════════════════════════════════════════════════════════════════
 
-Best Performer (series_042) - Window 2
 Value │
-  550 ┤                                    ●
-      │                                  ●   ●
-      │                                ●       ●
-  525 ┤                              ●           ●
-      │                            ●               ●
-      │                          ●                   ●
-  500 ┤                        ●─────────────────────●
-      │                      ●  90% Confidence
-      │                    ●
-  475 ┤                  ●
-      └──────────────────────────────────────────────
-      00:00          01:00          02:00   Time
+  540 ┤              ●●●●●●●●●●●●●●●  │  ●●●●●●●●●●●●●●●  │  ●●●●●●●●●●●●●●●
+      │           ●●●              ●●│●●              ●●│●●              ●●
+  520 ┤         ●●                  ●│●              ─────────────────────────
+      │       ●●                  ──┼┼──          ─── │ ───        ───  │ ───
+  500 ┤     ●●                 ───  │ │ ───   ───     │    ───  ───     │
+      │   ●●                ───     │ │    ───        │       ───        │
+  480 ┤ ●●               ───        │ │               │                  │
+      │●              ───           │ │               │                  │
+  460 ┤           ───               │ │               │                  │
+      └───────────────────────────────────────────────────────────────────────
+      Feb 10    Feb 14  │  Feb 15   Mar 2   Mar 7  │  Mar 8   Mar 27  Mar 31 │ Apr 1
+                     Window 0 ↑             Window 1 ↑              Window 2 ↑
+                     Test Period             Test Period              Test Period
+                     (Feb 15-Feb 15)         (Mar 8-Mar 8)            (Apr 1-Apr 1)
 
-● Actual    ─ Predicted    ··· Confidence Bounds
+● Observed values
+─ Predictions (median/quantile 0.5)
+│ Backtest window cutoffs (dashed gray lines in AutoGluon plots)
 
-Worst Performer (series_104) - Window 2  
+Window Metrics:
+  Window 0: MAPE=2.58%, RMSE=13.8    ✓ Accurate tracking
+  Window 1: MAPE=2.41%, RMSE=12.9    ✓ Improved performance
+  Window 2: MAPE=2.34%, RMSE=12.5    ✓ Best performance (consistent improvement)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+Worst Performer: series_104 (Avg MAPE = 42.58%)
+Backtest predictions across 3 validation windows
+═══════════════════════════════════════════════════════════════════════════════
+
 Value │
-  250 ┤                              ─────────────
-      │                            ─
-      │                          ─
-  200 ┤                        ─
-      │                      ─  ············· 90% Confidence
-      │                    ─    ·           ·
-  150 ┤                  ─      ·           ·
-      │                ─        ·           ·
-      │              ─          ·           ·
-  100 ┤            ─            ·           ·
-      │          ●──────────────●───────────●
-   50 ┤
-      └──────────────────────────────────────────────
-      00:00          01:00          02:00   Time
+  250 ┤                           ───────────────────────────────────────────
+      │                        ───│              ─── │              ───  │
+  200 ┤                     ───   │           ───    │           ───     │
+      │                  ───      │        ───       │        ───        │
+  150 ┤               ───         │     ───          │     ───           │
+      │            ───            │  ───             │  ───              │
+  100 ┤         ───               │──                │──                 │
+      │   ●●●●●●●●●●●●●●●●●●●●●   │   ●●●●●●●●●●●●●  │  ●●●●●●●●●●●●●●●
+   50 ┤ ●●                    ●●● │ ●●            ●● │ ●●            ●●●
+      └───────────────────────────────────────────────────────────────────────
+      Feb 10    Feb 14  │  Feb 15   Mar 2   Mar 7  │  Mar 8   Mar 27  Mar 31 │ Apr 1
+                     Window 0 ↑             Window 1 ↑              Window 2 ↑
+                     Test Period             Test Period              Test Period
+                     (Feb 15-Feb 15)         (Mar 8-Mar 8)            (Apr 1-Apr 1)
 
-● Actual (severely underpredicted)    ─ Predicted
-··· Confidence bounds don't capture actuals
+● Observed values (consistently LOW)
+─ Predictions (consistently HIGH - severe systematic bias)
+│ Backtest window cutoffs
 
-Issues Detected:
-⚠️  Outliers in test period - actual values 50-60% below predictions
-⚠️  Seasonality mismatch - model pattern doesn't match data
-⚠️  Extreme variance - high prediction uncertainty
+Window Metrics:
+  Window 0: MAPE=41.23%, RMSE=245.8  ⚠️  Severe overprediction
+  Window 1: MAPE=44.85%, RMSE=265.3  ⚠️  Degrading (predictions diverge further)
+  Window 2: MAPE=41.65%, RMSE=249.1  ⚠️  Persistent bias across all windows
+
+Issues Detected Across All Windows:
+  ⚠️  Structural break: Observed values dropped ~60% but model didn't adapt
+  ⚠️  Outliers in test periods: Actual values consistently outside prediction bounds
+  ⚠️  Seasonality mismatch: Model pattern doesn't match actual time series behavior
+  ⚠️  Extreme variance: High prediction uncertainty (wide confidence intervals)
+
+Root Cause Analysis Guidance:
+  → This series likely needs custom preprocessing (outlier handling, detrending)
+  → Consider separate model training for this series or similar low-value cohorts
+  → Inspect historical data for data quality issues (missing values, measurement errors)
 ```
 
 **Use Cases:**
-- **Identify series-specific issues**: Worst performers may need custom preprocessing or different models
-- **Temporal consistency analysis**: Compare performance across windows (e.g., series_042 improves from MAPE=2.58% to 2.34%)
-- **Confidence calibration**: Verify quantiles capture actual values (best performer has tight, accurate bounds)
-- **Root cause analysis**: `issues_detected` flags guide debugging (outliers, structural breaks, variance)
+- **Visual inspection across time**: Linear timeline shows how predictions track actual values across all backtest windows, similar to `predictor.plot()` in AutoGluon
+- **Performance consistency**: Best performer (series_042) shows consistent improvement (MAPE decreases from 2.58% → 2.41% → 2.34%), while worst performer (series_104) shows persistent bias across all windows
+- **Systematic bias detection**: Timeline reveals whether prediction errors are random or systematic (series_104 consistently overpredicts by ~60%)
+- **Temporal degradation**: Visualize if model quality changes over time (series_104 degrades in window 1, suggesting concept drift)
+- **Series-specific troubleshooting**: Worst performers highlight specific time series requiring custom preprocessing, different models, or data quality investigation
+- **Implementation**: Aligns with AutoGluon's `predictor.plot(test_data, predictions, max_history_length=...)` visualization pattern
 
 #### Visualization Use Cases
 
@@ -997,6 +1028,14 @@ See mocked visualizations above for each artifact type. These examples demonstra
 - **Quantile coverage**: Validates probabilistic forecast calibration (well-calibrated at 1.2% avg deviation)
 - **Key insight**: Time-varying performance and series-specific issues guide model refinement
 - **Implementation**: pandas `df.plot()` for trends, seaborn `heatmap()` for series matrix, bar charts for quantiles
+
+**Forecast Data (`forecast_data.json`):**
+- **Timeline visualization**: Linear plot showing observed values and predictions across all backtest windows (similar to `predictor.plot()` in AutoGluon)
+- **Window-by-window comparison**: Visual inspection of forecast quality across multiple time periods with cutoff points marked
+- **Systematic bias detection**: Timeline reveals consistent overprediction/underprediction patterns (e.g., series_104 overpredicts by ~60% across all windows)
+- **Performance trends**: Identify whether model improves, degrades, or remains stable over successive windows
+- **Key insight**: Provides detailed timestamp-level view for best and worst performers, enabling deep-dive analysis of specific failure modes
+- **Implementation**: `predictor.plot(test_data, predictions, max_history_length=300)` or custom matplotlib/plotly timeline with shaded regions for test periods
 
 **Integration with Jupyter Notebooks:**
 
