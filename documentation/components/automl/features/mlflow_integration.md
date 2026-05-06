@@ -2,6 +2,8 @@
 
 This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML** workflows implemented in [opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components) under **`components/training/automl`** and **`pipelines/training/automl`**, with product goals: **experiment tracking, comparison, reproducibility**.
 
+**RHOAI 3.5 scope:** Core MLflow integration with KFP environment variables, parent/child run hierarchy, and existing artifacts (leaderboard, metrics, feature importance, confusion matrix).
+
 
 ## Table of Contents
 
@@ -12,9 +14,6 @@ This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML
 - [Per-component logging details](#per-component-logging-details)
   - [Component-level logging matrix (tabular pipeline)](#component-level-logging-matrix-tabular-pipeline)
   - [Component-level logging matrix (timeseries pipeline)](#component-level-logging-matrix-timeseries-pipeline)
-  - [Data loader metrics (valuable additions)](#data-loader-metrics-valuable-additions)
-    - [Tabular data loader](#tabular-data-loader)
-    - [Timeseries data loader](#timeseries-data-loader)
   - [Run lifecycle and hierarchy](#run-lifecycle-and-hierarchy)
   - [Key differences from MLflow framework integrations](#key-differences-from-mlflow-framework-integrations)
   - [Artifacts and naming conventions](#artifacts-and-naming-conventions)
@@ -59,14 +58,14 @@ When MLflow integration is enabled at the project level, the following environme
 
 Design for **two pipeline families** (tabular vs timeseries) with the **same conceptual mapping**.
 
-| MLflow concept | Proposed mapping |
-|----------------|------------------|
-| **Experiment** | **RHOAI 3.5+:** KFP auto-creates one experiment per pipeline (accessible via `MLFLOW_EXPERIMENT_ID`). |
-| **Parent run** | **RHOAI 3.5+:** KFP auto-creates one parent run per pipeline execution (accessible via `MLFLOW_RUN_ID`). AutoML components **resume this run** to add tags and params. **Tags:** `kfp_run_id`, `pipeline_name`, `task_type` (`tabular` \| `timeseries`), `namespace` (from `MLFLOW_WORKSPACE`), dataset **hashes or URIs** (non-secret). **Params:** `eval_metric`, `preset`, `top_n`, `pipeline_version`, `autogluon_version`. |
-| **Child runs** | **One child run per leaderboard row / refitted model** (each name in `model_names` or equivalent for timeseries), created by AutoML components as nested runs under the KFP parent. Enables side-by-side comparison in the MLflow UI across models from the same pipeline run. |
-| **Params** | **Parent:** `eval_metric`, `preset`, `top_n`, `task_type`, `pipeline_version`, `autogluon_version`. **Child:** `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed. |
-| **Metrics** | **Parent:** `best_model_score`, `total_training_time`, `num_models_trained`. **Child:** Primary validation score (`score_val`, `score_test`), task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`), **fit time**. |
-| **Artifacts** | **Per child:** subset of **`metrics.json`**, optional **`feature_importance.json`**. **Per parent:** **HTML leaderboard** (size-capped). |
+| MLflow concept | Proposed mapping                                                                                                                                                                                                                                                                                                                                                                                                                |
+|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Experiment** | KFP auto-creates one experiment per pipeline (accessible via `MLFLOW_EXPERIMENT_ID`).                                                                                                                                                                                                                                                                                                                           |
+| **Parent run** | KFP auto-creates one parent run per pipeline execution (accessible via `MLFLOW_RUN_ID`). AutoML components **resume this run** to add tags and params. **Tags:** `kfp_run_id`, `pipeline_name`, `task_type` (`tabular` \| `timeseries`), `namespace` (from `MLFLOW_WORKSPACE`), dataset **hashes or URIs** (non-secret). **Params:** `eval_metric`, `preset`, `top_n`, `pipeline_version`, `autogluon_version`. |
+| **Child runs** | **One child run per leaderboard row / refitted model** (each name in `model_names` or equivalent for timeseries), created by AutoML components as nested runs under the KFP parent. Enables side-by-side comparison in the MLflow UI across models from the same pipeline run.                                                                                                                                                  |
+| **Params** | **Parent:** `eval_metric`, `preset`, `top_n`, `task_type`, `pipeline_version`, `autogluon_version`. **Child:** `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed.                                                                                                                                                                                                      |
+| **Metrics** | **Parent:** `best_model_score`, `total_training_time`, `num_models_trained`. **Child:** Primary validation score (`score_val`, `score_test`), task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`), **fit time**.                                                                                                                                               |
+| **Artifacts** | **Per child:** pointer to **`metrics`**, and models **`predictor`**.                                                                                                                                                                                                                                                                                                                                                            |
 
 ### Optional alignment with AutoGluon-native logging
 
@@ -84,62 +83,20 @@ This section provides concrete implementation guidance for MLflow integration in
 
 | Component | MLflow Operation | Parameters Logged | Metrics Logged | Artifacts Logged | Run Type |
 |-----------|------------------|-------------------|----------------|------------------|----------|
-| **tabular_data_loader** | Params + metrics | `sampling_method`, `task_type`, `label_column`, `test_size`, `random_state`, `stratify` | `n_features`, `train_rows`, `test_rows`, `selection_train_rows`, `total_rows_loaded`, `sampling_ratio`, `dataset_memory_mb` | — | Parent |
+| **tabular_data_loader** | Params + metrics | `sampling_method`, `task_type`, `label_column`, `test_size`, `random_state`, `stratify` | — | — | Parent |
 | **autogluon_models_training** | Tags + params | `preset`, `eval_metric`, `time_limit`, `num_bag_folds`, `num_stack_levels`, `top_n`, `task_type` | `selection_time_seconds` | — | Parent |
 | **autogluon_leaderboard_evaluation** | **Parent run creation + child runs** | (per parent): `pipeline_version`, `autogluon_version`, `kfp_run_id`, `namespace` | (per parent): `best_model_score`, `total_training_time` | (per parent): `leaderboard.html` | Parent + N children |
-| **autogluon_leaderboard_evaluation** (per model) | Child run per model | (per child): `model_type`, `num_models_in_stack`, `fit_time`, `predict_time`, `stack_level` | (per child): `score_val`, `score_test` (if available), task-specific metrics (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`), **RHOAI 3.5+:** `auc`, `average_precision`, `num_samples`, `num_positive`/`num_negative` (binary), `num_classes`, `auc_macro`, `auc_weighted` (multiclass) | (per child): `model_metrics.json`, `feature_importance.json`, `confusion_matrix.json` (classification), **RHOAI 3.5+:** `roc_curve.json`, `precision_recall_curve.json` (classification) | Child (nested) |
+| **autogluon_leaderboard_evaluation** (per model) | Child run per model | (per child): `model_type`, `num_models_in_stack`, `fit_time`, `predict_time`, `stack_level` | (per child): `score_val`, `score_test` (if available), task-specific metrics (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`) | (per child): `model_metrics.json`, `feature_importance.json`, `confusion_matrix.json` (classification) | Child (nested) |
 
 ### Component-level logging matrix (timeseries pipeline)
 
 | Component | MLflow Operation | Parameters Logged | Metrics Logged | Artifacts Logged | Run Type |
 |-----------|------------------|-------------------|----------------|------------------|----------|
-| **timeseries_data_loader** | Params + metrics | `id_column`, `timestamp_column`, `target`, `known_covariates_names`, `prediction_length`, `test_size`, `selection_train_size` | `n_unique_series`, `total_rows_loaded`, `sampled_rows`, `duplicates_dropped`, `avg_series_length`, `selection_train_rows`, `extra_train_rows`, `test_rows` | — | Parent |
+| **timeseries_data_loader** | Params + metrics | `id_column`, `timestamp_column`, `target`, `known_covariates_names`, `prediction_length`, `test_size`, `selection_train_size` | — | — | Parent |
 | **autogluon_timeseries_models_selection** | Tags + params | `preset`, `eval_metric`, `prediction_length`, `target`, `known_covariates_names`, `top_n` | `selection_time_seconds` | — | Parent |
 | **autogluon_timeseries_models_full_refit** | Metrics per model | — | `refit_time_seconds` (per model) | — | Parent |
 | **autogluon_timeseries_leaderboard_evaluation** | **Parent run creation + child runs** | (per parent): `pipeline_version`, `autogluon_version`, `kfp_run_id`, `namespace` | (per parent): `best_model_score`, `total_training_time` | (per parent): `leaderboard.html` | Parent + N children |
 | **autogluon_timeseries_leaderboard_evaluation** (per model) | Child run per model | (per child): `model_type`, `fit_time`, `predict_time` | (per child): `score_val`, task-specific metrics (e.g., `WQL`, `MAPE`, `MASE`, `RMSE`) | (per child): `model_metrics.json` | Child (nested) |
-
-### Data loader metrics (valuable additions)
-
-Data loading components currently compute valuable metrics that **should be logged to MLflow** for dataset profiling, reproducibility, and data drift detection:
-
-#### Tabular data loader
-
-| Metric/Parameter | Type | Source | Value Example | Purpose |
-|------------------|------|--------|---------------|---------|
-| `n_features` | Metric | `len(X.columns)` after loading | `47` | Track feature set size for schema validation |
-| `train_rows` | Metric | `len(X_train)` after split | `8000` | Actual training set size |
-| `test_rows` | Metric | `len(X_test)` after split | `2000` | Actual test set size |
-| `selection_train_rows` | Metric | `len(X_sel)` (sampled for model selection) | `500` | Rows used for fast model selection |
-| `total_rows_loaded` | Metric | Total rows from S3 before sampling | `100000` | Original dataset size |
-| `sampling_ratio` | Metric | `n_samples / total_rows` | `0.10` | Fraction of data actually used |
-| `dataset_memory_mb` | Metric | `df.memory_usage(deep=True).sum() / (1024**2)` | `85.3` | In-memory footprint |
-| `sampling_method` | Param | Derived (`random`, `stratified`, `none`) | `"stratified"` | How sampling was done |
-| `label_column` | Param | KFP input | `"target"` | Target column name |
-| `task_type` | Param | KFP input | `"binary"` | Classification or regression |
-
-**Currently computed but NOT persisted:** Class distribution counts (for stratified sampling), exact column types, missing value counts per column.
-
-#### Timeseries data loader
-
-| Metric/Parameter | Type | Source | Value Example | Purpose |
-|------------------|------|--------|---------------|---------|
-| `n_unique_series` | Metric | `df[id_column].nunique()` | `1000` | Number of distinct time series |
-| `total_rows_loaded` | Metric | Total rows from S3 | `50000` | Original dataset size |
-| `sampled_rows` | Metric | Rows after duplicate removal | `48500` | Cleaned dataset size |
-| `duplicates_dropped` | Metric | Rows removed (duplicate `(id, timestamp)`) | `1500` | Data quality indicator |
-| `avg_series_length` | Metric | `len(df) / n_unique_series` | `48.5` | Average observations per series |
-| `selection_train_rows` | Metric | `len(selection_train_df)` | `30000` | Rows for model selection |
-| `extra_train_rows` | Metric | `len(extra_train_df)` | `15000` | Additional rows for full refit |
-| `test_rows` | Metric | `len(test_df)` | `3500` | Held-out test set size |
-| `id_column` | Param | KFP input | `"product_id"` | Series identifier column |
-| `timestamp_column` | Param | KFP input | `"date"` | Time column name |
-| `target` | Param | KFP input | `"sales"` | Forecast target column |
-| `prediction_length` | Param | KFP input | `7` | Forecast horizon (time steps) |
-
-**Currently computed but NOT persisted:** Time range (min/max timestamps), series length distribution (min/max/median), frequency detection.
-
-**Implementation note:** These metrics should be logged in the data loader components **immediately after split computation** (before returning artifacts) by checking if `MLFLOW_TRACKING_URI` is set and resuming the parent run to log data-level metrics.
 
 ### Run lifecycle and hierarchy
 
@@ -210,39 +167,11 @@ def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_
 | `<model>_feature_importance.json` | JSON feature importance | `mlflow-artifacts/<run_id>/feature_importance/<model>_feature_importance.json` | < 100 KB | Child run (tabular only, classification/regression) |
 | `<model>_confusion_matrix.json` | Confusion matrix | `mlflow-artifacts/<run_id>/model_metrics/<model>_confusion_matrix.json` | < 20 KB | Child run (tabular only, classification) |
 
-**RHOAI 3.5+ planned artifacts** (see [model_insights.md](./model_insights.md) for schema details):
+**RHOAI 3.5 scope (bare minimum):**
 
-| Artifact | Type | Location | Size Guidance | Logged To | Availability |
-|----------|------|----------|---------------|-----------|--------------|
-| `<model>_roc_curve.json` | ROC curve data | `mlflow-artifacts/<run_id>/model_metrics/<model>_roc_curve.json` | < 50 KB | Child run (tabular classification only) | **RHOAI 3.5+** |
-| `<model>_precision_recall_curve.json` | PR curve data | `mlflow-artifacts/<run_id>/model_metrics/<model>_precision_recall_curve.json` | < 50 KB | Child run (tabular classification only) | **RHOAI 3.5+** |
-| `<model>_back_testing.json` | Back-testing summary with per-window metrics and series-level analysis | `mlflow-artifacts/<run_id>/model_metrics/<model>_back_testing.json` | < 100 KB | Child run (timeseries only) | **RHOAI 3.5+** |
-| `<model>_forecast_data.json` | Back-testing forecast data with actual vs predicted values for best/worst performers | `mlflow-artifacts/<run_id>/model_metrics/<model>_forecast_data.json` | < 200 KB | Child run (timeseries only) | **RHOAI 3.5+** |
+RHOAI 3.5 introduces **MLflow integration with KFP environment variables** and the **parent/child run hierarchy** for experiment tracking. The 3.5 release focuses on **core tracking capabilities** with the existing artifact set from 3.4 (leaderboard, metrics, feature importance, confusion matrix).
 
-**Additional metrics from RHOAI 3.5+ artifacts** (logged as MLflow metrics when artifacts are generated):
-
-**For tabular classification** (binary):
-- `num_samples`: Total test samples
-- `num_positive`: Positive class samples  
-- `num_negative`: Negative class samples
-- `auc`: ROC AUC (from `roc_curve.json`)
-- `average_precision`: AP score (from `precision_recall_curve.json`)
-
-**For tabular classification** (multiclass):
-- `num_classes`: Number of classes
-- `auc_macro`: Macro-averaged AUC (from `roc_curve.json`)
-- `auc_weighted`: Weighted AUC (from `roc_curve.json`)
-- `average_precision_macro`: Macro-averaged AP (from `precision_recall_curve.json`)
-- `average_precision_weighted`: Weighted AP (from `precision_recall_curve.json`)
-
-**For timeseries** (from `back_testing.json` and `forecast_data.json`):
-- `num_val_windows`: Number of backtesting windows
-- `num_series_evaluated`: Total series in backtest
-- `prediction_length`: Forecast horizon in time steps
-- `series_with_degraded_performance`: Count of problematic series
-- Per-window metrics: `WQL`, `MAPE`, `MASE`, `RMSE`, `MAE` (logged as metric arrays or separate metrics per window)
-
-**Best practice:** Follow MLflow’s artifact organization by using `artifact_path` parameter in `mlflow.log_artifact()` to create logical groupings (`reports/`, `metadata/`, `model_metrics/`, `feature_importance/`, `curves/`).
+**Best practice:** Follow MLflow’s artifact organization by using `artifact_path` parameter in `mlflow.log_artifact()` to create logical groupings (`reports/`, `metadata/`, `model_metrics/`, `feature_importance/`).
 
 ---
 
