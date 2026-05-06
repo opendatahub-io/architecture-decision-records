@@ -1,6 +1,6 @@
 # RAG Pattern Index Population
 
-This page documents **AutoRAG pattern index population** from optimization completion through production-scale knowledge base building. During optimization, AutoRAG samples up to 1GB of documents to find the best chunking, embedding, and retrieval configuration. The indexing pipeline uses those optimized settings to process the **full document corpus** and populate the production vector store index.
+This page documents **AutoRAG pattern-produced index population** from optimization completion through production-scale knowledge base building. During optimization, AutoRAG samples up to 1GB of documents to find the best chunking, embedding, and retrieval settings. The indexing pipeline then uses those to process the **full document corpus** and populate the production vector store index.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ This page documents **AutoRAG pattern index population** from optimization compl
 
 In RHOAI 3.4, production-scale indexing for optimized RAG patterns relies on **Jupyter notebooks** generated during the optimization pipeline. These notebooks contain parameterized code for **populating the vector store index** with the full document corpus, using the exact chunking, embedding, and indexing settings that were identified during pattern optimization.
 
-The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** writes indexing notebooks as part of the `rag_patterns` artifact output.
+The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** writes indexing notebooks in the directory referenced by the `rag_patterns` output artifact.
 
 ### Indexing notebook artifacts
 
@@ -37,11 +37,11 @@ Each optimized pattern's artifact directory (`<pattern_subdir>/`) includes an **
 
 | File | Purpose |
 |------|---------|
-| `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern's chunking, embedding, and vector store settings. Contains all code needed to populate the vector store index with the full document corpus. |
+| `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for the given pattern's chunking, embedding, and vector store settings. Contains all code needed to populate the vector store index with the full document corpus. |
 
 **What's in the notebook:**
 - Document loading and preprocessing code for the **full document corpus** (beyond the 1GB optimization sample)
-- Chunking logic parameterized with the optimized `chunk_size` and `chunk_overlap` from `pattern.json`
+- Chunking logic parameterized with the optimized `chunk_size` and `chunk_overlap` from the `pattern.json`
 - Embedding model configuration matching the pattern's `embedding.model_id`
 - Vector store connection and indexing code for the specified `datasource_type` (e.g., Milvus, PGVector)
 - Collection/index population with the optimized settings (distance metric, dimension, etc.)
@@ -59,7 +59,7 @@ This pipeline automates the entire indexing workflow as a reusable, orchestrated
 **Architecture:** 
 - AutoRAG image contains the index building pipeline & pipeline components source code.
 - AutoRAG generates a **compiled, pre-configured pipeline YAML per pattern** with all settings from `pattern.json` baked in as defaults. This provides a superior user experience—operators can click "Deploy" and use the defaults, or optionally override parameters like `document_source` if needed for production deployment.
-- AutoRAG injects the currently used image digest to compiled pipeline.
+- AutoRAG injects the currently used image digest to the compiled pipeline.
  
 
 ### Per-pattern compiled pipelines
@@ -88,7 +88,7 @@ AutoRAG generates a **compiled, pre-configured KFP pipeline YAML** per optimized
 
 ### Pipeline architecture
 
-The **`documents_indexing_pipeline`** orchestrates vector store creation through a series of containerized components:
+The **`documents_indexing_pipeline`** orchestrates vector store index population through a series of containerized components:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -112,7 +112,7 @@ The **`documents_indexing_pipeline`** orchestrates vector store creation through
 │     └─> Retry logic for transient failures                      │
 │                                                                 │
 │  5. Vector Store Indexing                                       │
-│     └─> Populate collection/index with full document corpus     │
+│     └─> Populate collection/index with the full documents corpus│
 │     └─> Insert embeddings with metadata                         │
 │     └─> Configure distance metric, dimension per pattern.json   │
 │                                                                 │
@@ -164,7 +164,7 @@ The indexing pipeline produces artifacts that complement the pattern artifacts:
 
 ### Automated deployment workflow
 
-The compiled indexing pipeline enables automated vector store deployment with seamless integration between AutoRAG Dashboard and Data Science Pipelines (AI Pipelines) UI:
+The compiled indexing pipeline enables automated vector store index population while seamlessly integrating AutoRAG Dashboard and Data Science Pipelines (AI Pipelines) UI:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -197,7 +197,7 @@ The compiled indexing pipeline enables automated vector store deployment with se
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 4. Pipeline Executes                                             │
+│ 4. Pipeline Executes                                            │
 │    └─> Loads full document corpus (not just 1GB sample)         │
 │    └─> Chunks, embeds, indexes according to pattern.json        │
 │    └─> Populates vector store collection/index                  │
@@ -207,7 +207,7 @@ The compiled indexing pipeline enables automated vector store deployment with se
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 5. Production Index Ready                                        │
+│ 5. Production Index Ready                                       │
 │    └─> Collection/index populated with full document corpus     │
 │    └─> Stats and logs written to artifact store                 │
 │    └─> Completion status visible in AI Pipelines UI             │
