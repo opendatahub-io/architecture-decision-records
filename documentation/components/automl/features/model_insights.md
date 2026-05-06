@@ -469,7 +469,6 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
     "num_items": 1000,
     "avg_series_length": 365,
     "total_predictions": 21000,
-    "computation_time_seconds": 127.8
   }
 }
 ```
@@ -509,23 +508,6 @@ WQL  │
      Window 0      Window 1      Window 2
      12/07-12/14   12/14-12/21   12/21-12/28
 
-MAPE │
-(%)  │
-15.0 ┤                                    ●
-     │                        ●          
-12.5 ┤                                    
-     │            ●                       
-10.0 ┤                                    
-     │                                    
- 7.5 ┤                                    
-     │                                    
- 5.0 ┤                                    
-     │                                    
- 2.5 ┤                                    
-     │                                    
- 0.0 └─────────────────────────────────────
-     Window 0      Window 1      Window 2
-
 ⚠️  Performance degradation detected: WQL increased from 0.22 to 0.25 (+11.8%)
     MAPE increased from 11.87% to 12.98% (+9.3%)
 ```
@@ -552,39 +534,6 @@ Top 3 Worst Performing Series (by avg WQL):
 └──────────────┴──────────┴──────────┴────────────────┘
 
 📊 47 out of 1000 series (4.7%) show degraded performance
-```
-
-**Visualization 3: Quantile Coverage Analysis**
-
-```
-Quantile Coverage (Expected vs Actual)
-
-Coverage │
-   100% ┤                     ─────●─────
-        │               ─────●
-        │         ─────●
-    75% ┤   ─────●
-        │ ●●
-        │
-    50% ┤
-        │
-        │
-    25% ┤
-        │
-        │
-     0% └─────────────────────────────────
-        0.1    0.2    0.3    0.4    0.5    0.6    0.7    0.8    0.9
-                           Quantile Level
-
-● Actual Coverage
-─ Expected Coverage (perfect calibration)
-
-Calibration Quality:
-✅ 0.1 quantile: 9.87% actual (expected: 10%) - well calibrated
-✅ 0.5 quantile: 48.76% actual (expected: 50%) - well calibrated  
-⚠️  0.9 quantile: 89.12% actual (expected: 90%) - slight underestimation
-
-Overall: Model is well-calibrated (avg deviation: 1.2%)
 ```
 
 #### Example: `forecast_data.json` (time series)
@@ -627,30 +576,21 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
             "actual": 515.2,
             "predicted": 512.8,
             "lower_bound": 496.5,
-            "upper_bound": 529.1,
-            "quantile_0.1": 499.3,
-            "quantile_0.5": 512.8,
-            "quantile_0.9": 526.3
+            "upper_bound": 529.1
           },
           {
             "timestamp": "2026-02-15T01:00:00Z",
             "actual": 510.5,
             "predicted": 509.2,
             "lower_bound": 493.0,
-            "upper_bound": 525.4,
-            "quantile_0.1": 495.7,
-            "quantile_0.5": 509.2,
-            "quantile_0.9": 522.7
+            "upper_bound": 525.4
           },
           {
             "timestamp": "2026-02-15T02:00:00Z",
             "actual": 507.8,
             "predicted": 506.5,
             "lower_bound": 490.4,
-            "upper_bound": 522.6,
-            "quantile_0.1": 493.1,
-            "quantile_0.5": 506.5,
-            "quantile_0.9": 519.9
+            "upper_bound": 522.6
           }
         ]
       },
@@ -674,30 +614,21 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
             "actual": 520.8,
             "predicted": 519.3,
             "lower_bound": 502.9,
-            "upper_bound": 535.7,
-            "quantile_0.1": 505.7,
-            "quantile_0.5": 519.3,
-            "quantile_0.9": 532.9
+            "upper_bound": 535.7
           },
           {
             "timestamp": "2026-03-08T01:00:00Z",
             "actual": 516.4,
             "predicted": 517.1,
             "lower_bound": 500.8,
-            "upper_bound": 533.4,
-            "quantile_0.1": 503.6,
-            "quantile_0.5": 517.1,
-            "quantile_0.9": 530.6
+            "upper_bound": 533.4
           },
           {
             "timestamp": "2026-03-08T02:00:00Z",
             "actual": 513.2,
             "predicted": 514.8,
             "lower_bound": 498.6,
-            "upper_bound": 531.0,
-            "quantile_0.1": 501.4,
-            "quantile_0.5": 514.8,
-            "quantile_0.9": 528.2
+            "upper_bound": 531.0
           }
         ]
       },
@@ -721,30 +652,21 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
             "actual": 523.4,
             "predicted": 521.8,
             "lower_bound": 505.2,
-            "upper_bound": 538.4,
-            "quantile_0.1": 508.3,
-            "quantile_0.5": 521.8,
-            "quantile_0.9": 535.3
+            "upper_bound": 538.4
           },
           {
             "timestamp": "2026-04-01T01:00:00Z",
             "actual": 518.2,
             "predicted": 519.5,
             "lower_bound": 502.9,
-            "upper_bound": 536.1,
-            "quantile_0.1": 505.8,
-            "quantile_0.5": 519.5,
-            "quantile_0.9": 533.2
+            "upper_bound": 536.1
           },
           {
             "timestamp": "2026-04-01T02:00:00Z",
             "actual": 512.8,
             "predicted": 514.2,
             "lower_bound": 497.8,
-            "upper_bound": 530.6,
-            "quantile_0.1": 500.5,
-            "quantile_0.5": 514.2,
-            "quantile_0.9": 527.9
+            "upper_bound": 530.6
           }
         ]
       }
@@ -780,30 +702,21 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
             "actual": 89.4,
             "predicted": 198.7,
             "lower_bound": 168.3,
-            "upper_bound": 229.1,
-            "quantile_0.1": 172.5,
-            "quantile_0.5": 198.7,
-            "quantile_0.9": 224.9
+            "upper_bound": 229.1
           },
           {
             "timestamp": "2026-02-15T01:00:00Z",
             "actual": 92.1,
             "predicted": 203.5,
             "lower_bound": 172.8,
-            "upper_bound": 234.2,
-            "quantile_0.1": 177.1,
-            "quantile_0.5": 203.5,
-            "quantile_0.9": 229.9
+            "upper_bound": 234.2
           },
           {
             "timestamp": "2026-02-15T02:00:00Z",
             "actual": 87.6,
             "predicted": 207.2,
             "lower_bound": 176.0,
-            "upper_bound": 238.4,
-            "quantile_0.1": 180.4,
-            "quantile_0.5": 207.2,
-            "quantile_0.9": 234.0
+            "upper_bound": 238.4
           }
         ]
       },
@@ -827,30 +740,21 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
             "actual": 82.7,
             "predicted": 205.3,
             "lower_bound": 174.2,
-            "upper_bound": 236.4,
-            "quantile_0.1": 178.6,
-            "quantile_0.5": 205.3,
-            "quantile_0.9": 232.0
+            "upper_bound": 236.4
           },
           {
             "timestamp": "2026-03-08T01:00:00Z",
             "actual": 78.5,
             "predicted": 210.8,
             "lower_bound": 179.3,
-            "upper_bound": 242.3,
-            "quantile_0.1": 183.8,
-            "quantile_0.5": 210.8,
-            "quantile_0.9": 237.8
+            "upper_bound": 242.3
           },
           {
             "timestamp": "2026-03-08T02:00:00Z",
             "actual": 75.2,
             "predicted": 214.5,
             "lower_bound": 182.7,
-            "upper_bound": 246.3,
-            "quantile_0.1": 187.2,
-            "quantile_0.5": 214.5,
-            "quantile_0.9": 241.8
+            "upper_bound": 246.3
           }
         ]
       },
@@ -874,30 +778,21 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
             "actual": 95.8,
             "predicted": 211.2,
             "lower_bound": 179.5,
-            "upper_bound": 242.9,
-            "quantile_0.1": 184.0,
-            "quantile_0.5": 211.2,
-            "quantile_0.9": 238.4
+            "upper_bound": 242.9
           },
           {
             "timestamp": "2026-04-01T01:00:00Z",
             "actual": 91.3,
             "predicted": 216.5,
             "lower_bound": 184.4,
-            "upper_bound": 248.6,
-            "quantile_0.1": 188.9,
-            "quantile_0.5": 216.5,
-            "quantile_0.9": 244.1
+            "upper_bound": 248.6
           },
           {
             "timestamp": "2026-04-01T02:00:00Z",
             "actual": 88.7,
             "predicted": 220.3,
             "lower_bound": 187.9,
-            "upper_bound": 252.7,
-            "quantile_0.1": 192.4,
-            "quantile_0.5": 220.3,
-            "quantile_0.9": 248.2
+            "upper_bound": 252.7
           }
         ]
       }
@@ -914,13 +809,12 @@ Overall: Model is well-calibrated (avg deviation: 1.2%)
   - **`actual`**: Ground truth value from test data
   - **`predicted`**: Point forecast (typically median/quantile 0.5)
   - **`lower_bound`** / **`upper_bound`**: Prediction interval (e.g., 90% confidence interval)
-  - **`quantile_0.1`**, **`quantile_0.5`**, **`quantile_0.9`**: Probabilistic forecasts at different quantile levels
 - **AutoGluon methods used**:
   - `predictor.backtest_predictions(test_data, num_val_windows=3)` → predictions per window
   - `predictor.backtest_targets(test_data, num_val_windows=3)` → actual values per window
   - Per-series metrics computed by filtering predictions/targets by `item_id`
 
-**Visualization: Best vs Worst Performer Across Backtest Windows**
+**Visualization: Best and Worst Performer Across Backtest Windows**
 
 Similar to AutoGluon's `predictor.plot()` output, showing observed time series with predictions from all backtest windows overlaid.
 
@@ -977,25 +871,14 @@ Value │
                      Test Period             Test Period              Test Period
                      (Feb 15-Feb 15)         (Mar 8-Mar 8)            (Apr 1-Apr 1)
 
-● Observed values (consistently LOW)
-─ Predictions (consistently HIGH - severe systematic bias)
+● Observed values
+─ Predictions
 │ Backtest window cutoffs
 
 Window Metrics:
-  Window 0: MAPE=41.23%, RMSE=245.8  ⚠️  Severe overprediction
-  Window 1: MAPE=44.85%, RMSE=265.3  ⚠️  Degrading (predictions diverge further)
-  Window 2: MAPE=41.65%, RMSE=249.1  ⚠️  Persistent bias across all windows
-
-Issues Detected Across All Windows:
-  ⚠️  Structural break: Observed values dropped ~60% but model didn't adapt
-  ⚠️  Outliers in test periods: Actual values consistently outside prediction bounds
-  ⚠️  Seasonality mismatch: Model pattern doesn't match actual time series behavior
-  ⚠️  Extreme variance: High prediction uncertainty (wide confidence intervals)
-
-Root Cause Analysis Guidance:
-  → This series likely needs custom preprocessing (outlier handling, detrending)
-  → Consider separate model training for this series or similar low-value cohorts
-  → Inspect historical data for data quality issues (missing values, measurement errors)
+  Window 0: MAPE=41.23%, RMSE=245.8 
+  Window 1: MAPE=44.85%, RMSE=265.3 
+  Window 2: MAPE=41.65%, RMSE=249.1 
 ```
 
 **Use Cases:**
