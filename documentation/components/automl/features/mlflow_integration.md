@@ -16,21 +16,12 @@ This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML
     - [Tabular data loader](#tabular-data-loader)
     - [Timeseries data loader](#timeseries-data-loader)
   - [Run lifecycle and hierarchy](#run-lifecycle-and-hierarchy)
-  - [Comparison to MLflow framework integrations](#comparison-to-mlflow-framework-integrations)
-  - [Concrete parameter sources (tabular)](#concrete-parameter-sources-tabular)
-  - [Concrete metric sources (tabular)](#concrete-metric-sources-tabular)
+  - [Key differences from MLflow framework integrations](#key-differences-from-mlflow-framework-integrations)
   - [Artifacts and naming conventions](#artifacts-and-naming-conventions)
-  - [Error handling and partial logging](#error-handling-and-partial-logging)
 - [KFP Pipeline Integration: MLflow Tracking Artifact](#kfp-pipeline-integration-mlflow-tracking-artifact)
   - [Artifact Purpose](#artifact-purpose)
   - [Component Output Definition](#component-output-definition)
   - [Artifact Schema](#artifact-schema)
-  - [Component Implementation](#component-implementation)
-  - [Retrieval from AutoML Dashboard](#retrieval-from-automl-dashboard)
-  - [KFP UI Display](#kfp-ui-display)
-  - [Dashboard Integration Workflow](#dashboard-integration-workflow)
-  - [Alternative: HTML Artifact Metadata (Fallback)](#alternative-html-artifact-metadata-fallback)
-  - [Benefits of Dedicated Artifact vs Metadata-Only](#benefits-of-dedicated-artifact-vs-metadata-only)
 - [References](#references)
   - [AutoML Implementation](#automl-implementation)
   - [MLflow on RHOAI](#mlflow-on-rhoai)
@@ -158,225 +149,55 @@ Following MLflow’s nested run pattern (similar to GridSearchCV with parent-chi
 import mlflow
 import os
 import json
-from typing import Optional
 
-def log_automl_results(
-    models_artifact_path: str,
-    metrics_json_path: str,
-    model_names: list[str],
-    pipeline_params: dict
-):
+def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_params: dict):
     """
-    Log AutoML training results to MLflow.
-    Pattern: Use KFP-managed parent run (MLFLOW_RUN_ID), create child runs per model.
-    
-    In RHOAI 3.5+, KFP automatically sets:
-    - MLFLOW_TRACKING_URI: tracking server endpoint
-    - MLFLOW_RUN_ID: parent run for this pipeline execution
-    - MLFLOW_EXPERIMENT_ID: experiment for this pipeline
-    - MLFLOW_TRACKING_AUTH: pod service account token
-    - MLFLOW_WORKSPACE: project/namespace
+    Log AutoML results to MLflow using KFP-managed parent run.
+    KFP automatically sets MLFLOW_TRACKING_URI, MLFLOW_RUN_ID, MLFLOW_EXPERIMENT_ID.
     """
-    # Check if MLflow tracking is enabled
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-    if not tracking_uri:
-        print("MLFLOW_TRACKING_URI not set, skipping MLflow logging")
-        return
-    
-    # Get KFP-managed parent run ID (set by KFP in RHOAI 3.5+)
     parent_run_id = os.getenv("MLFLOW_RUN_ID")
     if not parent_run_id:
-        print("MLFLOW_RUN_ID not set, cannot create child runs")
+        print("MLflow not enabled, skipping logging")
         return
     
-    # Resume the KFP-managed parent run to add pipeline-level metadata
-    with mlflow.start_run(run_id=parent_run_id) as parent_run:
-        
-        # --- Parent run: Pipeline-level metadata ---
-        
-        # Log tags for KFP correlation
-        # Note: kfp_run_id can be extracted from KFP env vars or pipeline context
-        kfp_run_id = os.getenv("KFP_RUN_ID", parent_run_id)  # Fallback to MLflow run ID
-        mlflow.set_tags({
-            "kfp_run_id": kfp_run_id,
-            "pipeline_name": "autogluon_tabular_training_pipeline",
-            "task_type": pipeline_params.get("task_type", "unknown"),
-            "namespace": os.getenv("MLFLOW_WORKSPACE", "unknown")
-        })
-        
-        # Log pipeline parameters (from KFP inputs)
+    # Resume KFP-managed parent run
+    with mlflow.start_run(run_id=parent_run_id):
+        # Log pipeline-level params and metrics
         import autogluon
         mlflow.log_params({
-            "eval_metric": pipeline_params.get("eval_metric"),
             "preset": pipeline_params.get("preset", "medium_quality"),
-            "top_n": pipeline_params.get("top_n", 3),
-            "task_type": pipeline_params.get("task_type"),
-            "pipeline_version": os.getenv("PIPELINE_VERSION", "unknown"),  # From image label or git SHA
+            "eval_metric": pipeline_params.get("eval_metric"),
             "autogluon_version": autogluon.__version__
         })
         
-        # Log parent-level metrics
         with open(metrics_json_path) as f:
             all_metrics = json.load(f)
         
-        best_score = max(m["score_val"] for m in all_metrics.values())
-        mlflow.log_metric("best_model_score", best_score)
-        mlflow.log_metric("total_training_time", sum(m.get("fit_time", 0) for m in all_metrics.values()))
-        mlflow.log_metric("num_models_trained", len(all_metrics))
-        
-        # Log parent-level artifacts
+        mlflow.log_metric("best_model_score", max(m["score_val"] for m in all_metrics.values()))
         mlflow.log_artifact("leaderboard.html", artifact_path="reports")
         
-        # --- Child runs: One per refitted model ---
-        
+        # Create child runs for each model
         for model_name in model_names:
             model_metrics = all_metrics.get(model_name, {})
-            
-            with mlflow.start_run(
-                run_name=model_name, 
-                nested=True,
-                tags={"model_name": model_name}
-            ) as child_run:
-                
-                # Log model-specific parameters
-                # Extract model type and stack level from model name (e.g., "CatBoost_BAG_L2")
-                model_type = model_name.split("_")[0] if "_" in model_name else model_name
-                stack_level = int(model_name.split("_L")[-1]) if "_L" in model_name else 1
-                
-                mlflow.log_params({
-                    "model_type": model_type,  # e.g., "WeightedEnsemble", "CatBoost"
-                    "stack_level": stack_level,  # e.g., 2, 3
-                    "fit_time": model_metrics.get("fit_time", 0),
-                    "predict_time": model_metrics.get("pred_time_val", 0)
-                })
-                
-                # Log model-specific metrics
-                # Primary score
+            with mlflow.start_run(run_name=model_name, nested=True):
                 mlflow.log_metric("score_val", model_metrics.get("score_val", 0))
-                if "score_test" in model_metrics:
-                    mlflow.log_metric("score_test", model_metrics["score_test"])
-                
-                # Task-specific metrics (classification example)
-                if pipeline_params.get("task_type") in ["binary", "multiclass"]:
-                    for metric in ["accuracy", "f1", "precision", "recall", "roc_auc"]:
-                        if metric in model_metrics:
-                            mlflow.log_metric(metric, model_metrics[metric])
-                
-                # Regression metrics
-                elif pipeline_params.get("task_type") == "regression":
-                    for metric in ["rmse", "mae", "r2", "mse"]:
-                        if metric in model_metrics:
-                            mlflow.log_metric(metric, model_metrics[metric])
-                
-                # Log model-specific artifacts (small JSON only)
-                model_metrics_file = f"{model_name}_metrics.json"
-                with open(model_metrics_file, "w") as f:
-                    json.dump(model_metrics, f, indent=2)
-                mlflow.log_artifact(model_metrics_file, artifact_path="model_metrics")
-                
-                # Optional: log feature importance if available
-                if "feature_importance" in model_metrics:
-                    importance_file = f"{model_name}_feature_importance.json"
-                    with open(importance_file, "w") as f:
-                        json.dump(model_metrics["feature_importance"], f, indent=2)
-                    mlflow.log_artifact(importance_file, artifact_path="feature_importance")
-        
-        print(f"Logged {len(model_names)} models to MLflow parent run: {parent_run.info.run_id}")
+                # Log task-specific metrics
+                for metric in ["accuracy", "f1", "rmse", "mae"]:
+                    if metric in model_metrics:
+                        mlflow.log_metric(metric, model_metrics[metric])
 ```
 
-### Comparison to MLflow framework integrations
+### Key differences from MLflow framework integrations
 
-| Aspect | MLflow scikit-learn/XGBoost Autolog | AutoML MLflow Integration (RHOAI 3.5+) |
-|--------|-------------------------------------|----------------------------------------|
-| **Automatic logging** | `mlflow.sklearn.autolog()` captures all params/metrics automatically | **Manual logging** via explicit `mlflow.log_params()` / `mlflow.log_metrics()` calls for predictability in KFP environment. KFP **mode 1** (auto KFP→MLflow) logs simple metrics, but AutoML uses **mode 2** (custom logging) for complex artifacts. |
-| **Nested runs** | GridSearchCV/RandomizedSearchCV auto-creates parent-child hierarchy | **Explicit nested runs**: parent = KFP pipeline run, children = refitted models from leaderboard |
-| **Parameter logging** | Auto-captures via `estimator.get_params()` | **Selective logging**: pipeline inputs (`preset`, `eval_metric`, `top_n`) + derived params (`autogluon_version`, `stack_level`) |
-| **Metric logging** | Training scores from `.score()` method, per-iteration for boosting | **Leaderboard-based**: validation scores (`score_val`, `score_test`) + task-specific metrics from `metrics.json` |
-| **Model logging** | `mlflow.sklearn.log_model()` with model signature and input example | **Not implemented**: logs **URIs/hashes** only. Full model logging would require `mlflow.pyfunc.log_model()` with custom AutoGluon wrapper and storage policy definition (MLflow has no native AutoGluon flavor) |
-| **Artifact logging** | Plots (feature importance, confusion matrix) via autolog | **Explicit artifacts**: `leaderboard.html`, per-model `metrics.json`, optional `feature_importance.json` |
-| **Dependencies** | Auto-generates `requirements.txt`, `conda.yaml` from environment | **Reproducibility via parameters**: `autogluon_version`, `pipeline_version` logged as params for tracking. |
-| **Run timing** | Runs created/closed automatically around `fit()` call | **Component-level**: parent run created in `leaderboard_evaluation` component after all training completes |
+**AutoML uses explicit manual logging** instead of MLflow's autolog feature because:
 
-### Concrete parameter sources (tabular)
+- **Predictability in KFP**: AutoML uses explicit `mlflow.log_params()` / `mlflow.log_metrics()` calls rather than `mlflow.sklearn.autolog()` to control exactly what gets logged in the KFP pipeline environment
+- **Explicit nested runs**: Parent run = KFP pipeline execution, child runs = individual refitted models from the leaderboard (not auto-created by GridSearchCV)
+- **Selective logging**: Logs pipeline inputs (`preset`, `eval_metric`, `top_n`) plus derived parameters (`autogluon_version`, `stack_level`) rather than capturing all estimator parameters via `.get_params()`
+- **Leaderboard-based metrics**: Logs validation scores (`score_val`, `score_test`) and task-specific metrics from `metrics.json` rather than training scores from `.score()` method
+- **No model artifacts**: Logs model URIs/hashes only. Full model logging would require `mlflow.pyfunc.log_model()` with custom AutoGluon wrapper (MLflow has no native AutoGluon flavor)
+- **Component-level timing**: Parent run created in `leaderboard_evaluation` component after all training completes, not automatically around `fit()` call
 
-Parameters logged to the **parent run** are sourced from:
-
-| Parameter | Source | Example Value | Notes |
-|-----------|--------|---------------|-------|
-| `eval_metric` | KFP pipeline input `eval_metric` | `"accuracy"` | From pipeline.py parameter (see [experiment_settings.md](./experiment_settings.md) for all supported metrics) |
-| `preset` | KFP pipeline input `preset` | `"medium_quality"` | From pipeline.py parameter (RHOAI 3.5+; see [experiment_settings.md](./experiment_settings.md) for supported presets) |
-| `top_n` | KFP pipeline input `top_n` | `3` | From pipeline.py parameter |
-| `task_type` | KFP pipeline input `task_type` | `"binary"` | From pipeline.py parameter (`binary`, `multiclass`, `regression`) |
-| `label_column` | KFP pipeline input `label_column` | `"target"` | From pipeline.py parameter (tabular) |
-| `train_data_bucket_name` | KFP pipeline input | `"my-training-data"` | S3 bucket name (non-secret metadata) |
-| `train_data_file_key` | KFP pipeline input | `"datasets/train.csv"` | S3 object key (non-secret metadata) |
-| `sampling_method` | Derived in data loader | `"stratified"` | Based on data size and task type |
-| `test_size` | Data loader split config | `0.2` | Train/test split ratio |
-| `pipeline_version` | Git SHA or image digest | `"a1b2c3d"` | From `PIPELINE_VERSION` env var, image label, or git SHA |
-| `autogluon_version` | Python package version | `"1.1.0"` | Via `autogluon.__version__` |
-| `kfp_run_id` | KFP workflow environment variable | `"run-abc123"` | From `KFP_RUN_ID` env var or context |
-| `namespace` | Kubernetes namespace | `"data-science-project"` | From pod metadata or env var |
-
-**Timeseries-specific parameters (additional for timeseries pipeline):**
-
-| Parameter | Source | Example Value | Notes |
-|-----------|--------|---------------|-------|
-| `target` | KFP pipeline input | `"sales"` | Target column to forecast |
-| `id_column` | KFP pipeline input | `"product_id"` | Series identifier column |
-| `timestamp_column` | KFP pipeline input | `"date"` | Timestamp column |
-| `prediction_length` | KFP pipeline input | `7` | Forecast horizon (time steps) |
-| `known_covariates_names` | KFP pipeline input | `["holiday", "promo"]` | Known future covariates (if used) |
-
-Parameters logged to each **child run** (per model):
-
-| Parameter | Source | Example Value | Notes |
-|-----------|--------|---------------|-------|
-| `model_type` | Model name parsing | `"CatBoost"` | Extracted from model name like `CatBoost_BAG_L2` |
-| `stack_level` | Model name parsing | `2` | Extracted from suffix `_L2` in model name |
-| `num_models_in_stack` | Metadata or model inspection | `5` | If available from AutoGluon metadata |
-| `fit_time` | `metrics.json` → `fit_time` | `42.5` | Seconds to train the model |
-| `predict_time` | `metrics.json` → `pred_time_val` | `0.8` | Seconds to predict on validation set |
-
-### Concrete metric sources (tabular)
-
-Metrics logged to the **parent run**:
-
-**Data-level metrics (from data loader):**
-
-| Metric | Source | Example Value | Notes |
-|--------|--------|---------------|-------|
-| `n_features` | `len(X.columns)` | `47` | Number of feature columns |
-| `train_rows` | `len(X_train)` | `8000` | Training set size |
-| `test_rows` | `len(X_test)` | `2000` | Test set size |
-| `selection_train_rows` | `len(X_sel)` | `500` | Rows for model selection (sampled) |
-| `total_rows_loaded` | Rows from S3 | `100000` | Original dataset size |
-| `sampling_ratio` | `n_samples / total_rows` | `0.10` | Fraction of data used |
-| `dataset_memory_mb` | `df.memory_usage(deep=True).sum() / (1024**2)` | `85.3` | Memory footprint |
-
-**Training-level metrics (from leaderboard evaluation):**
-
-| Metric | Source | Example Value | Notes |
-|--------|--------|---------------|-------|
-| `best_model_score` | Max `score_val` from `metrics.json` | `0.947` | Best validation score across all models |
-| `total_training_time` | Sum of `fit_time` from `metrics.json` | `187.3` | Total seconds spent training all models |
-| `num_models_trained` | Count of entries in `metrics.json` | `15` | Including intermediate and refitted models |
-
-Metrics logged to each **child run** (per model):
-
-| Metric | Source | Example Value | Notes |
-|--------|--------|---------------|-------|
-| `score_val` | `metrics.json` → `score_val` | `0.947` | Validation score for ranking (higher is better after AutoGluon transform) |
-| `score_test` | `metrics.json` → `score_test` | `0.942` | Test score if available |
-| `accuracy` | `metrics.json` → `accuracy` | `0.947` | Classification: fraction correct |
-| `f1` | `metrics.json` → `f1` | `0.935` | Classification: F1 score |
-| `roc_auc` | `metrics.json` → `roc_auc` | `0.982` | Classification: ROC AUC |
-| `precision` | `metrics.json` → `precision` | `0.928` | Classification: precision |
-| `recall` | `metrics.json` → `recall` | `0.943` | Classification: recall |
-| `rmse` | `metrics.json` → `rmse` | `12.4` | Regression: root mean squared error |
-| `mae` | `metrics.json` → `mae` | `9.1` | Regression: mean absolute error |
-| `r2` | `metrics.json` → `r2` | `0.89` | Regression: R² score |
-
-**Note:** Metric names in `metrics.json` align with AutoGluon’s leaderboard output. The evaluation component should map these to MLflow metrics based on the `task_type` to ensure consistency.
 
 ### Artifacts and naming conventions
 
@@ -395,7 +216,8 @@ Metrics logged to each **child run** (per model):
 |----------|------|----------|---------------|-----------|--------------|
 | `<model>_roc_curve.json` | ROC curve data | `mlflow-artifacts/<run_id>/model_metrics/<model>_roc_curve.json` | < 50 KB | Child run (tabular classification only) | **RHOAI 3.5+** |
 | `<model>_precision_recall_curve.json` | PR curve data | `mlflow-artifacts/<run_id>/model_metrics/<model>_precision_recall_curve.json` | < 50 KB | Child run (tabular classification only) | **RHOAI 3.5+** |
-| `<model>_back_testing.json` | Back-testing results | `mlflow-artifacts/<run_id>/model_metrics/<model>_back_testing.json` | < 100 KB | Child run (timeseries only) | **RHOAI 3.5+** |
+| `<model>_back_testing.json` | Back-testing summary with per-window metrics and series-level analysis | `mlflow-artifacts/<run_id>/model_metrics/<model>_back_testing.json` | < 100 KB | Child run (timeseries only) | **RHOAI 3.5+** |
+| `<model>_forecast_data.json` | Back-testing forecast data with actual vs predicted values for best/worst performers | `mlflow-artifacts/<run_id>/model_metrics/<model>_forecast_data.json` | < 200 KB | Child run (timeseries only) | **RHOAI 3.5+** |
 
 **Additional metrics from RHOAI 3.5+ artifacts** (logged as MLflow metrics when artifacts are generated):
 
@@ -413,9 +235,10 @@ Metrics logged to each **child run** (per model):
 - `average_precision_macro`: Macro-averaged AP (from `precision_recall_curve.json`)
 - `average_precision_weighted`: Weighted AP (from `precision_recall_curve.json`)
 
-**For timeseries** (from `back_testing.json`):
+**For timeseries** (from `back_testing.json` and `forecast_data.json`):
 - `num_val_windows`: Number of backtesting windows
 - `num_series_evaluated`: Total series in backtest
+- `prediction_length`: Forecast horizon in time steps
 - `series_with_degraded_performance`: Count of problematic series
 - Per-window metrics: `WQL`, `MAPE`, `MASE`, `RMSE`, `MAE` (logged as metric arrays or separate metrics per window)
 
