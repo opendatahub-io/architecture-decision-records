@@ -1,6 +1,6 @@
-# RAG Pattern Vector Store Creation
+# RAG Pattern Index Population
 
-This page documents **AutoRAG pattern vector store creation** from optimization completion through production knowledge base building.
+This page documents **AutoRAG pattern index population** from optimization completion through production-scale knowledge base building. During optimization, AutoRAG samples up to 1GB of documents to find the best chunking, embedding, and retrieval configuration. The indexing pipeline uses those optimized settings to process the **full document corpus** and populate the production vector store index.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ This page documents **AutoRAG pattern vector store creation** from optimization 
 
 ### Current approach
 
-In RHOAI 3.4, vector store creation for optimized RAG patterns relies on **Jupyter notebooks** generated during the optimization pipeline. These notebooks contain parameterized code for rebuilding the vector store with the exact chunking, embedding, and indexing settings that were used during pattern optimization.
+In RHOAI 3.4, production-scale indexing for optimized RAG patterns relies on **Jupyter notebooks** generated during the optimization pipeline. These notebooks contain parameterized code for **populating the vector store index** with the full document corpus, using the exact chunking, embedding, and indexing settings that were identified during pattern optimization.
 
 The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** writes indexing notebooks as part of the `rag_patterns` artifact output.
 
@@ -35,16 +35,16 @@ The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-se
 
 Each optimized pattern's artifact directory (`<pattern_subdir>/`) includes an **`indexing_notebook.ipynb`** file:
 
-| File | Type | Purpose |
-|------|------|---------|
-| `indexing_notebook.ipynb` | Jupyter Notebook | **Indexing** notebook instantiated from templates (e.g., **`ls_indexing_template.ipynb`**), parameterized for this pattern's chunking, embedding, and vector store settings. Contains all code needed to rebuild the vector store from source documents. |
+| File | Purpose |
+|------|---------|
+| `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern's chunking, embedding, and vector store settings. Contains all code needed to populate the vector store index with the full document corpus. |
 
 **What's in the notebook:**
-- Document loading and preprocessing code
+- Document loading and preprocessing code for the **full document corpus** (beyond the 1GB optimization sample)
 - Chunking logic parameterized with the optimized `chunk_size` and `chunk_overlap` from `pattern.json`
 - Embedding model configuration matching the pattern's `embedding.model_id`
 - Vector store connection and indexing code for the specified `datasource_type` (e.g., Milvus, PGVector)
-- Collection/index creation with the optimized settings (distance metric, dimension, etc.)
+- Collection/index population with the optimized settings (distance metric, dimension, etc.)
 
 ---
 
@@ -52,13 +52,13 @@ Each optimized pattern's artifact directory (`<pattern_subdir>/`) includes an **
 
 ### Documents Indexing Pipeline
 
-RHOAI 3.5 introduces a **production-ready KFP pipeline** for vector store creation based on the **[`documents_indexing_pipeline`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/data_processing/autorag/documents_indexing_pipeline)** in the pipelines-components repository.
+RHOAI 3.5 introduces a **production-ready KFP pipeline** for production-scale index population based on the **[`documents_indexing_pipeline`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/data_processing/autorag/documents_indexing_pipeline)** in the pipelines-components repository.
 
-This pipeline automates the entire indexing workflow as a reusable, orchestrated, and observable Kubeflow Pipelines task. Instead of manually executing notebooks, operators can deploy patterns by simply running the pattern-specific compiled pipeline with a single click.
+This pipeline automates the entire indexing workflow as a reusable, orchestrated, and observable Kubeflow Pipelines task. It processes the **full document corpus** using the optimized pattern settings, populating the production vector store index. Instead of manually executing notebooks, operators can deploy patterns by simply running the pattern-specific compiled pipeline with a single click.
 
 **Architecture:** 
 - AutoRAG image contains the index building pipeline & pipeline components source code.
-- AutoRAG generates a **compiled, pre-configured pipeline YAML per pattern** with all settings from `pattern.json` baked in as defaults. This provides a superior user experience—operators just click "Deploy" without needing to provide configuration parameters.
+- AutoRAG generates a **compiled, pre-configured pipeline YAML per pattern** with all settings from `pattern.json` baked in as defaults. This provides a superior user experience—operators can click "Deploy" and use the defaults, or optionally override parameters like `document_source` if needed for production deployment.
 - AutoRAG injects the currently used image digest to compiled pipeline.
  
 
@@ -88,7 +88,7 @@ AutoRAG Optimization Completes
 ```
 **Benefits:**
 
-- ✅ **One-click deployment** - Dashboard users just click "Deploy Pattern", no configuration needed
+- ✅ **One-click deployment** - Dashboard users just click "Deploy", no configuration needed
 - ✅ **Self-contained** - All necessary assets (config, notebooks, pipeline) in one pattern folder
 - ✅ **Discoverable settings** - Inspect pipeline YAML to see exact configuration without reading JSON
 - ✅ **Self-documenting** - Pipeline spec shows what will run, making it easy to review before execution
@@ -122,9 +122,9 @@ The **`documents_indexing_pipeline`** orchestrates vector store creation through
 │     └─> Retry logic for transient failures                      │
 │                                                                 │
 │  5. Vector Store Indexing                                       │
-│     └─> Create/update collection/index                          │
+│     └─> Populate collection/index with full document corpus     │
 │     └─> Insert embeddings with metadata                         │
-│     └─> Configure distance metric, dimension, etc.              │
+│     └─> Configure distance metric, dimension per pattern.json   │
 │                                                                 │
 │  6. Validation & Metrics                                        │
 │     └─> Verify document count                                   │
@@ -136,22 +136,22 @@ The **`documents_indexing_pipeline`** orchestrates vector store creation through
 
 **Key pipeline features:**
 
-- **Parameterized by `pattern.json`:** The pipeline accepts the optimized pattern configuration as input, ensuring production vector store uses identical settings to optimization
+- **Full corpus processing:** Processes the entire document corpus (not just the 1GB optimization sample), populating the production vector store index with all documents
+- **Parameterized by `pattern.json`:** Uses the optimized pattern configuration, ensuring production vector store uses identical settings to optimization
 - **Scalable:** Components can request appropriate resources (CPU, memory, GPU) for large-scale document processing
 - **Observable:** Each step logs metrics to MLflow/KFP, enabling monitoring and debugging
-- **Reusable:** Same pipeline can rebuild vector stores when documents change or patterns are updated
+- **Reusable:** Same pipeline can re-populate vector stores when documents change or patterns are updated
 - **Automated triggers:** Can be invoked via API, scheduled (cron), or event-driven (document upload)
 
 ### Generated artifacts
 
 The indexing pipeline produces artifacts that complement the pattern artifacts:
 
-| Artifact | Type | Purpose |
-|----------|------|---------|
-| `indexing_run_metadata.json` | JSON | Pipeline execution metadata: start time, end time, duration, component versions, resource usage |
-| `vector_store_stats.json` | JSON | Vector store statistics: document count, chunk count, embedding dimension, collection name, index size |
-| `indexing_logs/` | Directory | Per-component logs for debugging (document loading, chunking, embedding, indexing) |
-| `pattern_config_snapshot.json` | JSON | Copy of the `pattern.json` used for this indexing run, for reproducibility and auditing |
+| Artifact | Purpose |
+|----------|---------|
+| `indexing_run_metadata.json` | Pipeline execution metadata: start time, end time, duration, component versions, resource usage |
+| `vector_store_stats.json` | Vector store statistics: document count, chunk count, embedding dimension, collection name, index size |
+| `indexing_logs/` | Per-component logs for debugging (document loading, chunking, embedding, indexing) |
 
 **Example `vector_store_stats.json`:**
 
@@ -187,7 +187,7 @@ The compiled indexing pipeline enables automated vector store deployment with se
 ┌─────────────────────────────────────────────────────────────────┐
 │ 2. AutoRAG Dashboard Integration                                │
 │    └─> User views optimized patterns in AutoRAG Dashboard       │
-│    └─> Clicks "Deploy Pattern" on selected pattern              │
+│    └─> Clicks "Deploy" on selected pattern                      │
 │    └─> Dashboard saves indexing_pipeline.yaml to KFP            │
 │         as pipeline in AI Pipelines project                     │
 └─────────────────────────────────────────────────────────────────┘
@@ -197,9 +197,10 @@ The compiled indexing pipeline enables automated vector store deployment with se
 │ 3. AI Pipelines UI (Data Science Pipelines)                     │
 │    └─> User navigates to AI Pipelines in RHOAI                  │
 │    └─> Sees pattern indexing pipeline registered                │
-│    └─> Creates pipeline run with parameters:                    │
-│         • document_source (S3 bucket, PVC, URL)                 │
-│         • vector_store_dsn (if not default)                     │
+│    └─> Creates pipeline run (defaults from pattern.json)        │
+│    └─> Optionally overrides parameters if needed:               │
+│         • document_source (for production document set)         │
+│         • vector_store_dsn (for production vector store)        │
 │         • credentials (secrets)                                 │
 │    └─> Monitors execution via Pipelines UI                      │
 └─────────────────────────────────────────────────────────────────┘
@@ -207,16 +208,17 @@ The compiled indexing pipeline enables automated vector store deployment with se
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 4. Pipeline Executes                                             │
-│    └─> Loads documents                                           │
+│    └─> Loads full document corpus (not just 1GB sample)         │
 │    └─> Chunks, embeds, indexes according to pattern.json        │
+│    └─> Populates vector store collection/index                  │
 │    └─> Logs progress to MLflow and KFP UI                       │
 │    └─> User monitors progress, logs, and metrics in Pipelines   │
 └─────────────────────────────────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 5. Vector Store Ready                                            │
-│    └─> Collection created and populated                         │
+│ 5. Production Index Ready                                        │
+│    └─> Collection/index populated with full document corpus     │
 │    └─> Stats and logs written to artifact store                 │
 │    └─> Completion status visible in AI Pipelines UI             │
 └─────────────────────────────────────────────────────────────────┘
@@ -224,8 +226,8 @@ The compiled indexing pipeline enables automated vector store deployment with se
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 6. Pattern Inference Deployment                                 │
-│    └─> Llama Stack configured to use new vector store           │
-│    └─> /v1/responses API ready for queries                      │
+│    └─> Llama Stack references the populated vector store        │
+│    └─> /v1/responses API ready for production queries           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
