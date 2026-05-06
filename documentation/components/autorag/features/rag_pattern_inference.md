@@ -28,26 +28,27 @@ This page documents **AutoRAG pattern inference** from optimization completion t
 
 ### Pattern artifacts
 
-The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** produces pattern artifacts organized into **two main KFP output artifacts** (`rag_patterns` and `responses_api_artifacts`), plus a **pipeline-wide HTML leaderboard**. Paths below are **logical** names under each **per-pattern subdirectory** (one folder per optimized pattern); the exact artifact store URI layout follows Data Science Pipelines backend.
+The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** produces pattern artifacts organized into **two main KFP output artifacts** (`rag_patterns` and `responses_api_artifacts`), plus a **pipeline-wide HTML leaderboard**.  
+The pipeline run saves all of the artifacts in the DSPA server configured S3-compatible storage under the path: `<DSPA-configured-bucket>/<pipeline-name>/<run-id>/<component-name>/<task-id>/`  
 
 #### 1. `rag_patterns` artifact ([`rag_templates_optimization`](https://github.com/red-hat-data-services/pipelines-components/blob/main/components/training/autorag/rag_templates_optimization/component.py))
 
-Each **`<pattern_subdir>/`** contains:
+A directory containing generated RAG patterns. Each **`<pattern_subdir>/`** contains:
 
 | File | Purpose |
 |------|---------|
-| `pattern.json` | Authoritative pattern record from ai4rag: name, iteration, `settings` (chunking, embedding, retrieval, generation, vector store), aggregate `scores`, `final_score`, timing |
+| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation, vector store), aggregate `scores`, `final_score`, timing |
 | `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
-| `evaluation_results.json` | Per-pattern evaluation payload (per-question scores, traces, metadata)—the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
+| `evaluation_results.json` | Evaluation payload (per-question scores, traces, metadata) --- the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
 
 #### 2. `responses_api_artifacts` artifact ([`prepare_responses_api_requests`](https://github.com/red-hat-data-services/pipelines-components/blob/main/components/deployment/autorag/build_responses_request_bodies/component.py))
 
-A **separate** output artifact **mirrors** the same `<pattern_subdir>/` names. Under each folder:
+A directory which structure **mirrors** the `<pattern_subdir>/` hierarchy of the `rag_patterns` artifact. Each per-pattern folder contains:  
 
 | File | Purpose |
 |------|---------|
-| `v1_responses_body.json` | Frozen `POST /v1/responses` JSON payload derived from `pattern.json` (`model`, `input`, `tools`/`file_search`, `instructions`, `metadata`). Used by AutoRAG Dashboard, Gen AI Studio, and copy/paste snippets |
+| `v1_responses_body.json` | Frozen `POST /v1/responses` JSON payload derived from `pattern.json` (`model`, `input`, `tools`, `instructions`, `metadata`). Used by AutoRAG Dashboard, Gen AI Studio, and copy/paste snippets |
 | `create_model_response.py` | Interactive client script for testing patterns (embeds Llama Stack base URL from env, prompts for API key, loops on questions) |
 | `README.md` | Instructions for running the client script, TLS/CA bundle notes, and URL overrides |
 
@@ -108,24 +109,24 @@ A **separate** output artifact **mirrors** the same `<pattern_subdir>/` names. U
 }
 ```
 
-### GenAI Studio integration
+### GenAI Studio integration today  
 
-For **short demos** before automated registration exists, teams typically:
+For **short demos**, prior to the RAG pattern automated registration in the GenAI Studio feature, teams would typically:
 
-- Register the **vector store** AutoRAG created (for example on a remote **Milvus** instance) as a **Gen AI Studio AI Asset**, often backed by a **ConfigMap** that matches how Llama Stack / Studio expect provider config.
+- Register the **vector store** AutoRAG used for documents collection creation (for example on a remote **Milvus** instance) as a **Gen AI Studio AI Asset**, often backed by a **ConfigMap** that matches how Llama Stack / Studio expects provider config.
 - Add the **embedding** model as an AI Asset via **custom endpoints** (and similarly the **chat / completion** model).
-- Combine **vector store + embedding + chat** assets in the **Gen AI Studio playground** to approximate “try me out.”
+- Combine **vector store + embedding + chat** assets in the **Gen AI Studio playground** to approximate “try me out” feature. 
 
-This is **not** the long-term integrated flow; it proves connectivity while the RHOAI 3.5 improvements land Dashboard → Studio handoff.
+This is **not** the long-term integration flow; it proves connectivity until the RHOAI 3.5 improvements allow the Dashboard → Studio handoff.
 
 ### Deployment today
 
 Operators and data scientists follow a **manual** path:
 
-1. **Pipeline completes** → artifacts in the run’s store (**`rag_patterns`**, **`responses_api_artifacts`**, leaderboard HTML), as above.
+1. Wait for the **pipeline run completion** → artifacts are saved in the run’s store (**`rag_patterns`**, **`responses_api_artifacts`**, leaderboard HTML), as described in the previous sections.
 2. **Download** from the pipeline / object-store UI.
-3. **Wire Kubernetes by hand:** build ConfigMaps from **`pattern.json`**, apply with **`kubectl`**, point **Llama Stack** deployments at them, restart services.
-4. **Smoke-test** by copying **`responses_api_artifacts/<pattern>/v1_responses_body.json`** and calling **`POST /v1/responses`** (for example **`curl`** or Postman).
+3. **Wire Kubernetes by hand:** build ConfigMaps from **`pattern.json`**, apply with **`kubectl`**, point **Llama Stack** deployments to them, restart services.
+4. Perform **smoke-test** by copying **`responses_api_artifacts/<pattern>/v1_responses_body.json`** and calling **`POST /v1/responses`** (using e.g. **`curl`** or Postman).
 
 
 ---
@@ -134,7 +135,7 @@ Operators and data scientists follow a **manual** path:
 
 ### AutoRAG Backend (Optimization Pipeline)
 
-The 3.5 target architecture achieves **end-to-end Responses API consistency**: AutoRAG optimization evaluates candidates using **Llama Stack `POST /v1/responses`** (not legacy chat completions), ensuring optimization and production use identical API surfaces to prevent drift. The Responses API request body is **embedded directly in `pattern.json`**, eliminating the need for separate `v1_responses_body.json` files.
+The 3.5 target architecture achieves **end-to-end Responses API consistency**: AutoRAG optimization evaluates candidates using **Llama Stack `POST /v1/responses`** (not the legacy chat completions), ensuring optimization and production use identical API surfaces to prevent drift. The Responses API request body is **embedded directly in the `pattern.json`**, eliminating the need for separate `v1_responses_body.json` files.
 
 See [Llama Stack Responses flow](https://llamastack.github.io/docs/api-openai/responses-flow) for upstream API behavior.
 
@@ -144,20 +145,20 @@ The pipeline produces artifacts under each **`<pattern_subdir>/`** (one director
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Consolidated pattern record containing: chunking, embedding, retrieval, generation settings; Responses API request template (`input`, `tools`, `instructions`, `metadata`); vector store binding; aggregate scores and timing. Single source of truth for registration, deployment, and code generation |
+| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation, vector store), aggregate `scores`, `final_score`, timing; Responses API request template (`input`, `tools`, `instructions`, `metadata`); `vector store binding`. Single source of truth for registration, deployment, and code generation |
 | `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
-| `evaluation_results.json` | Per-pattern evaluation payload (per-question scores, traces, metadata)—the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
+| `evaluation_results.json` | Evaluation payload (per-question scores, traces, metadata) --- the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
 | `create_model_response.py` | Interactive client script for testing patterns (embeds Llama Stack base URL from env, reads Responses config from `pattern.json`) |
 
 
-**Key changes from 3.4:**
+**Key changes compared to 3.4:**
 
-The separate `v1_responses_body.json` artifact is **eliminated**. The Responses API request template is now **embedded in `pattern.json`** under `settings.responses_template`, providing a single source of truth.
+The separate `v1_responses_body.json` artifact is **eliminated**. The Responses API request template is now **embedded in the `pattern.json`** under `settings.responses_template` key, providing a single source of truth.
 
-**New fields added to `pattern.json`:**
+**New fields added to the `pattern.json`:**
 
-- **`settings.responses_template`** (object): The `POST /v1/responses` request payload template that matches what the optimization engine used (ai4rag + Llama Stack). The `<user_query_placeholder>` in the `input` array is replaced with actual questions during inference. Dashboard and GenAI Studio extract this field to generate code snippets and enable "try me out."
+- **`settings.responses_template`** (object): The `POST /v1/responses` request's payload template that matches what the optimization engine used (ai4rag + Llama Stack). The `<user_query_placeholder>` in the `input` array is replaced with actual questions during inference. Dashboard and GenAI Studio extract this field to generate code snippets and enable "try me out."
   - **`model`** (string): Generation model identifier (e.g., "gpt-4.1-mini")
   - **`stream`** (boolean): Whether to stream responses
   - **`store`** (boolean): Whether to persist the interaction
@@ -287,13 +288,13 @@ The backend uses **`POST /v1/responses`** for both optimization and inference, f
 
 #### Request payload
 
-**`POST /v1/responses`** uses **`input`** as a plain string or structured blocks (e.g., **`input_text`** inside a **`message`**) and **`tools`** such as **`file_search`** with **`vector_store_ids`**—not a legacy chat-completions **`messages`** top-level array. The concrete request body is embedded in the `settings.responses_template` field of [Example pattern.json](#example-patternjson).
+**`POST /v1/responses`** uses **`input`** as a plain string or structured blocks (e.g., **`input_text`** inside a **`message`**) and **`tools`** such as **`file_search`** with **`vector_store_ids`** --- not a legacy chat-completions **`messages`** top-level array. The concrete request body is embedded in the `settings.responses_template` field of [Example pattern.json](#example-patternjson).
 
 **Key fields:**
-- **`model`**: generation model id (aligns with `pattern.json` `generation.model_id`)
-- **`input`**: user question as a string or structured message blocks
-- **`tools`**: often **`file_search`** with **`vector_store_ids`** for AutoRAG + Milvus
-- **`instructions`**, **`metadata`**, **`tool_choice`**, **`include`**: common in frozen recipes; optional depending on template
+- **`model`**: generation model identifier (aligns with `pattern.json` `generation.model_id`)
+- **`input`**: Structured message array with placeholder for user query
+- **`tools`**: Tool configurations; Most often **`file_search`** with **`vector_store_ids`** for AutoRAG + Milvus
+- **`instructions`**, **`metadata`**, **`tool_choice`**, **`include`**: common in frozen recipes; optionality depends on the template
 - **`max_output_tokens` / `temperature` / `stream` / `store`**: generation and tracing controls
 
 #### Response format
@@ -344,7 +345,7 @@ After optimization, you can call **`POST /v1/responses`** in two straightforward
 
 1. **Download the Python helper** — Take **`create_model_response.py`** from the pattern output (see [Generated artifacts per pattern](#generated-artifacts-per-pattern)) or export it from the AutoRAG Dashboard. The script reads **`pattern.json`**, applies your Llama Stack base URL and credentials from the environment, and drives **`/v1/responses`** interactively so you do not have to assemble the JSON by hand.
 
-2. **Build the request from `settings.responses_template`** — In RHOAI 3.5+, **`pattern.json`** already contains the same **`POST /v1/responses`** body the optimizer used, under **`settings.responses_template`** (see [Example pattern.json](#example-patternjson)). Treat that object as your request body: point your HTTP client at **`/v1/responses`**, send it as JSON, and only substitute the user question—typically by replacing the **`<user_query_placeholder>`** token in the structured **`input`** (or whatever placeholder your build emits). No need to re-specify **`tools`**, **`instructions`**, or **`metadata`** unless you intentionally change the recipe.
+2. **Build the request from `settings.responses_template`** — In RHOAI 3.5+, **`pattern.json`** already contains the same **`POST /v1/responses`** body the optimizer used, under **`settings.responses_template`** (see [Example pattern.json](#example-patternjson)). Treat that object as your request body: point your HTTP client to the **`/v1/responses`** endpoint, send it as JSON, and only substitute the user question—typically by replacing the **`<user_query_placeholder>`** token in the structured **`input`** (or whatever placeholder your build emits). No need to re-specify **`tools`**, **`instructions`**, or **`metadata`** unless you intentionally change the recipe.
 
 The Dashboard can still offer copy/export actions; whether you paste from the UI or read **`pattern.json`** from disk, the source of truth for the request shape is **`settings.responses_template`**.
 
