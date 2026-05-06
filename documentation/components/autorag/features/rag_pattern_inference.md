@@ -28,28 +28,28 @@ This page documents **AutoRAG pattern inference** from optimization completion t
 
 ### Pattern artifacts
 
-The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** writes **three** KFP-relevant outputs for “what to ship per pattern,” plus a **fourth** pipeline-wide HTML file. Paths below are **logical** names under each **per-pattern subdirectory** (one folder per optimized pattern); the exact artifact store URI layout follows Data Science Pipelines backend.
+The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** produces pattern artifacts organized into **two main KFP output artifacts** (`rag_patterns` and `responses_api_artifacts`), plus a **pipeline-wide HTML leaderboard**. Paths below are **logical** names under each **per-pattern subdirectory** (one folder per optimized pattern); the exact artifact store URI layout follows Data Science Pipelines backend.
 
 #### 1. `rag_patterns` artifact ([`rag_templates_optimization`](https://github.com/red-hat-data-services/pipelines-components/blob/main/components/training/autorag/rag_templates_optimization/component.py))
 
 Each **`<pattern_subdir>/`** contains:
 
-| File | Type | Purpose |
-|------|------|---------|
-| `pattern.json` | JSON | **Authoritative pattern record** from ai4rag: name, iteration, **`settings`** (chunking, embedding, retrieval, generation, vector store / collection, …), aggregate **`scores`**, **`final_score`**, timing. Additional **Responses / binding** fields are [planned](#target-payloads-examples); validate against the schema your build emits. |
-| `indexing_notebook.ipynb` | Jupyter Notebook | **Indexing** notebook instantiated from templates (for example **`ls_indexing_template.ipynb`**), parameterized for this pattern. |
-| `inference_notebook.ipynb` | Jupyter Notebook | **Inference** notebook instantiated from templates (for example **`ls_inference_template.ipynb`**), parameterized for this pattern. |
-| `evaluation_results.json` | JSON | **Per-pattern evaluation payload** (per-question scores, traces, metadata) written when the pattern is created—**this is the dedicated evaluation file**; aggregate numbers also appear inside **`pattern.json`** for leaderboard use. |
+| File | Purpose |
+|------|---------|
+| `pattern.json` | Authoritative pattern record from ai4rag: name, iteration, `settings` (chunking, embedding, retrieval, generation, vector store), aggregate `scores`, `final_score`, timing |
+| `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
+| `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
+| `evaluation_results.json` | Per-pattern evaluation payload (per-question scores, traces, metadata)—the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
 
 #### 2. `responses_api_artifacts` artifact ([`prepare_responses_api_requests`](https://github.com/red-hat-data-services/pipelines-components/blob/main/components/deployment/autorag/build_responses_request_bodies/component.py))
 
 A **separate** output artifact **mirrors** the same `<pattern_subdir>/` names. Under each folder:
 
-| File | Type | Purpose |
-|------|------|---------|
-| `v1_responses_body.json` | JSON | Frozen **`POST /v1/responses`** JSON body derived from that folder’s **`pattern.json`** (today: **`model`**, **`input`**, **`tools`** / **`file_search`**, **`instructions`**, **`metadata`**, … per the component). Used by **AutoRAG Dashboard**, **Gen AI Studio**, and copy/paste snippets—not chat-completions **`messages`**. |
-| `create_model_response.py` | Python | Small **interactive** client script (embeds Llama Stack base URL from env, prompts for API key, loops on questions). |
-| `README.md` | Markdown | How to run the script, TLS / CA bundle notes, and URL overrides. |
+| File | Purpose |
+|------|---------|
+| `v1_responses_body.json` | Frozen `POST /v1/responses` JSON payload derived from `pattern.json` (`model`, `input`, `tools`/`file_search`, `instructions`, `metadata`). Used by AutoRAG Dashboard, Gen AI Studio, and copy/paste snippets |
+| `create_model_response.py` | Interactive client script for testing patterns (embeds Llama Stack base URL from env, prompts for API key, loops on questions) |
+| `README.md` | Instructions for running the client script, TLS/CA bundle notes, and URL overrides |
 
 
 ### Pattern.json
@@ -116,7 +116,7 @@ For **short demos** before automated registration exists, teams typically:
 - Add the **embedding** model as an AI Asset via **custom endpoints** (and similarly the **chat / completion** model).
 - Combine **vector store + embedding + chat** assets in the **Gen AI Studio playground** to approximate “try me out.”
 
-This is **not** the long-term integrated flow; it proves connectivity while [Planned work](#planned-work-rhoai-35-and-later) lands Dashboard → Studio handoff.
+This is **not** the long-term integrated flow; it proves connectivity while the RHOAI 3.5 improvements land Dashboard → Studio handoff.
 
 ### Deployment today
 
@@ -142,19 +142,39 @@ See [Llama Stack Responses flow](https://llamastack.github.io/docs/api-openai/re
 
 The pipeline produces artifacts under each **`<pattern_subdir>/`** (one directory per optimized pattern):
 
-| Artifact | Type | Purpose |
-|----------|------|---------|
-| **`pattern.json`** | JSON | **Consolidated pattern record** containing: chunking, embedding, retrieval, generation settings; **Responses API request template** (`input`, `tools`, `instructions`, `metadata`); vector store binding; aggregate scores and timing. This single file provides everything needed for registration, deployment, and code generation. |
-| **`indexing_notebook.ipynb`** | Jupyter Notebook | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
-| **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
-| **`evaluation_results.json`** | JSON | Per-question evaluation metrics (context precision, answer relevance, faithfulness), traces, metadata—the dedicated evaluation file |
-| **`create_model_response.py`** | Python | Interactive client script for testing patterns (embeds Llama Stack base URL from env, reads Responses config from `pattern.json`) |
+| Artifact | Purpose |
+|----------|---------|
+| `pattern.json` | Consolidated pattern record containing: chunking, embedding, retrieval, generation settings; Responses API request template (`input`, `tools`, `instructions`, `metadata`); vector store binding; aggregate scores and timing. Single source of truth for registration, deployment, and code generation |
+| `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
+| `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
+| `evaluation_results.json` | Per-pattern evaluation payload (per-question scores, traces, metadata)—the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
+| `create_model_response.py` | Interactive client script for testing patterns (embeds Llama Stack base URL from env, reads Responses config from `pattern.json`) |
 
 
-**Key change from 3.4:** 
-- The separate `v1_responses_body.json` artifact is eliminated
-- The Responses API request template is embedded in `pattern.json` under the `settings.responses_template` field, providing a single source of truth
-- `settings.vector_store_binding` introduced in place of out-dated `settings.vector_store` (properties aligned with LLS config)
+**Key changes from 3.4:**
+
+The separate `v1_responses_body.json` artifact is **eliminated**. The Responses API request template is now **embedded in `pattern.json`** under `settings.responses_template`, providing a single source of truth.
+
+**New fields added to `pattern.json`:**
+
+- **`settings.responses_template`** (object): The `POST /v1/responses` request payload template that matches what the optimization engine used (ai4rag + Llama Stack). The `<user_query_placeholder>` in the `input` array is replaced with actual questions during inference. Dashboard and GenAI Studio extract this field to generate code snippets and enable "try me out."
+  - **`model`** (string): Generation model identifier (e.g., "gpt-4.1-mini")
+  - **`stream`** (boolean): Whether to stream responses
+  - **`store`** (boolean): Whether to persist the interaction
+  - **`input`** (array): Structured message array with placeholder for user query
+  - **`metadata`** (object): Run tracking metadata (`autorag_run_id`, `rag_pattern_name`)
+  - **`instructions`** (string): System prompt that directs the model's behavior and response style (similar to [LangChain system messages](https://docs.langchain.com/oss/python/langchain/messages#system-message))
+  - **`tools`** (array): Tool configurations; for RAG patterns typically contains a file_search tool with vector store references and retrieval settings
+  - **`tool_choice`** (object): Specifies which tool to invoke
+  - **`include`** (array): Controls what to include in the response (e.g., "file_search_call.results")
+
+- **`settings.vector_store_binding`** (object): Llama Stack vector store registration metadata that aligns with the ConfigMap and REST API schema. Replaces the 3.4 `settings.vector_store` field:
+  - **3.4 schema:** Used `settings.vector_store.collection_name` to reference the Milvus collection
+  - **3.5 schema:** Uses `settings.vector_store_binding.vector_store_id` aligned with Llama Stack provider configuration
+  - **`provider_id`** (string): Llama Stack provider identifier (e.g., "milvus-provider") registered in ConfigMap `providers.vector_io[].provider_id`
+  - **`provider_type`** (string): Provider implementation type matching ConfigMap `provider_type` (e.g., "inline::milvus", "remote::milvus")
+  - **`vector_store_id`** (string): Unique Llama Stack vector store identifier (e.g., "vs_coll_pattern_01") that matches `registered_resources.vector_stores[].vector_store_id` in ConfigMap and is referenced in `responses_template.tools[].vector_store_ids`
+  - **`vector_store_name`** (string): Human-readable name matching ConfigMap `vector_store_name`
 
 ### Target payloads (examples)
 
@@ -260,24 +280,6 @@ Illustrative shape for **`pattern.json`** with **Responses API template** and **
    "final_score":0.87
 }
 ```
-
-**Key fields (3.5 additions to 3.4 schema):**
-- **`settings.responses_template`:** Contains the complete **`POST /v1/responses`** request template that matches what the optimization engine used (ai4rag + Llama Stack). The `<user_query_placeholder>` in the `input` array is replaced with actual questions during inference. Dashboard and GenAI Studio extract this field to generate code snippets and enable "try me out."
-  - **`model`**: generation model identifier (e.g., "gpt-4.1-mini")
-  - **`stream`**: whether to stream responses (boolean)
-  - **`store`**: whether to persist the interaction (boolean)
-  - **`input`**: structured message array with placeholder for user query
-  - **`metadata`**: run tracking metadata (`autorag_run_id`, `rag_pattern_name`)
-  - **`instructions`**: system-level instructions for the RAG task
-  - **`tools`**: file_search configuration with vector_store_ids and optional ranking_options for hybrid search (search_mode, ranker_strategy, ranker_k, ranker_alpha)
-  - **`tool_choice`**: specifies which tool to invoke
-  - **`include`**: controls what to include in the response (e.g., "file_search_call.results")
-
-- **`settings.vector_store_binding`:** Llama Stack vector store registration metadata that aligns with the ConfigMap and REST API schema (see [Vector store ConfigMaps](#vector-store-configmaps)). This field is nested within the `settings` block:
-  - **`provider_id`**: Llama Stack provider identifier (e.g., "milvus-provider") registered in ConfigMap `providers.vector_io[].provider_id`
-  - **`provider_type`**: Provider implementation type matching ConfigMap `provider_type` (e.g., "inline::milvus", "remote::milvus")
-  - **`vector_store_id`**: Unique Llama Stack vector store identifier (e.g., "vs_coll_pattern_01") that matches `registered_resources.vector_stores[].vector_store_id` in ConfigMap and is referenced in `responses_template.tools[].vector_store_ids`
-  - **`vector_store_name`**: Human-readable name matching ConfigMap `vector_store_name`
 
 ### LLama-Stack /v1/responses API
 
