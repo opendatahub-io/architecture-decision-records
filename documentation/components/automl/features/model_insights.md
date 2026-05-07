@@ -6,14 +6,11 @@
     - [Per refitted model (`{model_name}_FULL`)](#per-refitted-model-model_name_full)
   - [Timeseries pipeline](#timeseries-pipeline)
     - [Per refitted model (`{model_name}_FULL`)](#per-refitted-model-model_name_full-1)
-  - [Leaderboards and URIs](#leaderboards-and-uris)
 - [OpenShift AI 3.5 and later](#openshift-ai-35-and-later)
-  - [Tabular (planned)](#tabular-planned)
-    - [Example: `roc_curve.json` (binary classification)](#example-roc_curvejson-binary-classification)
-    - [Example: `roc_curve.json` (multiclass, one-vs-rest)](#example-roc_curvejson-multiclass-one-vs-rest)
-    - [Example: `precision_recall_curve.json` (binary classification)](#example-precision_recall_curvejson-binary-classification)
-    - [Example: `precision_recall_curve.json` (multiclass, one-vs-rest)](#example-precision_recall_curvejson-multiclass-one-vs-rest)
-  - [Timeseries (planned)](#timeseries-planned)
+  - [Tabular](#tabular)
+    - [Example: `curves.json` (binary classification)](#example-curvesjson-binary-classification)
+    - [Example: `curves.json` (multiclass, one-vs-rest)](#example-curvesjson-multiclass-one-vs-rest)
+  - [Timeseries](#timeseries)
     - [Example: `back_testing.json` (time series)](#example-back_testingjson-time-series)
     - [Visualization Use Cases](#visualization-use-cases)
 
@@ -56,14 +53,6 @@ One combined **`Model`** artifact from **`autogluon_models_training`** (`models_
 
 ---
 
-### Leaderboards and URIs
-
-Both leaderboard components read **`…/{model}_FULL/metrics/metrics.json`**, sort by pipeline **`eval_metric`** (AutoGluon **higher-is-better** display), render HTML via shared [`leaderboard_html_template.html`](https://github.com/red-hat-data-services/pipelines-components/tree/main/components/training/automl/shared), and set **`metadata.display_name`** to **`automl_leaderboard`** (tabular) or **`automl_timeseries_leaderboard`** (timeseries), plus **`metadata.data`** (rounded table).
-
-HTML rows link **`{artifact_uri}/{model}/predictor`** and **`…/notebooks/automl_predictor_notebook.ipynb`**. For timeseries **`dsl.Collected`** inputs, metrics are found by **`glob("*/metrics/metrics.json")`**; missing files are skipped with a warning.
-
----
-
 ## OpenShift AI 3.5 and later
 
 The following **artifact files are planned** for richer model-quality insights. They are **not** produced on **`main`** of [pipelines-components](https://github.com/red-hat-data-services/pipelines-components) today. Confirm **filenames**, **directories**, and **JSON schema** in **`autogluon_models_training`** / **`autogluon_timeseries_models_full_refit`** (and any notebook or UI consumers) for the OpenShift AI build you document.
@@ -72,49 +61,67 @@ The following **artifact files are planned** for richer model-quality insights. 
 
 These JSON schemas are designed to match the **exact output** of AutoGluon and scikit-learn methods:
 
-- **ROC/PR curves (Tabular)**: Direct serialization of `sklearn.metrics.roc_curve()` and `sklearn.metrics.precision_recall_curve()` outputs, which AutoGluon uses internally. Probabilities obtained via `predictor.predict_proba(X_test)`.
+- **Classification curves (Tabular)**: Direct serialization of `sklearn.metrics.roc_curve()` and `sklearn.metrics.precision_recall_curve()` outputs, which AutoGluon uses internally. Probabilities obtained via `predictor.predict_proba(X_test)`. Both curves merged into single file to avoid duplicating metadata.
   
-- **Back-testing (Time-series)**: Aggregation of AutoGluon's `predictor.backtest_predictions()`, `predictor.backtest_targets()`, and `predictor.evaluate(cutoff=...)` outputs across multiple validation windows.
+- **Back-testing (Time-series)**: Aggregation of AutoGluon’s `predictor.backtest_predictions()`, `predictor.backtest_targets()`, and `predictor.evaluate(cutoff=...)` outputs across multiple validation windows.
 
-**Reference Examples:**
-- AutoGluon Tabular discussion on sklearn metrics: [GitHub Discussion #2720](https://github.com/autogluon/autogluon/discussions/2720)
-- AutoGluon Time-series backtesting tutorial: [Forecasting In-Depth](https://auto.gluon.ai/dev/tutorials/timeseries/forecasting-indepth.html)
-- Backtesting API: [backtest_predictions()](https://auto.gluon.ai/dev/api/autogluon.timeseries.TimeSeriesPredictor.backtest_predictions.html)
-
-### Tabular (planned)
+### Tabular
 
 Under each **`{model_name}_FULL/`** directory next to existing `metrics/` files:
 
-| Path | Content (planned) |
-|------|---------------------|
-| `metrics/roc_curve.json` | **ROC curve** data (points / thresholds) for plotting or downstream visualization; intended for **binary** and **multiclass** classification runs where probabilistic scores support an ROC construction (same applicability envelope as today’s **`confusion_matrix.json`**). |
-| `metrics/precision_recall_curve.json` | **Precision–recall curve** data for the same classification context. |
+| Path | Content |
+|------|---------|
+| `metrics/curves.json` | **ROC and Precision-Recall curves** data (points / thresholds) for plotting or downstream visualization; intended for **binary** and **multiclass** classification runs where probabilistic scores support curve construction (same applicability envelope as today’s **`confusion_matrix.json`**). |
 
-**Regression** runs would **not** emit these files (no class probability curve in the same sense).
+**Regression** runs would **not** emit this file (no class probability curves in the same sense).
 
-#### Example: `roc_curve.json` (binary classification)
+#### Example: `curves.json` (binary classification)
 
 ```json
 {
   "task_type": "binary",
   "positive_class": 1,
-  "auc": 0.9821,
-  "fpr": [0.0, 0.0, 0.0123, 0.0456, 0.0891, 0.1234, 0.2345, 0.4567, 0.7890, 1.0],
-  "tpr": [0.0, 0.2345, 0.5678, 0.7890, 0.8901, 0.9345, 0.9678, 0.9890, 0.9987, 1.0],
-  "thresholds": ["inf", 0.9876, 0.8765, 0.7654, 0.6543, 0.5432, 0.4321, 0.3210, 0.2109, 0.1098],
   "num_samples": 2000,
   "num_positive": 1024,
-  "num_negative": 976
+  "num_negative": 976,
+  "roc_curve": {
+    "auc": 0.9821,
+    "fpr": [0.0, 0.0, 0.0123, 0.0456, 0.0891, 0.1234, 0.2345, 0.4567, 0.7890, 1.0],
+    "tpr": [0.0, 0.2345, 0.5678, 0.7890, 0.8901, 0.9345, 0.9678, 0.9890, 0.9987, 1.0],
+    "thresholds": ["inf", 0.9876, 0.8765, 0.7654, 0.6543, 0.5432, 0.4321, 0.3210, 0.2109, 0.1098]
+  },
+  "precision_recall_curve": {
+    "average_precision": 0.9567,
+    "precision": [0.5120, 0.6789, 0.7890, 0.8456, 0.9012, 0.9345, 0.9678, 0.9890, 1.0],
+    "recall": [1.0, 0.9876, 0.9456, 0.8901, 0.8234, 0.7456, 0.6012, 0.4567, 0.0],
+    "thresholds": [0.1234, 0.2345, 0.3456, 0.4567, 0.5678, 0.6789, 0.7890, 0.8901],
+    "baseline_precision": 0.512
+  }
 }
 ```
 
-**Schema notes (aligned with `sklearn.metrics.roc_curve`):**
-- **`fpr`** (false positive rate): Increasing array from 0 to 1, **directly from** `sklearn.metrics.roc_curve(y_true, y_pred_proba[:, 1])[0]`
-- **`tpr`** (true positive rate): Increasing array from 0 to 1, **directly from** `sklearn.metrics.roc_curve()[1]`
-- **`thresholds`**: Decreasing decision thresholds starting with `"inf"` (scikit-learn 1.3+: represents always-predict-negative classifier), **directly from** `sklearn.metrics.roc_curve()[2]`
-- Arrays must have equal length: `len(fpr) == len(tpr) == len(thresholds)`
-- **`auc`**: Area under the ROC curve, computed via `sklearn.metrics.roc_auc_score(y_true, y_pred_proba[:, 1])`
-- **AutoGluon note**: AutoGluon uses `sklearn.metrics` directly; obtain `y_pred_proba` via `predictor.predict_proba(X_test)`
+**Schema notes (aligned with `sklearn.metrics`):**
+
+**Common metadata:**
+- **`task_type`**: "binary" or "multiclass"
+- **`num_samples`**, **`num_positive`**, **`num_negative`**: Dataset statistics (binary only)
+
+**ROC curve** (from `sklearn.metrics.roc_curve()`):
+- **`fpr`**: False positive rate array, increasing from 0 to 1; **directly from** `roc_curve(y_true, y_pred_proba[:, 1])[0]`
+- **`tpr`**: True positive rate array, increasing from 0 to 1; **directly from** `roc_curve()[1]`
+- **`thresholds`**: Decreasing decision thresholds starting with `"inf"` (scikit-learn 1.3+); **directly from** `roc_curve()[2]`
+- **`auc`**: Area under ROC curve via `sklearn.metrics.roc_auc_score()`
+- Note: `len(fpr) == len(tpr) == len(thresholds)`
+
+**Precision-Recall curve** (from `sklearn.metrics.precision_recall_curve()`):
+- **`precision`**: Starts at baseline (class balance), ends at 1.0; **directly from** `precision_recall_curve(y_true, y_pred_proba[:, 1])[0]`
+- **`recall`**: Starts at 1.0, ends at 0.0; **directly from** `precision_recall_curve()[1]`
+- **`thresholds`**: Increasing array; **directly from** `precision_recall_curve()[2]`
+- **`average_precision`**: Area under PR curve via `sklearn.metrics.average_precision_score()`
+- **`baseline_precision`**: No-skill baseline = `num_positive / num_samples`
+- Note: `len(thresholds) == len(precision) - 1` per scikit-learn convention
+
+**AutoGluon note**: Use `predictor.predict_proba(X_test)` to obtain probability scores for both curves
 
 **Visualization:**
 
@@ -147,7 +154,7 @@ TPR │
 Best Operating Point: TPR=0.89, FPR=0.09 (threshold=0.65)
 ```
 
-#### Example: `roc_curve.json` (multiclass, one-vs-rest)
+#### Example: `curves.json` (multiclass, one-vs-rest)
 
 ```json
 {
@@ -155,39 +162,82 @@ Best Operating Point: TPR=0.89, FPR=0.09 (threshold=0.65)
   "strategy": "ovr",
   "num_classes": 3,
   "classes": [0, 1, 2],
-  "auc_macro": 0.9456,
-  "auc_weighted": 0.9512,
-  "per_class": {
-    "0": {
-      "auc": 0.9821,
-      "fpr": [0.0, 0.0234, 0.0567, 0.1234, 0.3456, 0.6789, 1.0],
-      "tpr": [0.0, 0.4567, 0.7890, 0.9012, 0.9678, 0.9945, 1.0],
-      "thresholds": ["inf", 0.8901, 0.7654, 0.6321, 0.4567, 0.2345, 0.1012]
-    },
-    "1": {
-      "auc": 0.9234,
-      "fpr": [0.0, 0.0345, 0.0789, 0.1567, 0.3890, 0.7123, 1.0],
-      "tpr": [0.0, 0.5123, 0.8012, 0.9123, 0.9701, 0.9923, 1.0],
-      "thresholds": ["inf", 0.9012, 0.7890, 0.6543, 0.4789, 0.2567, 0.1234]
-    },
-    "2": {
-      "auc": 0.9312,
-      "fpr": [0.0, 0.0212, 0.0678, 0.1456, 0.3678, 0.6912, 1.0],
-      "tpr": [0.0, 0.4890, 0.7923, 0.9089, 0.9656, 0.9934, 1.0],
-      "thresholds": ["inf", 0.8765, 0.7543, 0.6234, 0.4512, 0.2389, 0.1056]
+  "num_samples": 3000,
+  "roc_curve": {
+    "auc_macro": 0.9456,
+    "auc_weighted": 0.9512,
+    "per_class": {
+      "0": {
+        "auc": 0.9821,
+        "fpr": [0.0, 0.0234, 0.0567, 0.1234, 0.3456, 0.6789, 1.0],
+        "tpr": [0.0, 0.4567, 0.7890, 0.9012, 0.9678, 0.9945, 1.0],
+        "thresholds": ["inf", 0.8901, 0.7654, 0.6321, 0.4567, 0.2345, 0.1012],
+        "support": 1034
+      },
+      "1": {
+        "auc": 0.9234,
+        "fpr": [0.0, 0.0345, 0.0789, 0.1567, 0.3890, 0.7123, 1.0],
+        "tpr": [0.0, 0.5123, 0.8012, 0.9123, 0.9701, 0.9923, 1.0],
+        "thresholds": ["inf", 0.9012, 0.7890, 0.6543, 0.4789, 0.2567, 0.1234],
+        "support": 987
+      },
+      "2": {
+        "auc": 0.9312,
+        "fpr": [0.0, 0.0212, 0.0678, 0.1456, 0.3678, 0.6912, 1.0],
+        "tpr": [0.0, 0.4890, 0.7923, 0.9089, 0.9656, 0.9934, 1.0],
+        "thresholds": ["inf", 0.8765, 0.7543, 0.6234, 0.4512, 0.2389, 0.1056],
+        "support": 979
+      }
     }
   },
-  "num_samples": 3000
+  "precision_recall_curve": {
+    "average_precision_macro": 0.9234,
+    "average_precision_weighted": 0.9312,
+    "per_class": {
+      "0": {
+        "average_precision": 0.9567,
+        "precision": [0.3456, 0.5678, 0.7890, 0.8901, 0.9456, 0.9789, 1.0],
+        "recall": [1.0, 0.9876, 0.9234, 0.8567, 0.7456, 0.5678, 0.0],
+        "thresholds": [0.1012, 0.2345, 0.4123, 0.5678, 0.6901, 0.8234],
+        "baseline_precision": 0.3456
+      },
+      "1": {
+        "average_precision": 0.9123,
+        "precision": [0.3234, 0.5456, 0.7678, 0.8789, 0.9312, 0.9701, 1.0],
+        "recall": [1.0, 0.9890, 0.9345, 0.8678, 0.7567, 0.5890, 0.0],
+        "thresholds": [0.0987, 0.2123, 0.3987, 0.5456, 0.6789, 0.8123],
+        "baseline_precision": 0.3234
+      },
+      "2": {
+        "average_precision": 0.9012,
+        "precision": [0.3123, 0.5234, 0.7456, 0.8678, 0.9234, 0.9656, 1.0],
+        "recall": [1.0, 0.9912, 0.9401, 0.8789, 0.7678, 0.6012, 0.0],
+        "thresholds": [0.0876, 0.2012, 0.3876, 0.5234, 0.6678, 0.7987],
+        "baseline_precision": 0.3123
+      }
+    }
+  }
 }
 ```
 
 **Schema notes (multiclass):**
+
+**Common metadata:**
 - **`strategy`**: `"ovr"` (one-vs-rest) or `"ovo"` (one-vs-one)
-- **`per_class`**: Dict mapping class labels (as strings) to individual ROC curves
+- **`num_classes`**, **`classes`**, **`num_samples`**: Dataset statistics
+- **`per_class`**: Dict mapping class labels (as strings) to individual curves
+
+**ROC curve:**
 - **`auc_macro`**: Unweighted mean of per-class AUC scores
 - **`auc_weighted`**: Weighted mean by support (class frequency)
+- **`support`**: Number of samples per class (for weighted averaging)
 
-**Visualization:**
+**Precision-Recall curve:**
+- **`average_precision_macro`**: Unweighted mean of per-class AP scores
+- **`average_precision_weighted`**: Weighted mean by class support
+- **`baseline_precision`**: Per-class no-skill baseline (class frequency)
+
+**Visualization - ROC Curves (Multiclass):**
 
 ```
 ROC Curves - CatBoost_BAG_L2 (Multiclass, One-vs-Rest)
@@ -218,32 +268,7 @@ TPR │
 ─ Random Classifier (AUC=0.50)
 ```
 
-#### Example: `precision_recall_curve.json` (binary classification)
-
-```json
-{
-  "task_type": "binary",
-  "positive_class": 1,
-  "average_precision": 0.9567,
-  "precision": [0.5120, 0.6789, 0.7890, 0.8456, 0.9012, 0.9345, 0.9678, 0.9890, 1.0],
-  "recall": [1.0, 0.9876, 0.9456, 0.8901, 0.8234, 0.7456, 0.6012, 0.4567, 0.0],
-  "thresholds": [0.1234, 0.2345, 0.3456, 0.4567, 0.5678, 0.6789, 0.7890, 0.8901],
-  "num_samples": 2000,
-  "num_positive": 1024,
-  "num_negative": 976,
-  "baseline_precision": 0.512
-}
-```
-
-**Schema notes (aligned with `sklearn.metrics.precision_recall_curve`):**
-- **`precision`**: Starts at class balance (baseline), ends at 1.0; **directly from** `sklearn.metrics.precision_recall_curve(y_true, y_pred_proba[:, 1])[0]`
-- **`recall`**: Starts at 1.0 (all positives captured), ends at 0.0; **directly from** `sklearn.metrics.precision_recall_curve()[1]`
-- **`thresholds`**: Increasing array; note `len(thresholds) == len(precision) - 1` per scikit-learn convention (last precision/recall pair has no threshold); **directly from** `sklearn.metrics.precision_recall_curve()[2]`
-- **`average_precision`**: Area under the precision-recall curve (AP score), computed via `sklearn.metrics.average_precision_score(y_true, y_pred_proba[:, 1])`
-- **`baseline_precision`**: No-skill baseline (class balance: `num_positive / total_samples`)
-- **AutoGluon note**: Use `predictor.predict_proba(X_test)` to get probability scores for curve computation
-
-**Visualization:**
+**Visualization - Precision-Recall Curve (Binary):**
 
 ```
 Precision-Recall Curve - WeightedEnsemble_L3 (Binary Classification)
@@ -275,49 +300,7 @@ Note: Recall decreases from left (1.0) to right (0.0)
 High precision at low recall: threshold is very strict
 ```
 
-#### Example: `precision_recall_curve.json` (multiclass, one-vs-rest)
-
-```json
-{
-  "task_type": "multiclass",
-  "strategy": "ovr",
-  "num_classes": 3,
-  "classes": [0, 1, 2],
-  "average_precision_macro": 0.9234,
-  "average_precision_weighted": 0.9312,
-  "per_class": {
-    "0": {
-      "average_precision": 0.9567,
-      "precision": [0.3456, 0.5678, 0.7890, 0.8901, 0.9456, 0.9789, 1.0],
-      "recall": [1.0, 0.9876, 0.9234, 0.8567, 0.7456, 0.5678, 0.0],
-      "thresholds": [0.1012, 0.2345, 0.4123, 0.5678, 0.6901, 0.8234],
-      "support": 1034
-    },
-    "1": {
-      "average_precision": 0.9123,
-      "precision": [0.3234, 0.5456, 0.7678, 0.8789, 0.9312, 0.9701, 1.0],
-      "recall": [1.0, 0.9890, 0.9345, 0.8678, 0.7567, 0.5890, 0.0],
-      "thresholds": [0.0987, 0.2123, 0.3987, 0.5456, 0.6789, 0.8123],
-      "support": 987
-    },
-    "2": {
-      "average_precision": 0.9012,
-      "precision": [0.3123, 0.5234, 0.7456, 0.8678, 0.9234, 0.9656, 1.0],
-      "recall": [1.0, 0.9912, 0.9401, 0.8789, 0.7678, 0.6012, 0.0],
-      "thresholds": [0.0876, 0.2012, 0.3876, 0.5234, 0.6678, 0.7987],
-      "support": 979
-    }
-  },
-  "num_samples": 3000
-}
-```
-
-**Schema notes (multiclass):**
-- **`average_precision_macro`**: Unweighted mean of per-class AP scores
-- **`average_precision_weighted`**: Weighted mean by class support
-- **`support`**: Number of samples per class (for weighted averaging)
-
-**Visualization:**
+**Visualization - Precision-Recall Curves (Multiclass):**
 
 ```
 Precision-Recall Curves - CatBoost_BAG_L2 (Multiclass, One-vs-Rest)
@@ -349,16 +332,15 @@ Precision │
 Per-class baselines shown as horizontal lines at respective precision values
 ```
 
-### Timeseries (planned)
+### Timeseries
 
 Under each **`{model_name}_FULL/metrics/`**:
 
-| Path                         | Content (planned)                                                                                                                                                                                        |
-|------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `metrics/back_testing.json`  | **Back-testing** summary (for example per-window or per-series holdout results, scores, and identifiers) aligned with AutoGluon time-series validation / backtest behavior once wired in the refit step. |
-| `metrics/forecast_data.json` | **Back-testing** data points grouped by window and id (best 3 and worst 3) aligned with AutoGluon time-series validation / backtest behavior once wired in the refit step.                               |
+| Path                        | Content                                                                                                                                                                                                                        |
+|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `metrics/back_testing.json` | **Comprehensive back-testing data** including: per-window metrics and detailed forecast data for best/worst performers (timestamp-level predictions). Aligned with AutoGluon time-series validation / backtest behavior.       |
 
-Leaderboard steps may later be extended to **surface links or summaries** from these files; until then they remain **companion files** alongside **`metrics/metrics.json`**.
+Leaderboard steps may later be extended to **surface links or summaries** from this file; until then it remains a **companion file** alongside **`metrics/metrics.json`**.
 
 #### Example: `back_testing.json` (time series)
 
@@ -371,20 +353,11 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
   "target": "sales",
   "id_column": "product_id",
   "timestamp_column": "date",
-  "overall_metrics": {
-    "WQL": 0.2341,
-    "MAPE": 12.34,
-    "MASE": 0.8765,
-    "RMSE": 45.67,
-    "MAE": 34.21
-  },
   "per_window_metrics": [
     {
       "window_id": 0,
-      "train_end": "2025-12-07",
       "test_start": "2025-12-08",
       "test_end": "2025-12-14",
-      "num_series": 1000,
       "metrics": {
         "WQL": 0.2198,
         "MAPE": 11.87,
@@ -395,10 +368,8 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
     },
     {
       "window_id": 1,
-      "train_end": "2025-12-14",
       "test_start": "2025-12-15",
       "test_end": "2025-12-21",
-      "num_series": 1000,
       "metrics": {
         "WQL": 0.2367,
         "MAPE": 12.45,
@@ -409,10 +380,8 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
     },
     {
       "window_id": 2,
-      "train_end": "2025-12-21",
       "test_start": "2025-12-22",
       "test_end": "2025-12-28",
-      "num_series": 1000,
       "metrics": {
         "WQL": 0.2458,
         "MAPE": 12.98,
@@ -422,64 +391,161 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
       }
     }
   ],
-  "per_series_summary": {
+  "series_analysis": {
     "num_series_evaluated": 1000,
-    "series_with_degraded_performance": 47,
-    "best_series": [
-      {
-        "item_id": "product_123",
-        "avg_WQL": 0.1234,
-        "avg_MAPE": 5.67
+    "best_performer": {
+      "item_id": "series_042",
+      "avg_metrics": {
+        "MAPE": 2.45,
+        "RMSE": 13.1,
+        "MAE": 8.7,
+        "WQL": 0.1234
       },
-      {
-        "item_id": "product_456",
-        "avg_WQL": 0.1345,
-        "avg_MAPE": 6.12
+      "windows": [
+        {
+          "window_id": 0,
+          "metrics": {
+            "MAPE": 2.58,
+            "RMSE": 13.8,
+            "MAE": 9.1,
+            "WQL": 0.1298
+          },
+          "forecast_data": [
+            {
+              "timestamp": "2025-12-08T00:00:00Z",
+              "actual": 515.2,
+              "predicted": 512.8,
+              "lower_bound": 496.5,
+              "upper_bound": 529.1
+            },
+            {
+              "timestamp": "2025-12-08T01:00:00Z",
+              "actual": 510.5,
+              "predicted": 509.2,
+              "lower_bound": 493.0,
+              "upper_bound": 525.4
+            }
+          ]
+        },
+        {
+          "window_id": 1,
+          "metrics": {
+            "MAPE": 2.41,
+            "RMSE": 12.9,
+            "MAE": 8.5,
+            "WQL": 0.1245
+          },
+          "forecast_data": [
+            {
+              "timestamp": "2025-12-15T00:00:00Z",
+              "actual": 520.8,
+              "predicted": 519.3,
+              "lower_bound": 502.9,
+              "upper_bound": 535.7
+            }
+          ]
+        },
+        {
+          "window_id": 2,
+          "metrics": {
+            "MAPE": 2.34,
+            "RMSE": 12.5,
+            "MAE": 8.3,
+            "WQL": 0.1158
+          },
+          "forecast_data": [
+            {
+              "timestamp": "2025-12-22T00:00:00Z",
+              "actual": 522.5,
+              "predicted": 521.8,
+              "lower_bound": 505.2,
+              "upper_bound": 538.4
+            }
+          ]
+        }
+      ]
+    },
+    "worst_performer": {
+      "item_id": "series_104",
+      "avg_metrics": {
+        "MAPE": 42.58,
+        "RMSE": 253.4,
+        "MAE": 158.7,
+        "WQL": 0.8765
       },
-      {
-        "item_id": "product_789",
-        "avg_WQL": 0.1456,
-        "avg_MAPE": 6.78
-      }
-    ],
-    "worst_series": [
-      {
-        "item_id": "product_234",
-        "avg_WQL": 0.8765,
-        "avg_MAPE": 45.67
-      },
-      {
-        "item_id": "product_567",
-        "avg_WQL": 0.8234,
-        "avg_MAPE": 42.34
-      },
-      {
-        "item_id": "product_890",
-        "avg_WQL": 0.7890,
-        "avg_MAPE": 39.12
-      }
-    ]
-  },
-  "quantile_coverage": {
-    "0.1": 0.0987,
-    "0.5": 0.4876,
-    "0.9": 0.8912
-  },
-  "metadata": {
-    "num_items": 1000,
-    "avg_series_length": 365,
-    "total_predictions": 21000,
+      "windows": [
+        {
+          "window_id": 0,
+          "metrics": {
+            "MAPE": 41.23,
+            "RMSE": 245.8,
+            "MAE": 152.4,
+            "WQL": 0.8512
+          },
+          "forecast_data": [
+            {
+              "timestamp": "2025-12-08T00:00:00Z",
+              "actual": 89.4,
+              "predicted": 198.7,
+              "lower_bound": 168.3,
+              "upper_bound": 229.1
+            },
+            {
+              "timestamp": "2025-12-08T01:00:00Z",
+              "actual": 92.1,
+              "predicted": 203.5,
+              "lower_bound": 172.8,
+              "upper_bound": 234.2
+            }
+          ]
+        },
+        {
+          "window_id": 1,
+          "metrics": {
+            "MAPE": 44.85,
+            "RMSE": 265.3,
+            "MAE": 168.2,
+            "WQL": 0.9123
+          },
+          "forecast_data": [
+            {
+              "timestamp": "2025-12-15T00:00:00Z",
+              "actual": 82.7,
+              "predicted": 205.3,
+              "lower_bound": 174.2,
+              "upper_bound": 236.4
+            }
+          ]
+        },
+        {
+          "window_id": 2,
+          "metrics": {
+            "MAPE": 41.65,
+            "RMSE": 249.1,
+            "MAE": 155.5,
+            "WQL": 0.8659
+          },
+          "forecast_data": [
+            {
+              "timestamp": "2025-12-22T00:00:00Z",
+              "actual": 85.3,
+              "predicted": 201.4,
+              "lower_bound": 170.8,
+              "upper_bound": 232.0
+            }
+          ]
+        }
+      ]
+    }
   }
 }
 ```
 
 **Schema notes (aligned with AutoGluon TimeSeriesPredictor API):**
-- **`overall_metrics`**: Aggregated metrics across all validation windows (mean of per-window scores)
 - **`per_window_metrics`**: Array of metrics for each backtesting window; **obtained by iterating** `evaluate()` with different `cutoff` values or using `ExpandingWindowSplitter`
   - Example: `for cutoff in range(-num_val_windows * prediction_length, 0, prediction_length): score = predictor.evaluate(test_data, cutoff=cutoff)`
   - Returns dict with keys from `AVAILABLE_METRICS`: `{'WQL': 0.234, 'MAPE': 12.34, 'MASE': 0.876, 'RMSE': 45.67, 'MAE': 34.21}`
-- **`per_series_summary`**: Optional summary; **derived from** `predictor.backtest_predictions()` and custom per-series metric computation (not built-in AutoGluon)
-- **`quantile_coverage`**: Actual empirical coverage of predicted quantiles; **derived from** comparing `backtest_predictions()` quantile columns (`0.1`, `0.5`, `0.9`) against `backtest_targets()`
+- **`series_analysis`**: Analysis of best and worst performing series; **derived from** `predictor.backtest_predictions()` and custom per-series metric computation (not built-in AutoGluon). Contains `best_performer` and `worst_performer` objects with full `windows` arrays including `forecast_data` for timestamp-level predictions.
 - **AutoGluon methods used**:
   - `predictor.backtest_predictions(test_data, num_val_windows=3)` → list of TimeSeriesDataFrame (predictions per window)
   - `predictor.backtest_targets(test_data, num_val_windows=3)` → list of TimeSeriesDataFrame (targets per window)
@@ -489,7 +555,6 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
 
 ```
 Back-testing Performance - DeepAR_FULL (3 validation windows)
-Overall WQL = 0.2341 | Overall MAPE = 12.34%
 
 WQL  │
 0.30 ┤
@@ -512,417 +577,119 @@ WQL  │
     MAPE increased from 11.87% to 12.98% (+9.3%)
 ```
 
-**Visualization 2: Per-Series Performance Summary**
-
-```
-Top 3 Best Performing Series (by avg WQL):
-┌──────────────┬──────────┬──────────┬────────────────┐
-│ Item ID      │ Avg WQL  │ Avg MAPE │ Category       │
-├──────────────┼──────────┼──────────┼────────────────┤
-│ product_123  │  0.1234  │   5.67%  │ ⭐ Excellent   │
-│ product_456  │  0.1345  │   6.12%  │ ⭐ Excellent   │
-│ product_789  │  0.1456  │   6.78%  │ ⭐ Excellent   │
-└──────────────┴──────────┴──────────┴────────────────┘
-
-Top 3 Worst Performing Series (by avg WQL):
-┌──────────────┬──────────┬──────────┬────────────────┐
-│ Item ID      │ Avg WQL  │ Avg MAPE │ Category       │
-├──────────────┼──────────┼──────────┼────────────────┤
-│ product_234  │  0.8765  │  45.67%  │ ⚠️  Poor       │
-│ product_567  │  0.8234  │  42.34%  │ ⚠️  Poor       │
-│ product_890  │  0.7890  │  39.12%  │ ⚠️  Poor       │
-└──────────────┴──────────┴──────────┴────────────────┘
-
-📊 47 out of 1000 series (4.7%) show degraded performance
-```
-
-#### Example: `forecast_data.json` (time series)
-
-```json
-{
-  "metadata": {
-    "prediction_length": 24,
-    "num_backtest_windows": 3,
-    "total_series": 147,
-    "metric_used_for_ranking": "MAPE"
-  },
-  "best_performer": {
-    "item_id": "series_042",
-    "avg_metrics": {
-      "MAPE": 2.45,
-      "RMSE": 13.1,
-      "MAE": 8.7,
-      "SMAPE": 2.2,
-      "MASE": 0.89
-    },
-    "windows": [
-      {
-        "window_id": 0,
-        "metrics": {
-          "MAPE": 2.58,
-          "RMSE": 13.8,
-          "MAE": 9.1,
-          "SMAPE": 2.3,
-          "MASE": 0.92
-        },
-        "backtest_window": {
-          "train_end": "2026-02-14T23:00:00Z",
-          "test_start": "2026-02-15T00:00:00Z",
-          "test_end": "2026-02-15T23:00:00Z"
-        },
-        "forecast_data": [
-          {
-            "timestamp": "2026-02-15T00:00:00Z",
-            "actual": 515.2,
-            "predicted": 512.8,
-            "lower_bound": 496.5,
-            "upper_bound": 529.1
-          },
-          {
-            "timestamp": "2026-02-15T01:00:00Z",
-            "actual": 510.5,
-            "predicted": 509.2,
-            "lower_bound": 493.0,
-            "upper_bound": 525.4
-          },
-          {
-            "timestamp": "2026-02-15T02:00:00Z",
-            "actual": 507.8,
-            "predicted": 506.5,
-            "lower_bound": 490.4,
-            "upper_bound": 522.6
-          }
-        ]
-      },
-      {
-        "window_id": 1,
-        "metrics": {
-          "MAPE": 2.41,
-          "RMSE": 12.9,
-          "MAE": 8.5,
-          "SMAPE": 2.2,
-          "MASE": 0.88
-        },
-        "backtest_window": {
-          "train_end": "2026-03-07T23:00:00Z",
-          "test_start": "2026-03-08T00:00:00Z",
-          "test_end": "2026-03-08T23:00:00Z"
-        },
-        "forecast_data": [
-          {
-            "timestamp": "2026-03-08T00:00:00Z",
-            "actual": 520.8,
-            "predicted": 519.3,
-            "lower_bound": 502.9,
-            "upper_bound": 535.7
-          },
-          {
-            "timestamp": "2026-03-08T01:00:00Z",
-            "actual": 516.4,
-            "predicted": 517.1,
-            "lower_bound": 500.8,
-            "upper_bound": 533.4
-          },
-          {
-            "timestamp": "2026-03-08T02:00:00Z",
-            "actual": 513.2,
-            "predicted": 514.8,
-            "lower_bound": 498.6,
-            "upper_bound": 531.0
-          }
-        ]
-      },
-      {
-        "window_id": 2,
-        "metrics": {
-          "MAPE": 2.34,
-          "RMSE": 12.5,
-          "MAE": 8.2,
-          "SMAPE": 2.1,
-          "MASE": 0.85
-        },
-        "backtest_window": {
-          "train_end": "2026-03-31T23:00:00Z",
-          "test_start": "2026-04-01T00:00:00Z",
-          "test_end": "2026-04-01T23:00:00Z"
-        },
-        "forecast_data": [
-          {
-            "timestamp": "2026-04-01T00:00:00Z",
-            "actual": 523.4,
-            "predicted": 521.8,
-            "lower_bound": 505.2,
-            "upper_bound": 538.4
-          },
-          {
-            "timestamp": "2026-04-01T01:00:00Z",
-            "actual": 518.2,
-            "predicted": 519.5,
-            "lower_bound": 502.9,
-            "upper_bound": 536.1
-          },
-          {
-            "timestamp": "2026-04-01T02:00:00Z",
-            "actual": 512.8,
-            "predicted": 514.2,
-            "lower_bound": 497.8,
-            "upper_bound": 530.6
-          }
-        ]
-      }
-    ]
-  },
-  "worst_performer": {
-    "item_id": "series_104",
-    "avg_metrics": {
-      "MAPE": 42.58,
-      "RMSE": 253.4,
-      "MAE": 158.7,
-      "SMAPE": 37.2,
-      "MASE": 4.68
-    },
-    "windows": [
-      {
-        "window_id": 0,
-        "metrics": {
-          "MAPE": 41.23,
-          "RMSE": 245.8,
-          "MAE": 152.4,
-          "SMAPE": 35.7,
-          "MASE": 4.52
-        },
-        "backtest_window": {
-          "train_end": "2026-02-14T23:00:00Z",
-          "test_start": "2026-02-15T00:00:00Z",
-          "test_end": "2026-02-15T23:00:00Z"
-        },
-        "forecast_data": [
-          {
-            "timestamp": "2026-02-15T00:00:00Z",
-            "actual": 89.4,
-            "predicted": 198.7,
-            "lower_bound": 168.3,
-            "upper_bound": 229.1
-          },
-          {
-            "timestamp": "2026-02-15T01:00:00Z",
-            "actual": 92.1,
-            "predicted": 203.5,
-            "lower_bound": 172.8,
-            "upper_bound": 234.2
-          },
-          {
-            "timestamp": "2026-02-15T02:00:00Z",
-            "actual": 87.6,
-            "predicted": 207.2,
-            "lower_bound": 176.0,
-            "upper_bound": 238.4
-          }
-        ]
-      },
-      {
-        "window_id": 1,
-        "metrics": {
-          "MAPE": 44.85,
-          "RMSE": 265.3,
-          "MAE": 168.2,
-          "SMAPE": 39.4,
-          "MASE": 4.92
-        },
-        "backtest_window": {
-          "train_end": "2026-03-07T23:00:00Z",
-          "test_start": "2026-03-08T00:00:00Z",
-          "test_end": "2026-03-08T23:00:00Z"
-        },
-        "forecast_data": [
-          {
-            "timestamp": "2026-03-08T00:00:00Z",
-            "actual": 82.7,
-            "predicted": 205.3,
-            "lower_bound": 174.2,
-            "upper_bound": 236.4
-          },
-          {
-            "timestamp": "2026-03-08T01:00:00Z",
-            "actual": 78.5,
-            "predicted": 210.8,
-            "lower_bound": 179.3,
-            "upper_bound": 242.3
-          },
-          {
-            "timestamp": "2026-03-08T02:00:00Z",
-            "actual": 75.2,
-            "predicted": 214.5,
-            "lower_bound": 182.7,
-            "upper_bound": 246.3
-          }
-        ]
-      },
-      {
-        "window_id": 2,
-        "metrics": {
-          "MAPE": 41.65,
-          "RMSE": 249.1,
-          "MAE": 155.6,
-          "SMAPE": 36.5,
-          "MASE": 4.61
-        },
-        "backtest_window": {
-          "train_end": "2026-03-31T23:00:00Z",
-          "test_start": "2026-04-01T00:00:00Z",
-          "test_end": "2026-04-01T23:00:00Z"
-        },
-        "forecast_data": [
-          {
-            "timestamp": "2026-04-01T00:00:00Z",
-            "actual": 95.8,
-            "predicted": 211.2,
-            "lower_bound": 179.5,
-            "upper_bound": 242.9
-          },
-          {
-            "timestamp": "2026-04-01T01:00:00Z",
-            "actual": 91.3,
-            "predicted": 216.5,
-            "lower_bound": 184.4,
-            "upper_bound": 248.6
-          },
-          {
-            "timestamp": "2026-04-01T02:00:00Z",
-            "actual": 88.7,
-            "predicted": 220.3,
-            "lower_bound": 187.9,
-            "upper_bound": 252.7
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-**Schema notes (aligned with AutoGluon TimeSeriesPredictor API):**
-- **`best_performer`** and **`worst_performer`**: Single series ranked by average MAPE across all windows
-- **`avg_metrics`**: Average performance metrics across all backtest windows for the series
-- **`windows`**: Array containing all backtest windows (typically 3) for the series
-- **`forecast_data`**: Array of timestamp-level predictions with actual values, point forecasts, confidence bounds, and quantiles
-  - **`actual`**: Ground truth value from test data
-  - **`predicted`**: Point forecast (typically median/quantile 0.5)
-  - **`lower_bound`** / **`upper_bound`**: Prediction interval (e.g., 90% confidence interval)
-- **AutoGluon methods used**:
-  - `predictor.backtest_predictions(test_data, num_val_windows=3)` → predictions per window
-  - `predictor.backtest_targets(test_data, num_val_windows=3)` → actual values per window
-  - Per-series metrics computed by filtering predictions/targets by `item_id`
-
-**Visualization: Best and Worst Performer Across Backtest Windows**
-
-Similar to AutoGluon's `predictor.plot()` output, showing observed time series with predictions from all backtest windows overlaid.
+**Visualization 2: Forecast Timeline (Best Performer - series_042)**
 
 ```
 ═══════════════════════════════════════════════════════════════════════════════
-Best Performer: series_042 (Avg MAPE = 2.45%)
-Backtest predictions across 3 validation windows
+series_042 - Best Performer (Avg MAPE = 2.45%)
+Actual vs Predicted across 3 backtest windows
 ═══════════════════════════════════════════════════════════════════════════════
 
 Value │
-  540 ┤              ●●●●●●●●●●●●●●●  │  ●●●●●●●●●●●●●●●  │  ●●●●●●●●●●●●●●●
-      │           ●●●              ●●│●●              ●●│●●              ●●
-  520 ┤         ●●                  ●│●              ─────────────────────────
-      │       ●●                  ──┼┼──          ─── │ ───        ───  │ ───
-  500 ┤     ●●                 ───  │ │ ───   ───     │    ───  ───     │
-      │   ●●                ───     │ │    ───        │       ───        │
-  480 ┤ ●●               ───        │ │               │                  │
-      │●              ───           │ │               │                  │
-  460 ┤           ───               │ │               │                  │
-      └───────────────────────────────────────────────────────────────────────
-      Feb 10    Feb 14  │  Feb 15   Mar 2   Mar 7  │  Mar 8   Mar 27  Mar 31 │ Apr 1
-                     Window 0 ↑             Window 1 ↑              Window 2 ↑
-                     Test Period             Test Period              Test Period
-                     (Feb 15-Feb 15)         (Mar 8-Mar 8)            (Apr 1-Apr 1)
+  540 ┤
+      │                                      ●            ●
+  520 ┤            ● ●         ┊        ----●----    ┊  ---●---
+      │         ───────        ┊     ───      ───   ┊ ───   ───
+  500 ┤      ───       ───     ┊  ───            ───┊───
+      │   ───             ───  ┊ ───                ───
+  480 ┤───                   ──┴──                   ┴
+      └─────────────────────────────────────────────────────────────
+      Dec 7         Dec 8     │   Dec 14    Dec 15  │  Dec 21   Dec 22
+                          Window 0 │             Window 1 │       Window 2
+                           Test: 12/08        Test: 12/15       Test: 12/22
 
-● Observed values
-─ Predictions (median/quantile 0.5)
-│ Backtest window cutoffs (dashed gray lines in AutoGluon plots)
+● Actual values    ─── Predicted values    │ Window boundaries
 
-Window Metrics:
-  Window 0: MAPE=2.58%, RMSE=13.8    ✓ Accurate tracking
-  Window 1: MAPE=2.41%, RMSE=12.9    ✓ Improved performance
-  Window 2: MAPE=2.34%, RMSE=12.5    ✓ Best performance (consistent improvement)
+Window 0 (12/08): actual=[515.2, 510.5], predicted=[512.8, 509.2], MAPE=2.58%
+Window 1 (12/15): actual=[520.8], predicted=[519.3], MAPE=2.41%
+Window 2 (12/22): actual=[522.5], predicted=[521.8], MAPE=2.34%
+```
 
+**Visualization 3: Forecast Timeline (Worst Performer - series_104)**
 
+```
 ═══════════════════════════════════════════════════════════════════════════════
-Worst Performer: series_104 (Avg MAPE = 42.58%)
-Backtest predictions across 3 validation windows
+series_104 - Worst Performer (Avg MAPE = 42.58%)
+Actual vs Predicted across 3 backtest windows (systematic overprediction)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Value │
-  250 ┤                           ───────────────────────────────────────────
-      │                        ───│              ─── │              ───  │
-  200 ┤                     ───   │           ───    │           ───     │
-      │                  ───      │        ───       │        ───        │
-  150 ┤               ───         │     ───          │     ───           │
-      │            ───            │  ───             │  ───              │
-  100 ┤         ───               │──                │──                 │
-      │   ●●●●●●●●●●●●●●●●●●●●●   │   ●●●●●●●●●●●●●  │  ●●●●●●●●●●●●●●●
-   50 ┤ ●●                    ●●● │ ●●            ●● │ ●●            ●●●
-      └───────────────────────────────────────────────────────────────────────
-      Feb 10    Feb 14  │  Feb 15   Mar 2   Mar 7  │  Mar 8   Mar 27  Mar 31 │ Apr 1
-                     Window 0 ↑             Window 1 ↑              Window 2 ↑
-                     Test Period             Test Period              Test Period
-                     (Feb 15-Feb 15)         (Mar 8-Mar 8)            (Apr 1-Apr 1)
+  220 ┤              ──────────────────────────────────────────────────
+      │           ───       ┊         ───       ┊         ───
+  200 ┤        ───          ┊      ───          ┊      ───
+      │     ───             ┊   ───             ┊   ───
+  180 ┤  ───                ┊ ───               ┊ ───
+      │──                   ┴──                  ┴
+  160 ┤
+      │
+  140 ┤
+      │
+  120 ┤
+      │
+  100 ┤            ● ●         ┊        ●           ┊        ●
+   80 ┤
+   60 ┤
+      └─────────────────────────────────────────────────────────────
+      Dec 7         Dec 8     │   Dec 14    Dec 15  │  Dec 21   Dec 22
+                          Window 0 │             Window 1 │       Window 2
+                           Test: 12/08        Test: 12/15       Test: 12/22
 
-● Observed values
-─ Predictions
-│ Backtest window cutoffs
+● Actual values    ─── Predicted values    │ Window boundaries
 
-Window Metrics:
-  Window 0: MAPE=41.23%, RMSE=245.8 
-  Window 1: MAPE=44.85%, RMSE=265.3 
-  Window 2: MAPE=41.65%, RMSE=249.1 
+Window 0 (12/08): actual=[89.4, 92.1], predicted=[198.7, 203.5], MAPE=41.23%
+Window 1 (12/15): actual=[82.7], predicted=[205.3], MAPE=44.85%
+Window 2 (12/22): actual=[85.3], predicted=[201.4], MAPE=41.65%
+
+⚠️  Model consistently overpredicts by ~120 units (~140% error) across all windows
 ```
 
-**Use Cases:**
-- **Visual inspection across time**: Linear timeline shows how predictions track actual values across all backtest windows, similar to `predictor.plot()` in AutoGluon
-- **Performance consistency**: Best performer (series_042) shows consistent improvement (MAPE decreases from 2.58% → 2.41% → 2.34%), while worst performer (series_104) shows persistent bias across all windows
-- **Systematic bias detection**: Timeline reveals whether prediction errors are random or systematic (series_104 consistently overpredicts by ~60%)
-- **Temporal degradation**: Visualize if model quality changes over time (series_104 degrades in window 1, suggesting concept drift)
-- **Series-specific troubleshooting**: Worst performers highlight specific time series requiring custom preprocessing, different models, or data quality investigation
-- **Implementation**: Aligns with AutoGluon's `predictor.plot(test_data, predictions, max_history_length=...)` visualization pattern
+**Visualization 4: Per-Series Performance Summary**
+
+```
+┌──────────────┬──────────┬──────────┬────────────────────┐
+│ Item ID      │ Avg WQL  │ Avg MAPE │ Performance        │
+├──────────────┼──────────┼──────────┼────────────────────┤
+│ series_042   │  0.1234  │   2.45%  │ ⭐ Best Performer  │
+│ series_104   │  0.8765  │  42.58%  │ ⚠️  Worst Performer│
+└──────────────┴──────────┴──────────┴────────────────────┘
+
+Best: Tight tracking, improving over time (MAPE: 2.58% → 2.34%)
+Worst: Systematic overprediction, degraded in Window 1 (MAPE: 44.85%)
+```
 
 #### Visualization Use Cases
 
 See mocked visualizations above for each artifact type. These examples demonstrate:
 
-**ROC Curve (`roc_curve.json`):**
-- **Binary**: Single curve comparing model (AUC=0.98) against random baseline (AUC=0.50)
-- **Multiclass**: Overlaid one-vs-rest curves showing per-class performance with support counts
-- **Key insight**: Identify best operating point (threshold) balancing TPR/FPR for deployment
-- **Implementation**: matplotlib `plt.plot(fpr, tpr)`, plotly `go.Scatter(x=fpr, y=tpr)`
-
-**Precision-Recall Curve (`precision_recall_curve.json`):**
-- **Binary**: Shows model maintains high precision (>0.9) even at moderate recall (>0.6)
-- **Multiclass**: Per-class curves with baselines; Class 0 performs best (AP=0.96)
-- **Key insight**: Critical for imbalanced datasets; precision drop-off indicates threshold sensitivity
-- **Implementation**: matplotlib `plt.plot(recall, precision)`, add `plt.hlines()` for baseline
+**Classification Curves (`curves.json`):**
+- **ROC Curve**:
+  - Binary: Single curve comparing model (AUC=0.98) against random baseline (AUC=0.50)
+  - Multiclass: Overlaid one-vs-rest curves showing per-class performance with support counts
+  - Key insight: Identify best operating point (threshold) balancing TPR/FPR for deployment
+  - Implementation: matplotlib `plt.plot(fpr, tpr)`, plotly `go.Scatter(x=fpr, y=tpr)`
+- **Precision-Recall Curve**:
+  - Binary: Shows model maintains high precision (>0.9) even at moderate recall (>0.6)
+  - Multiclass: Per-class curves with baselines; Class 0 performs best (AP=0.96)
+  - Key insight: Critical for imbalanced datasets; precision drop-off indicates threshold sensitivity
+  - Implementation: matplotlib `plt.plot(recall, precision)`, add `plt.hlines()` for baseline
+- **Note**: Both curves merged into single file to avoid duplicating metadata (task_type, num_samples, class labels, support counts)
 
 **Back-testing (`back_testing.json`):**
-- **Trend plot**: Detects performance degradation (WQL increased 11.8% from window 0 to window 2)
-- **Per-series summary**: Identifies 47 problematic series (4.7%) requiring investigation
-- **Quantile coverage**: Validates probabilistic forecast calibration (well-calibrated at 1.2% avg deviation)
-- **Key insight**: Time-varying performance and series-specific issues guide model refinement
-- **Implementation**: pandas `df.plot()` for trends, seaborn `heatmap()` for series matrix, bar charts for quantiles
-
-**Forecast Data (`forecast_data.json`):**
-- **Timeline visualization**: Linear plot showing observed values and predictions across all backtest windows (similar to `predictor.plot()` in AutoGluon)
-- **Window-by-window comparison**: Visual inspection of forecast quality across multiple time periods with cutoff points marked
-- **Systematic bias detection**: Timeline reveals consistent overprediction/underprediction patterns (e.g., series_104 overpredicts by ~60% across all windows)
-- **Performance trends**: Identify whether model improves, degrades, or remains stable over successive windows
-- **Key insight**: Provides detailed timestamp-level view for best and worst performers, enabling deep-dive analysis of specific failure modes
-- **Implementation**: `predictor.plot(test_data, predictions, max_history_length=300)` or custom matplotlib/plotly timeline with shaded regions for test periods
+- **Visualization 1 - Per-Window Trend**: Detects performance degradation across backtest windows (WQL increased 11.8% from window 0 to window 2)
+- **Visualization 2-3 - Forecast Timelines**: Shows actual vs predicted values across all windows for best/worst performers; reveals systematic biases (e.g., series_104 consistently overpredicts by ~140%)
+- **Visualization 4 - Performance Summary**: Quick comparison table showing best/worst series with average metrics
+- **Key insights**: 
+  - Best performer (series_042): Tight tracking, improving trend (MAPE: 2.58% → 2.34%)
+  - Worst performer (series_104): Systematic overprediction, degraded in Window 1 (MAPE: 44.85%)
+  - Timeline view enables identification of persistent bias vs random errors
+- **Implementation**: 
+  - Per-window trends: pandas `df.plot()` with window_id on x-axis
+  - Forecast timelines: matplotlib/plotly line charts with dual series (actual=scatter, predicted=line), vertical lines for window boundaries
+  - Similar to AutoGluon's `predictor.plot(test_data, predictions, max_history_length=...)` but using `forecast_data` arrays from JSON
 
 **Integration with Jupyter Notebooks:**
 
-The planned `automl_predictor_notebook.ipynb` template (per model) can automatically load these JSON artifacts and render interactive visualizations.
+The `predictor_notaligebook.ipynb` template (per model) can automatically load these JSON artifacts and render interactive visualizations.
 
 ---
 
@@ -933,5 +700,3 @@ The planned `automl_predictor_notebook.ipynb` template (per model) can automatic
 - [TimeSeriesPredictor.plot API](https://auto.gluon.ai/dev/api/autogluon.timeseries.TimeSeriesPredictor.plot.html) (built-in visualization method)
 
 ---
-
-Verify paths on the **pipelines-components** revision you ship; **current** layouts are on **`main`**; **3.5** rows above are **intent** until implemented in code.
