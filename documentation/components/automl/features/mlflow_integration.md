@@ -10,13 +10,9 @@ This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML
 - [KFP MLflow integration modes (OpenShift AI 3.5+)](#kfp-mlflow-integration-modes-openshift-ai-35)
   - [Environment variables (RHOAI 3.5+)](#environment-variables-rhoai-35)
 - [MLflow mapping model](#mlflow-mapping-model)
-  - [Optional alignment with AutoGluon-native logging](#optional-alignment-with-autogluon-native-logging)
+  - [Alignment with AutoGluon-native logging](#alignment-with-autogluon-native-logging)
 - [Per-component logging details](#per-component-logging-details)
-  - [Component-level logging matrix (tabular pipeline)](#component-level-logging-matrix-tabular-pipeline)
-  - [Component-level logging matrix (timeseries pipeline)](#component-level-logging-matrix-timeseries-pipeline)
   - [Run lifecycle and hierarchy](#run-lifecycle-and-hierarchy)
-  - [Key differences from MLflow framework integrations](#key-differences-from-mlflow-framework-integrations)
-  - [Artifacts and naming conventions](#artifacts-and-naming-conventions)
 - [KFP Pipeline Integration: MLflow Tracking Artifact](#kfp-pipeline-integration-mlflow-tracking-artifact)
   - [Artifact Purpose](#artifact-purpose)
   - [Component Output Definition](#component-output-definition)
@@ -30,13 +26,10 @@ This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML
 
 ## KFP MLflow integration modes (OpenShift AI 3.5+)
 
-Starting with **OpenShift AI 3.5**, Data Science Pipelines provides two modes of MLflow integration:
+Starting with **OpenShift AI 3.5**, Data Science Pipelines provides **opt-in with environment variables** (recommended for AutoML): MLflow client environment variables are pre-configured in pipeline step pods, allowing custom logging with full control over complex artifacts and metrics.
 
-1. **Automatic KFP-to-MLflow logging**: All KFP output metrics and input parameters are automatically recorded in MLflow without code changes. Works well for simple metrics.
+AutoML uses this approach because AutoGluon produces complex artifacts (leaderboards, ensemble hierarchies, nested model metrics) that require explicit logging control beyond what KFP automatic logging can capture.
 
-2. **Opt-in with environment variables** (recommended for AutoML): MLflow client environment variables are pre-configured in pipeline step pods, allowing custom logging with full control over complex artifacts and metrics.
-
-AutoML uses **mode 2** because AutoGluon produces complex artifacts (leaderboards, ensemble hierarchies, nested model metrics) that require explicit logging control beyond what KFP automatic logging can capture.
 
 ### Environment variables (RHOAI 3.5+)
 
@@ -58,18 +51,17 @@ When MLflow integration is enabled at the project level, the following environme
 
 Design for **two pipeline families** (tabular vs timeseries) with the **same conceptual mapping**.
 
-| MLflow concept | Proposed mapping                                                                                                                                                                                                                                                                                                                                                                                                                |
-|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Experiment** | KFP auto-creates one experiment per pipeline (accessible via `MLFLOW_EXPERIMENT_ID`).                                                                                                                                                                                                                                                                                                                           |
-| **Parent run** | KFP auto-creates one parent run per pipeline execution (accessible via `MLFLOW_RUN_ID`). AutoML components **resume this run** to add tags and params. **Tags:** `kfp_run_id`, `pipeline_name`, `task_type` (`tabular` \| `timeseries`), `namespace` (from `MLFLOW_WORKSPACE`), dataset **hashes or URIs** (non-secret). **Params:** `eval_metric`, `preset`, `top_n`, `pipeline_version`, `autogluon_version`. |
-| **Child runs** | **One child run per leaderboard row / refitted model** (each name in `model_names` or equivalent for timeseries), created by AutoML components as nested runs under the KFP parent. Enables side-by-side comparison in the MLflow UI across models from the same pipeline run.                                                                                                                                                  |
-| **Params** | **Parent:** `eval_metric`, `preset`, `top_n`, `task_type`, `pipeline_version`, `autogluon_version`. **Child:** `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed.                                                                                                                                                                                                      |
-| **Metrics** | **Parent:** `best_model_score`, `total_training_time`, `num_models_trained`. **Child:** Primary validation score (`score_val`, `score_test`), task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`), **fit time**.                                                                                                                                               |
-| **Artifacts** | **Per child:** pointer to **`metrics`**, and models **`predictor`**.                                                                                                                                                                                                                                                                                                                                                            |
+| MLflow concept      | Proposed mapping                                                                                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Experiment**      | KFP auto-creates one experiment per pipeline (accessible via `MLFLOW_EXPERIMENT_ID`).                                                                                                                                                                                                                                                                                                                                               |
+| **Parent run**      | KFP auto-creates one parent run per pipeline execution (accessible via `MLFLOW_RUN_ID`). AutoML components **resume this run** to add tags and params. **Tags:** `pipeline_name`, `kfp_run_id`, `kfp_run_name`, `task_type` (`binary` \| `multiclass` \| `regression` \| `time_series`), dataset **hashes or URIs** (non-secret). **Params:** `eval_metric`, `preset`, `top_n`, `image_version`,`kfp_version`, `autogluon_version`. |
+| **Child runs**      | **One child run per leaderboard row / refitted model** (each `name` in `model_names` or equivalent for timeseries), created by AutoML components as nested runs under the KFP parent. Enables side-by-side comparison in the MLflow UI across models from the same pipeline run. Params: `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed.                                |
+| **Child Metrics**   | Task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`).                                                                                                                                                                                                                                                                                                               |
+| **Child Artifacts** | Pointer to **`metrics`** (containing model's insights like confusion matric etc.), pointer to trained model binaries **`predictor`**, and pointer to **`notebook`**.                                                                                                                                                                                                                                                                |
 
-### Optional alignment with AutoGluon-native logging
+### Alignment with AutoGluon-native logging
 
-AutoGluon can integrate with experiment trackers in some setups. Prefer **explicit MLflow calls in our components** first so KFP + OpenShift behavior stays predictable; revisit **native AutoGluon callbacks** only if they reduce duplication without fighting Kubeflow’s filesystem layout.
+AutoGluon can integrate with experiment trackers in some setups. Revisit **native AutoGluon callbacks** to stream out results iteratively (as soon as model is trained the data should be logged).
 
 ---
 
@@ -78,25 +70,6 @@ AutoGluon can integrate with experiment trackers in some setups. Prefer **explic
 This section provides concrete implementation guidance for MLflow integration in each AutoML pipeline component, following patterns established by MLflow’s scikit-learn and XGBoost integrations (autologging, nested runs, model signatures).
 
 > **Important:** MLflow does **not** have native AutoGluon support. There is no `mlflow.autogluon` module or autologging capability. All tracking must be implemented via **explicit MLflow API calls** (`mlflow.log_params()`, `mlflow.log_metrics()`, `mlflow.log_artifact()`). Model logging would require a custom `mlflow.pyfunc` wrapper since AutoGluon predictors cannot be logged with standard MLflow flavors.
-
-### Component-level logging matrix (tabular pipeline)
-
-| Component | MLflow Operation | Parameters Logged | Metrics Logged | Artifacts Logged | Run Type |
-|-----------|------------------|-------------------|----------------|------------------|----------|
-| **tabular_data_loader** | Params + metrics | `sampling_method`, `task_type`, `label_column`, `test_size`, `random_state`, `stratify` | — | — | Parent |
-| **autogluon_models_training** | Tags + params | `preset`, `eval_metric`, `time_limit`, `num_bag_folds`, `num_stack_levels`, `top_n`, `task_type` | `selection_time_seconds` | — | Parent |
-| **autogluon_leaderboard_evaluation** | **Parent run creation + child runs** | (per parent): `pipeline_version`, `autogluon_version`, `kfp_run_id`, `namespace` | (per parent): `best_model_score`, `total_training_time` | (per parent): `leaderboard.html` | Parent + N children |
-| **autogluon_leaderboard_evaluation** (per model) | Child run per model | (per child): `model_type`, `num_models_in_stack`, `fit_time`, `predict_time`, `stack_level` | (per child): `score_val`, `score_test` (if available), task-specific metrics (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`) | (per child): `model_metrics.json`, `feature_importance.json`, `confusion_matrix.json` (classification) | Child (nested) |
-
-### Component-level logging matrix (timeseries pipeline)
-
-| Component | MLflow Operation | Parameters Logged | Metrics Logged | Artifacts Logged | Run Type |
-|-----------|------------------|-------------------|----------------|------------------|----------|
-| **timeseries_data_loader** | Params + metrics | `id_column`, `timestamp_column`, `target`, `known_covariates_names`, `prediction_length`, `test_size`, `selection_train_size` | — | — | Parent |
-| **autogluon_timeseries_models_selection** | Tags + params | `preset`, `eval_metric`, `prediction_length`, `target`, `known_covariates_names`, `top_n` | `selection_time_seconds` | — | Parent |
-| **autogluon_timeseries_models_full_refit** | Metrics per model | — | `refit_time_seconds` (per model) | — | Parent |
-| **autogluon_timeseries_leaderboard_evaluation** | **Parent run creation + child runs** | (per parent): `pipeline_version`, `autogluon_version`, `kfp_run_id`, `namespace` | (per parent): `best_model_score`, `total_training_time` | (per parent): `leaderboard.html` | Parent + N children |
-| **autogluon_timeseries_leaderboard_evaluation** (per model) | Child run per model | (per child): `model_type`, `fit_time`, `predict_time` | (per child): `score_val`, task-specific metrics (e.g., `WQL`, `MAPE`, `MASE`, `RMSE`) | (per child): `model_metrics.json` | Child (nested) |
 
 ### Run lifecycle and hierarchy
 
@@ -143,41 +116,12 @@ def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_
                     if metric in model_metrics:
                         mlflow.log_metric(metric, model_metrics[metric])
 ```
-
-### Key differences from MLflow framework integrations
-
-**AutoML uses explicit manual logging** instead of MLflow's autolog feature because:
-
-- **Predictability in KFP**: AutoML uses explicit `mlflow.log_params()` / `mlflow.log_metrics()` calls rather than `mlflow.sklearn.autolog()` to control exactly what gets logged in the KFP pipeline environment
-- **Explicit nested runs**: Parent run = KFP pipeline execution, child runs = individual refitted models from the leaderboard (not auto-created by GridSearchCV)
-- **Selective logging**: Logs pipeline inputs (`preset`, `eval_metric`, `top_n`) plus derived parameters (`autogluon_version`, `stack_level`) rather than capturing all estimator parameters via `.get_params()`
-- **Leaderboard-based metrics**: Logs validation scores (`score_val`, `score_test`) and task-specific metrics from `metrics.json` rather than training scores from `.score()` method
-- **No model artifacts**: Logs model URIs/hashes only. Full model logging would require `mlflow.pyfunc.log_model()` with custom AutoGluon wrapper (MLflow has no native AutoGluon flavor)
-- **Component-level timing**: Parent run created in `leaderboard_evaluation` component after all training completes, not automatically around `fit()` call
-
-
-### Artifacts and naming conventions
-
-**RHOAI 3.4 artifacts:**
-
-| Artifact | Type | Location | Size Guidance | Logged To |
-|----------|------|----------|---------------|-----------|
-| `leaderboard.html` | HTML report | `mlflow-artifacts/<run_id>/reports/leaderboard.html` | < 1 MB (cap at 5000 rows if needed) | Parent run |
-| `<model>_metrics.json` | JSON metrics | `mlflow-artifacts/<run_id>/model_metrics/<model>_metrics.json` | < 50 KB | Child run (per model) |
-| `<model>_feature_importance.json` | JSON feature importance | `mlflow-artifacts/<run_id>/feature_importance/<model>_feature_importance.json` | < 100 KB | Child run (tabular only, classification/regression) |
-| `<model>_confusion_matrix.json` | Confusion matrix | `mlflow-artifacts/<run_id>/model_metrics/<model>_confusion_matrix.json` | < 20 KB | Child run (tabular only, classification) |
-
-**RHOAI 3.5 scope (bare minimum):**
-
-RHOAI 3.5 introduces **MLflow integration with KFP environment variables** and the **parent/child run hierarchy** for experiment tracking. The 3.5 release focuses on **core tracking capabilities** with the existing artifact set from 3.4 (leaderboard, metrics, feature importance, confusion matrix).
-
-**Best practice:** Follow MLflow’s artifact organization by using `artifact_path` parameter in `mlflow.log_artifact()` to create logical groupings (`reports/`, `metadata/`, `model_metrics/`, `feature_importance/`).
-
 ---
 
 ## KFP Pipeline Integration: MLflow Tracking Artifact
 
-To enable the AutoML Dashboard and end users to discover and access MLflow tracking information from KFP pipeline runs, the `autogluon_leaderboard_evaluation` component produces a dedicated **MLflow tracking artifact** as a KFP output.
+To enable the AutoML Dashboard and end users to discover and access MLflow tracking information from KFP pipeline runs, 
+the **first component** in a pipeline produces a dedicated **MLflow tracking artifact** as a KFP output.
 
 ### Artifact Purpose
 
@@ -190,7 +134,7 @@ The `mlflow_tracking_artifact` serves as the **single source of truth** for link
 
 ### Component Output Definition
 
-```json
+```python
  mlflow_tracking_artifact: dsl.Output[dsl.Artifact]
 ```
 
