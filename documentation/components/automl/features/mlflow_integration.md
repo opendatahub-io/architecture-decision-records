@@ -80,7 +80,8 @@ import mlflow
 import os
 import json
 
-def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_params: dict):
+def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_params: dict, 
+                       kfp_context: dict, models_artifact_path: str):
     """
     Log AutoML results to MLflow using KFP-managed parent run.
     KFP automatically sets MLFLOW_TRACKING_URI, MLFLOW_RUN_ID, MLFLOW_EXPERIMENT_ID.
@@ -92,14 +93,26 @@ def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_
     
     # Resume KFP-managed parent run
     with mlflow.start_run(run_id=parent_run_id):
-        # Log pipeline-level params and metrics
+        # Log parent run tags
         import autogluon
+        mlflow.set_tags({
+            "pipeline_name": kfp_context.get("pipeline_name", "autogluon_training_pipeline"),
+            "kfp_run_id": kfp_context.get("run_id"),
+            "kfp_run_name": kfp_context.get("run_name"),
+            "task_type": pipeline_params.get("task_type")  # binary | multiclass | regression | time_series
+        })
+        
+        # Log parent run params
         mlflow.log_params({
-            "preset": pipeline_params.get("preset", "medium_quality"),
             "eval_metric": pipeline_params.get("eval_metric"),
+            "preset": pipeline_params.get("preset", "medium_quality"),
+            "top_n": pipeline_params.get("top_n", 3),
+            "image_version": os.getenv("IMAGE_VERSION", "unknown"),
+            "kfp_version": kfp_context.get("kfp_version", "unknown"),
             "autogluon_version": autogluon.__version__
         })
         
+        # Log parent run metrics
         with open(metrics_json_path) as f:
             all_metrics = json.load(f)
         
@@ -109,12 +122,30 @@ def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_
         # Create child runs for each model
         for model_name in model_names:
             model_metrics = all_metrics.get(model_name, {})
+            
             with mlflow.start_run(run_name=model_name, nested=True):
+                # Log child run params
+                model_type = model_name.split("_")[0] if "_" in model_name else model_name
+                stack_level = int(model_name.split("_L")[-1]) if "_L" in model_name else 1
+                
+                mlflow.log_params({
+                    "model_type": model_type,
+                    "stack_level": stack_level,
+                    "fit_time": model_metrics.get("fit_time", 0),
+                    "predict_time": model_metrics.get("pred_time_val", 0)
+                })
+                
+                # Log child run metrics (task-specific)
                 mlflow.log_metric("score_val", model_metrics.get("score_val", 0))
-                # Log task-specific metrics
-                for metric in ["accuracy", "f1", "rmse", "mae"]:
+                for metric in ["accuracy", "f1", "roc_auc", "rmse", "mae"]:
                     if metric in model_metrics:
                         mlflow.log_metric(metric, model_metrics[metric])
+                
+                # Log child run artifacts (pointers to KFP artifacts)
+                model_artifact_dir = f"{models_artifact_path}/{model_name}_FULL"
+                mlflow.log_param("metrics_path", f"{model_artifact_dir}/metrics")
+                mlflow.log_param("predictor_path", f"{model_artifact_dir}/predictor")
+                mlflow.log_param("notebook_path", f"{model_artifact_dir}/notebooks/automl_predictor_notebook.ipynb")
 ```
 ---
 
