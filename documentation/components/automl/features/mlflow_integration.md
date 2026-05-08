@@ -51,13 +51,14 @@ When MLflow integration is enabled at the project level, the following environme
 
 Design for **two pipeline families** (tabular vs timeseries) with the **same conceptual mapping**.
 
-| MLflow concept      | Proposed mapping                                                                                                                                                                                                                                                                                                                                                                                                                    |
-|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Experiment**      | KFP auto-creates one experiment per pipeline (accessible via `MLFLOW_EXPERIMENT_ID`).                                                                                                                                                                                                                                                                                                                                               |
-| **Parent run**      | KFP auto-creates one parent run per pipeline execution (accessible via `MLFLOW_RUN_ID`). AutoML components **resume this run** to add tags and params. **Tags:** `pipeline_name`, `kfp_run_id`, `kfp_run_name`, `task_type` (`binary` \| `multiclass` \| `regression` \| `time_series`), dataset **hashes or URIs** (non-secret). **Params:** `eval_metric`, `preset`, `top_n`, `image_version`,`kfp_version`, `autogluon_version`. |
-| **Child runs**      | **One child run per leaderboard row / refitted model** (each `name` in `model_names` or equivalent for timeseries), created by AutoML components as nested runs under the KFP parent. Enables side-by-side comparison in the MLflow UI across models from the same pipeline run. Params: `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed.                                |
-| **Child Metrics**   | Task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`).                                                                                                                                                                                                                                                                                                               |
-| **Child Artifacts** | Pointer to **`metrics`** (containing model's insights like confusion matric etc.), pointer to trained model binaries **`predictor`**, and pointer to **`notebook`**.                                                                                                                                                                                                                                                                |
+| MLflow concept      | Proposed mapping                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Experiment**      | KFP auto-creates one experiment per pipeline (accessible via `MLFLOW_EXPERIMENT_ID`).                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Parent run**      | KFP auto-creates one parent run per pipeline execution (accessible via `MLFLOW_RUN_ID`). AutoML components **resume this run** to add tags, params, and **aggregate metrics**. **Tags:** `pipeline_name`, `kfp_run_id`, `kfp_run_name`, `task_type` (`binary` \| `multiclass` \| `regression` \| `time_series`), dataset **hashes or URIs** (non-secret). **Params:** `eval_metric`, `preset`, `top_n`, `best_model_name`, `image_version`, `kfp_version`, `autogluon_version`.  |
+| **Parent Metrics**  | **Metrics:** `best_score`, `worst_score`, `mean_score`, `num_models_trained`, `total_fit_time_seconds`.                                                                                                                                                                                                                                                                                                                                                                          |
+| **Child runs**      | **One child run per leaderboard row / refitted model** (each `name` in `model_names` or equivalent for timeseries), created by AutoML components as nested runs under the KFP parent. Enables side-by-side comparison in the MLflow UI across models from the same pipeline run. Params: `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed.                                                                             |
+| **Child Metrics**   | Task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`).                                                                                                                                                                                                                                                                                                                                                            |
+| **Child Artifacts** | Pointer to **`metrics`** (containing model's insights like confusion matric etc.), pointer to trained model binaries **`predictor`**, and pointer to **`notebook`**.                                                                                                                                                                                                                                                                                                             |
 
 ### Alignment with AutoGluon-native logging
 
@@ -112,11 +113,28 @@ def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_
             "autogluon_version": autogluon.__version__
         })
         
-        # Log parent run metrics
+        # Log parent run metrics (aggregated across all models)
         with open(metrics_json_path) as f:
             all_metrics = json.load(f)
         
-        mlflow.log_metric("best_model_score", max(m["score_val"] for m in all_metrics.values()))
+        # Find best model
+        scores = {name: m.get("score_val", float('-inf')) for name, m in all_metrics.items()}
+        best_model_name = max(scores, key=scores.get)
+        best_score = scores[best_model_name]
+        
+        # Aggregate metrics
+        mlflow.log_metric("best_score", best_score)
+        mlflow.log_metric("worst_score", min(scores.values()))
+        mlflow.log_metric("mean_score", sum(scores.values()) / len(scores))
+        mlflow.log_metric("num_models_trained", len(all_metrics))
+        
+        # Total fit time (sum of marginal times, or max of total times for ensembles)
+        fit_times = [m.get("fit_time", 0) for m in all_metrics.values()]
+        mlflow.log_metric("total_fit_time_seconds", sum(fit_times))
+        
+        # Log best model name as param
+        mlflow.log_param("best_model_name", best_model_name)
+        
         mlflow.log_artifact("leaderboard.html", artifact_path="reports")
         
         # Create child runs for each model
