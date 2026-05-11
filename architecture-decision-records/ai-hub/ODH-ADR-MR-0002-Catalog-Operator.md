@@ -38,7 +38,7 @@ We could add the CRD separately, but combining it with the operator re-implement
 
 ### New operator: `opendatahub-io/catalog-operator`
 
-Scaffold a Kubebuilder project with a `Catalog` CRD (group `catalog.opendatahub.io`, version `v1alpha1`). Port the catalog controller, templates, and shared utilities from the model-registry-operator. Refactor the controller to reconcile a `Catalog` CRs instead of running as a channel-triggered singleton.
+Scaffold a Kubebuilder project with a `Catalog` CRD (group `catalog.opendatahub.io`, version `v1alpha1`). Port the catalog controller, templates, and shared utilities from the model-registry-operator. Refactor the controller to reconcile a `Catalog` CR instead of running as a channel-triggered singleton.
 
 Proposed CRD example:
 
@@ -96,6 +96,8 @@ Customers who upgrade directly from an older version (with `model-registry-opera
 After the Kubeflow Model Registry has been deprecated, rename `model-registry-operator` to `catalog-operator`. After the deprecation period, remove the code to deploy the Kubeflow `model-registry`.
 
 If we don't want to implement the Catalog CRD at the same time, this is probably the way to go. It would be faster to implement. But we will need the Catalog CRD eventually, and combining it with a necessary rename is the most straightforward way to add it.
+
+A variation of this is to rename `model-registry-operator` to a more general name (e.g. `ai-hub-operator`). This has the same downsides as renaming to `catalog-operator`, but it would be reasonable if we anticipate adding additional components under the umbrella of AI Hub. However, this is speculative since we have no definite plans to extend AI Hub beyond registries and catalogs. And if we did extend the scope of AI Hub, we don't know if the requirements of that hypothetical extension would make sense inside a general AI Hub operator.
 
 ### Deploy the catalog from the `mlflow-operator`
 
