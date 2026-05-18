@@ -11,8 +11,8 @@ This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML
   - [Environment variables (RHOAI 3.5+)](#environment-variables-rhoai-35)
 - [MLflow mapping model](#mlflow-mapping-model)
   - [Alignment with AutoGluon-native logging](#alignment-with-autogluon-native-logging)
-- [Per-component logging details](#per-component-logging-details)
-  - [Run lifecycle and hierarchy](#run-lifecycle-and-hierarchy)
+  - [MLflow UI Examples](#mlflow-ui-examples)
+- [Implementation guidance](#implementation-guidance)
 - [KFP Pipeline Integration: MLflow Tracking Artifact](#kfp-pipeline-integration-mlflow-tracking-artifact)
   - [Artifact Purpose](#artifact-purpose)
   - [Component Output Definition](#component-output-definition)
@@ -64,15 +64,29 @@ Design for **two pipeline families** (tabular vs timeseries) with the **same con
 
 AutoGluon can integrate with experiment trackers in some setups. Revisit **native AutoGluon callbacks** to stream out results iteratively (as soon as model is trained the data should be logged).
 
+### MLflow UI Examples
+
+The following screenshots demonstrate the MLflow UI integration with AutoML workflows:
+
+**Experiment Runs View:**
+
+![MLflow AutoML Runs View](../assets/mlflow_automl2.png)
+
+*The MLflow UI showing the AutoML experiment with parent pipeline run and child runs for each model (WeightedEnsemble_L3, CatBoost_L1, etc.) with task-specific metrics (accuracy, f1, roc_auc) and parameters.*
+
+**Run Comparison View:**
+
+![MLflow AutoML Comparison View](../assets/mlflow_automl.png)
+
+*The parallel coordinates plot comparing 6 runs from the experiment, enabling side-by-side analysis of model performance across different metrics.*
+
 ---
 
-## Per-component logging details
+## Implementation guidance
 
-This section provides concrete implementation guidance for MLflow integration in each AutoML pipeline component, following patterns established by MLflow’s scikit-learn and XGBoost integrations (autologging, nested runs, model signatures).
+This section provides concrete implementation guidance for MLflow integration in AutoML pipeline component, following patterns established by MLflow’s scikit-learn and XGBoost integrations (autologging, nested runs, model signatures).
 
 > **Important:** MLflow does **not** have native AutoGluon support. There is no `mlflow.autogluon` module or autologging capability. All tracking must be implemented via **explicit MLflow API calls** (`mlflow.log_params()`, `mlflow.log_metrics()`, `mlflow.log_artifact()`). Model logging would require a custom `mlflow.pyfunc` wrapper since AutoGluon predictors cannot be logged with standard MLflow flavors.
-
-### Run lifecycle and hierarchy
 
 Following MLflow’s nested run pattern (similar to GridSearchCV with parent-child structure):
 
@@ -237,6 +251,7 @@ The artifact is a JSON file written to `mlflow_tracking_artifact.path` with the 
 - Upstream AutoML components: [opendatahub-io/pipelines-components — `components/training/automl`](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl)
 - Upstream AutoML pipelines: [opendatahub-io/pipelines-components — `pipelines/training/automl`](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/automl)
 - End-user examples (RH): [red-hat-ai-examples — `examples/automl`](https://github.com/red-hat-data-services/red-hat-ai-examples/tree/main/examples/automl)
+- Sample notebook (mocked MLflow data): [mlflow_mocks.ipynb](https://github.com/LukaszCmielowski/prototypes/blob/main/AutoML/mlflow_integration/mlflow_mocks.ipynb)
 
 ### MLflow on RHOAI
 
