@@ -59,11 +59,7 @@ We are proposing here that the tenant lifecycle management is automatic in the s
         - set the default api-key expiration time
         - configure observability
         - ...
-
-#### Notes
-- There is a single instance of maas-controller in the cluster.
-- There is a single instance of maas-api service in the cluster. This serves /v1/apikeys, /v1/subscriptions endpoints. 
-
+    - Create the maas-api service instance. See [Option 2](#OPTION-2)
 
 ##### Tenant deletion
 
