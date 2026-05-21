@@ -122,6 +122,7 @@ where `research`, `redteam` and `dev` are different tenants. We have 2 options h
 
     - PROS 
         - single instance a bit less cluster footprint. 
+        - a bit lower dev costs comparred to option 2.
     - CONS 
         - requires updates to the HttpRoute upon gateways creation and deletion and more reconciliation work
         - At dataplane level the tenant name must be extracted from the host name either by the proxy and injected as an X-Tenant header or parsed by the service itself.
