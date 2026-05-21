@@ -42,9 +42,15 @@ Currently MaaS is a single tenant system where all subscriptions and auth polici
 
 In the above diagram we describe the main CR objects required today and in the multi-tenancy concept. 
 
-#### Creating a tenant - Admin role
+#### Tenant lifecycle management - RHOAI Admin role
 
-1. The RHOAI admin creates an AI-Gateway CR object in the tenancy namespace. Today this namespace is `model-as-a-service` however this can be changed/renamed to a more general purpose. Also AI-Gateway CR name can be named to something more generic such as AI-Tenant so it can serve as a platform level tenancy object not just for the AI-Gateway/MaaS system. So naming consolidation needs TBD. However, for now, this document will refer to this CR as the AI-Gateway CR.
+##### Automatic vs. manual
+
+We are proposing here that the tenant lifecycle management is automatic in the sense that the AIGateway CR is the main starting point. From here maas-controller handles the necessary preparations.
+
+##### Tenant creation
+
+1. The RHOAI admin creates an AI-Gateway CR object in the tenancy namespace (tentatively named ai-tenants). Also AI-Gateway CR name can be named to something more generic such as AI-Tenant so it can serve as a platform level tenancy object not just for the AI-Gateway/MaaS system. So naming consolidation needs TBD. However, for now, this document will refer to this CR as the AI-Gateway CR.
 
 2. At this point the existent maas-controller can manage the AI-Gateway CR and in the future this can be moved to a higher level platform controller if needed. To minimize the amounts of changes this CR should use a more generic API group such as `tenancy.opendatahub.io/v1alpha1` (name TBD). Upon CR creation maas-controller will:
     - Create the maas tenant admin namespace . 
@@ -58,6 +64,22 @@ In the above diagram we describe the main CR objects required today and in the m
 - There is a single instance of maas-controller in the cluster.
 - There is a single instance of maas-api service in the cluster. This serves /v1/apikeys, /v1/subscriptions endpoints. 
 
+
+##### Tenant deletion
+
+To delete a tenant the admin only needs to delete the AIGateway CR. The following steps are performed automatically by the maas-controller:
+
+1. The Gatway CR is deleted. This automatically triggers the Envoy PODs deletion as well.
+2. The tenant admin namespace is deleted and consequently all namespace scoped CRs get deleted in this process
+3. Th CR's from the user namespace are not deleted. 
+4. KServe controller updates the HttpRoutes status is to `not ready` or `conflicted`. The routes are not deleted. Also the LllmInferenceService CR is not delete but the status is updated.
+4. The maas-controller needs to update the MaasModelRef status accordingly. 
+5. The ExternalProvider pointing to a deleted gateway should have the status updates similarly with the HttpRoute status.
+
+##### Tenant suspend & resume
+
+This is not in scope for now. Howver should be discussed if this is a requirement or not at some point.
+
 #### Deploying models - model deployer role
 
 We are not opinionated which namespace the clients choose to use to manage models. Thus they might want to have separate namespaces per tenants or use the same namespace for multiple tenants. 
@@ -69,7 +91,6 @@ We are not opinionated which namespace the clients choose to use to manage model
 3. Model is deployed by KServe.
 
 4. User creates the MaasModelRef CR that points to the LlmInferenceService CR
-
 
 While the model is deployed and attached to the correct ai-gateway it is still not accessible via the ai-gateway because there are no auth and rate-limit policies created. 
 
@@ -124,13 +145,25 @@ where `research`, `redteam` and `dev` are different tenants. We have 2 options h
     - CONS
         - A bit larger memory footprint since there is a separate maas-api service and deployment for each tenant.
 
-Based on the above, OPTION 2 seems to be more compelling (TBD)
+Based on the above, OPTION 2 seems to be more compelling and this is what we propose.
 
 In fact when a new Gateway CR (gateway.networking.k8s.io/v1) is created Istio creates separate Envoy proxy PODs. So most of the benefits of option 2 above applies at the proxy level as well. 
 
 ### Inference
 
 Since all policies are attached to the routes and the routes are attached to the tenant ai-gateway the inference traffic becomes simpler and more isolated. 
+
+### Database 
+
+Currently MaaS manages apikeys in a Postgres database. In the multi tenancy context a schema change is needed in order to add a new column tenant or gateway so that each api-key is scoped for that particular tenant. 
+
+### Migration
+
+- Current ApiKeys do not point to any tenant however the current model-as-a-service namespace can become the default tenant. So for the existend api-keys the DB is updated to this tenant name
+- on migration the system will create the AIGateway CR to match with the existent namespace and gateway.
+- > Other considerations should be added here
+
+The expectation is that all models deployed prior to the upgrate will continue to work. 
 
 ## Open Questions
 
@@ -145,6 +178,12 @@ We had extensive discussions around two fundamental options:
 2. Multiple gateways - one gateway per tenant
 
 After lots of debates we are proposing in this ADR option 2 as option 1 creates a lot more complexity with regards to policies and http-routes management.
+
+## Observability
+
+- Any tenant action for creation, update, deletion need to tracked via OTEL traces or logs.
+- Any API call that currently emits OTEL trances needs to include the tenant/gateway information.
+- Any Prometheuse metrics or OTEL logs (i.e. maas token usage metrics) needs to include the tenant/gateway information.
 
 ## Security and Privacy Considerations
 
