@@ -61,6 +61,25 @@ We are proposing here that the tenant lifecycle management is automatic in the s
         - ...
     - Create the maas-api service instance. See [Option 2](#option-2)
 
+###### AIGateway CR basic structure
+
+Non exhaustive example:
+```yaml
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: AIGateway
+metadata:
+  name: redteam
+  namespace: tenancy
+  annotations:
+    openshift.io/display-name: "Red team tenant"
+    openshift.io/description: "To be used only by the red team members."
+spec:
+    oidc:
+        issuerUrl: https://keycloak.example.com/realms/maas
+        clientId: ai-gateway
+        clientSecret: 847528ry8ery97qrt36
+```
+
 ##### Tenant deletion
 
 To delete a tenant the admin only needs to delete the AIGateway CR. The following steps are performed automatically by the maas-controller:
