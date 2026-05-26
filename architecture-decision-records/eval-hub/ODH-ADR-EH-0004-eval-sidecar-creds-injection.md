@@ -207,6 +207,12 @@ When the adapter sends a request with the header `Authorization: Bearer model-1_
 
 Using different model URLs is optional as in most cases the model URL would be the same. However if Anthropic models are used, the user has to specify the model URL for each model.
 
+## MaaS integration
+
+When the models used in a EvalHub benchmark job point to Maas Models the only thing that needs to be in the above mentioned secret is the MaaS api_key. For MaaS ExternalModels the actual external credentials configuration is done at the ExternalModel and ExternalProvider CRs and these are resolved at AI-Gateway level (payload processor) during API translation stage. The EvalHub job is completely agnostic about this as it only needs to have the maas apikey.
+
+P.S. Note that today MaaS requires model name to be in the URL meaning that model URLs in the secret would have to be provided. However this is being changed as the AI-Gateway is adding another ext_proc to extract the model name from the body to the header making MaaS model URLs fully open-ai compatible.
+
 ## Risks
 
 N/A - To be documented as risks are identified during implementation.
