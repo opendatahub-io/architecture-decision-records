@@ -135,7 +135,7 @@ This is mounted in the sidecar container. This contains the actual credentials. 
 
 ### Multiple models - multiple API_KEYs
 
-Currently EvalHUb REST API allows the user to only specify the model that needs to be evaluated. Other models that an evaluator needs to use internally are not exposed to the REST API so it is a matter of configuring the evaluator at startup. The other models also require API_KEYs. Often these models use the same API_KEY as the model being evaluated but we cannot assume that this is always the case. Garak for example has a yaml config file where one can specify different apikeys for different models. 
+Currently EvalHub REST API allows the user to only specify the model that needs to be evaluated. Other models that an evaluator needs to use internally are not exposed to the REST API so it is a matter of configuring the evaluator at startup. The other models also require API_KEYs. Often these models use the same API_KEY as the model being evaluated but we cannot assume that this is always the case. Garak for example has a yaml config file where one can specify different apikeys for different models. 
 
 In this case the secret that the user provides to the EvalHub REST API needs to contain API_Keys for multiple models. A proposet secret structure is:
 
@@ -153,7 +153,9 @@ type: Opaque
 data:
   ...
   model-1_api-key: dGVzdC1hcGkta2V...
+  model-1_url: https://api.openai.com/v1/chat/completions
   model-2_api-key: dGVzdC1hcGkta2V...
+  model-2_url: https://draft-ai-eastus.openai.azure.com/openai/v1/chat/completions
 ```
 where model-1-key, model-2-key are just arbitrary secret key names that the user choses so that the evaluator code reads at startup and configures the eval framework accordingly. It is important for these to have the `_api-key` suffix because EvalHub needs to know which secret properties to prepare. So we follow the same process as above:
 
@@ -173,7 +175,9 @@ type: Opaque
 data:
   ...
   model-1_api-key: model-1_api-key:ref
+  model-1_url: http://localhost:8080
   model-2_api-key: model-2_api-key:ref
+  model-1_url: http://localhost:8080
 ```
 this is the secret mounted in the actual eval container.
 
@@ -191,7 +195,9 @@ type: Opaque
 data:
   ...
   model-1_api-key: dGVzdC1hcGkta2V...
+  model-1_url: https://api.openai.com/v1/chat/completions
   model-2_api-key: dGVzdC1hcGkta2V...
+  model-2_url: https://draft-ai-eastus.openai.azure.com/openai/v1/chat/completions
 ```
 
 This is mounted in the sidecar container. This contains the actual credentials. The flow becomes:
@@ -199,7 +205,7 @@ This is mounted in the sidecar container. This contains the actual credentials. 
 
 When the adapter sends a request with the header `Authorization: Bearer model-1_api-key:ref` the sidecar will know exactly which secret key to look up and mutate the header to `Authorization: Bearer dGVzdC1hcGkta2V...` for the egress request.
 
-
+Using different model URLs is optional as in most cases the model URL would be the same. However if Anthropic models are used, the user has to specify the model URL for each model.
 
 ## Risks
 
