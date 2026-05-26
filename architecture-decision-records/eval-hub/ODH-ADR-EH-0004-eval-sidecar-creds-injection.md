@@ -221,7 +221,18 @@ Istio egress system (DestinationRule, ServiceEntry) could be used to route the t
 
 ## Risks
 
-N/A - To be documented as risks are identified during implementation.
+Considered risks:
+
+#### Container escape: 
+  Since containers provide necessary isolation the eval container can never get access to the real secret holding the credentials mounted in the sidecar container.
+#### Ref token replay: 
+  This is not a concen since the secret mounted in the eval container will be deleted at job termination.
+#### Localhost bypass: 
+  Not an issues since the only APIs supported are HTTP.
+#### DoS blast radius
+  Since the sidecar is a container in the same eval POD, overloading the sidecar does nothing more than impact the job itself, nothing else. So such attacked are fruitless. 
+#### Logging
+  The sidecar never logs sensitive information.
 
 ## Stakeholder Impacts
 
