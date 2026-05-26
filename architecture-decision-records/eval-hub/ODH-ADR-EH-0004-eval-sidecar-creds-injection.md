@@ -63,7 +63,7 @@ Currently in the EvalHub [eval job request API](https://eval-hub.github.io/eval-
 }
 ```
 
-but this addresses today only the model that we are evaluating. 
+but this addresses today only the model that we are evaluating. It is important to mention that these secrets only live in the tenant's namesapce. The entire EvalHub API is protected by RBAC at the top level via the Kube RBAC proxy. Thus these secrets cannot be accessed by other tenants.
 
 Here is an example of the secret used today:
 
