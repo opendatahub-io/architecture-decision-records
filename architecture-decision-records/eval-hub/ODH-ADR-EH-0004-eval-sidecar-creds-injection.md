@@ -213,6 +213,12 @@ When the models used in a EvalHub benchmark job point to Maas Models the only th
 
 P.S. Note that today MaaS requires model name to be in the URL meaning that model URLs in the secret would have to be provided. However this is being changed as the AI-Gateway is adding another ext_proc to extract the model name from the body to the header making MaaS model URLs fully open-ai compatible.
 
+
+## Alternatives considered
+
+Istio egress system (DestinationRule, ServiceEntry) could be used to route the traffic through the same gateway and credentials injection can happen at gateway level. However currently EvalHub is not designed to depend on Istio. This may happen in the future but for the moment we need to address credentials injection at the EvalHub sidecar container level. 
+
+
 ## Risks
 
 N/A - To be documented as risks are identified during implementation.
