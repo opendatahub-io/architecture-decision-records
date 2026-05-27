@@ -50,7 +50,7 @@ This ADR formalizes the architecture agreed upon on May 19, 2026, in the Shared 
 
 The global workspace architecture introduces three coordinated mechanisms: the dashboard as the administrative control plane (setting configuration and labeling namespaces), the Auth CR controller that provisions RBAC access in response to label changes, and a BFF path that serves shared resources to GenAI Studio.
 
-```
+```text
 ┌─────────────────────────────────────┐
 │         Cluster Settings            │
 │  ┌───────────────────────────────┐  │
