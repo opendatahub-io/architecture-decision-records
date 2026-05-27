@@ -65,7 +65,7 @@ Tenant identification at the data plane level uses hostname: `{tenant-name}.{dom
 
 **Workflow**:
 
-1. RHOAI admin creates an AIGateway CR in the `ai-tenants` namespace
+1. RHOAI admin creates an AITenant CR in the `ai-tenants` namespace
 2. maas-controller reconciles the CR and performs the following:
    - Creates tenant admin namespace: `ai-tenant-{tenant-name}`
    - Creates Gateway CR in the tenant namespace
@@ -347,7 +347,7 @@ SELECT * FROM api_keys WHERE key_hash = ? AND tenant_id = ?;
 **Phase 2: Create Default Tenant** (automatic on first reconciliation)
 
 1. Operator detects existing `model-as-a-service` namespace
-2. Creates AIGateway CR named `default` in `ai-tenants` namespace:
+2. Creates AITenant CR named `default` in `ai-tenants` namespace:
 
 ```yaml
 apiVersion: maas.opendatahub.io/v1alpha1
@@ -401,7 +401,7 @@ If upgrade fails during Phase 1 or 2:
 
 If any step fails during tenant provisioning:
 
-1. Update AIGateway CR status to `Failed` with detailed reason
+1. Update AITenant CR status to `Failed` with detailed reason
 2. Do **not** auto-cleanup created resources (allow admin inspection)
 3. Admin options:
    - Fix the issue (e.g., create missing secret) and trigger reconciliation
