@@ -130,7 +130,7 @@ UI-level-only validation was explicitly rejected as insufficient — backend enf
 
 **4. Auth CR Controller Manages Role Bindings**
 
-The Auth CR controller (part of the platform operator) already manages RoleBindings for dashboard-created RHOAI projects. This same controller is extended to handle the global workspace case: when it detects the `global-mlflow-workspace` label on a namespace, it creates the necessary RoleBindings (`mlflow-view`, `mlflow-edit`) so that authenticated users can read resources from that namespace.
+The Auth CR controller (part of the platform operator) already manages RoleBindings for dashboard-created RHOAI projects. This same controller is extended to handle the global workspace case: when it detects the `global-mlflow-workspace` label on a namespace, it creates the necessary RoleBindings: authenticated users receive `mlflow-view` access in the global namespace so they can discover and use shared prompts, while RHOAI administrators receive both `mlflow-view` and `mlflow-edit` for managing shared resources.
 
 This approach was chosen over having the dashboard's service account manage RoleBindings directly because:
 
