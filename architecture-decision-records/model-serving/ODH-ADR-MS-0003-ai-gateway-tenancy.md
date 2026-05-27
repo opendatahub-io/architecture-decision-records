@@ -47,10 +47,10 @@ MaaS currently operates as a single-tenant system where all subscriptions and au
 The multi-tenant architecture follows a **one-gateway-per-tenant** pattern. Each tenant gets:
 
 1. An AITenant CR in the `ai-tenants` namespace (cluster-level registry)
-2. A dedicated tenant admin namespace (`ai-tenant-{tenant-name}`)
+2. A dedicated tenant admin namespace. This namespace is automatically labeled as `ai-gateway.opendatahub.io/tenant`.
 3. A dedicated Gateway CR (gateway.networking.k8s.io/v1) with separate Envoy pods
 4. A dedicated maas-api service instance with its own HttpRoute
-5. A MaasConfig CR for tenant-specific configuration
+5. A MaasTenantConfig CR for tenant-specific configuration
 6. OIDC configuration scoped to the tenant
 
 Tenant identification at the data plane level uses hostname: `{tenant-name}.{domain}`.
@@ -69,7 +69,7 @@ Tenant identification at the data plane level uses hostname: `{tenant-name}.{dom
 2. maas-controller reconciles the CR and performs the following:
    - Creates tenant admin namespace: `ai-tenant-{tenant-name}`
    - Creates Gateway CR in the tenant namespace
-   - Creates default MaasConfig CR in the tenant namespace
+   - Creates default MaasTenantConfig CR in the tenant namespace
    - Deploys maas-api service instance for this tenant
    - Creates HttpRoute for maas-api attached to the tenant Gateway
    - Updates AITenant status with provisioning results
@@ -123,11 +123,11 @@ status:
   provisionedAt: "2026-05-27T10:00:00Z"
 ```
 
-**MaasConfig CR Structure**:
+**MaasTenantConfig CR Structure**:
 
 ```yaml
 apiVersion: maas.opendatahub.io/v1alpha1
-kind: MaasConfig
+kind: MaasTenantConfig
 metadata:
   name: config
   namespace: ai-tenant-redteam
@@ -156,7 +156,7 @@ spec:
 1. Admin deletes the AITenant CR from the `ai-tenants` namespace
 2. maas-controller reconciles deletion and performs the following:
    - Deletes the Gateway CR (triggers Envoy pod deletion)
-   - Deletes the tenant admin namespace (cascades to MaasConfig, HttpRoute, maas-api deployment)
+   - Deletes the tenant admin namespace (cascades to MaasTenantConfig, HttpRoute, maas-api deployment)
    - Updates database records: marks tenant as deleted (soft delete)
    - User namespace CRs (LlmInferenceService, HttpRoute) are **not** deleted
    - KServe controller updates HttpRoute status to `NotReady` or `Conflicted`
@@ -304,14 +304,6 @@ ALTER TABLE api_keys ALTER COLUMN tenant_id SET NOT NULL;
 -- (allows same key pattern across tenants if needed, though not recommended)
 ALTER TABLE api_keys ADD CONSTRAINT uk_api_keys_hash_tenant UNIQUE (key_hash, tenant_id);
 ```
-
-**subscriptions table** (if applicable):
-
-```sql
-ALTER TABLE subscriptions ADD COLUMN tenant_id VARCHAR(253) NOT NULL;
-CREATE INDEX idx_subscriptions_tenant ON subscriptions(tenant_id);
-```
-
 **Query Changes**:
 
 All queries must filter by `tenant_id`:
