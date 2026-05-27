@@ -90,9 +90,6 @@ spec:
   oidc:
     issuerUrl: https://keycloak.example.com/realms/redteam
     clientId: ai-tenant-redteam
-    clientSecretRef:  # Reference to secret in ai-tenants namespace
-      name: redteam-oidc-secret
-      key: client-secret
   
   # Domain for this tenant (used for hostname-based routing)
   domain: redteam.ai-gateway.apps.example.com
@@ -358,9 +355,8 @@ metadata:
 spec:
   oidc:
     issuerUrl: <existing-oidc-issuer>
-    clientSecretRef:
-      name: default-oidc-secret
-      key: client-secret
+    clientId: <clien-id>
+
   domain: <existing-domain>  # Preserve existing domain
 ```
 
@@ -412,7 +408,6 @@ If any step fails during tenant provisioning:
 | Failure | Status | Reason | Resolution |
 |---------|--------|--------|------------|
 | Gateway CR creation fails | `Failed` | `GatewayCreationFailed` | Check Gateway API CRDs, RBAC permissions |
-| OIDC secret not found | `Failed` | `SecretNotFound` | Create secret in `ai-tenants` namespace |
 | maas-api deployment fails | `Degraded` | `ApiServiceDegraded` | Check image pull policy, resource quotas |
 
 #### Tenant Deletion Failure
@@ -488,33 +483,6 @@ All tenant admin operations logged:
 ```
 
 ## Security and Privacy Considerations
-
-### Secret Management
-
-**OIDC Client Secrets**:
-
-1. Admin creates secret in `ai-tenants` namespace:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: redteam-oidc-secret
-  namespace: ai-tenants
-stringData:
-  client-secret: "847528ry8ery97qrt36"
-```
-
-2. maas-controller copies secret to tenant admin namespace during provisioning
-3. maas-api pods mount secret from tenant namespace
-4. **Secret rotation**: Update in `ai-tenants` namespace → controller detects change → updates copy → pods restart
-
-**API Key Security**:
-- **Storage**: Hashed (bcrypt) in database
-- **Display**: Plaintext only shown once at creation
-- **Transmission**: TLS only
-- **Scope**: Limited to creating tenant
-- **Revocation**: Immediate (no caching)
 
 ### Cross-Tenant Access Prevention
 
