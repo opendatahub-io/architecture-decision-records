@@ -1,247 +1,581 @@
-# Open Data Hub - Architecture Decision Record template
-
-<!-- copy and paste this template to start authoring your own ADR -->
-<!-- for the Status of new ADRs, please use Approved, since it will be approved by the time it is merged -->
-<!-- remove this comment block too -->
+# Open Data Hub - Architecture Decision Record
 
 |                |            |
 | -------------- | ---------- |
-| Date           | insert date |
-| Scope          | |
-| Status         | Work in progress |
+| Date           | 2026-05-27 |
+| Scope          | AI Gateway, Model-as-a-Service (MaaS), Multi-tenancy |
+| Status         | Proposed |
 | Authors        | Marius Danciu, Lindani Phiri, Jamie Land |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | |
+| Tickets        | TBD |
 | Other docs:    | none |
 
 ## What
 
-This ADR aims to define the multi-tenancy aspects of MaaS being a fundamental part of the AIGateway.
+This ADR defines multi-tenancy for the AI Gateway (previously MaaS), introducing a one-gateway-per-tenant architecture with dedicated maas-api instances, tenant-scoped auth policies, and database-level isolation.
 
 ## Why
 
-Currently MaaS is a single tenant system where all subscriptions and auth policies are managed in a single namespace and the only isolation is achieved by Kube RBAC. In reality organizations need to segregate access, management, compute resources, traffic for different purposes like internal departments. 
+MaaS currently operates as a single-tenant system where all subscriptions and auth policies are managed in one namespace. The only isolation mechanism is Kubernetes RBAC. Organizations need to segregate access, management, compute resources, and traffic for different purposes such as internal departments, projects, or teams. Multi-tenancy enables:
+
+- **Resource isolation**: Separate compute and network resources per tenant
+- **Security boundaries**: Independent OIDC configurations and auth policies
+- **Operational separation**: Tenant lifecycle management without cross-tenant impact
+- **Cost allocation**: Per-tenant usage tracking and chargeback
 
 ## Goals
 
-* Define the meaning of a tenant for AI-Gateway
-* Define how tenants are managed
-* Define how access and assets (Kube CRs, database records) are isolated per tenant.
+- Define tenant as a dedicated AI Gateway with its own namespace, OIDC config, and maas-api instance
+- Establish automatic tenant lifecycle management via the AITenant CR
+- Ensure complete isolation of access, Kubernetes CRs, and database records per tenant
+- Support migration from single-tenant to multi-tenant without downtime
+- Enable tenant-specific observability (metrics, traces, logs)
 
 ## Non-Goals
 
-* Define the dashboard behaviour and UX design aspects in the multi-tenant context
-* Define a RHOAI platform tenancy system (although this could be a precursor)
+- Define dashboard behavior and UX design for multi-tenant scenarios (deferred to UI team)
+- Define a platform-wide RHOAI tenancy system (this ADR is scoped to AI Gateway/MaaS)
+- Support cross-tenant model sharing (explicitly out of scope for v1)
+- Tenant suspend/resume functionality (future enhancement)
+- Per-tenant physical database instances (logical isolation sufficient for v1)
 
 ## How
 
-### Control plane
+### Architecture Overview
 
-![proposed architecture](./images/ODH-ADR-MS-0003-ai-gateway-tenancy-img-1.png)  
+The multi-tenant architecture follows a **one-gateway-per-tenant** pattern. Each tenant gets:
 
-In the above diagram we describe the main CR objects required today and in the multi-tenancy concept. 
+1. An AITenant CR in the `ai-tenants` namespace (cluster-level registry)
+2. A dedicated tenant admin namespace (`ai-tenant-{tenant-name}`)
+3. A dedicated Gateway CR (gateway.networking.k8s.io/v1) with separate Envoy pods
+4. A dedicated maas-api service instance with its own HttpRoute
+5. A MaasConfig CR for tenant-specific configuration
+6. OIDC configuration scoped to the tenant
 
-#### Tenant lifecycle management - RHOAI Admin role
+Tenant identification at the data plane level uses hostname: `{tenant-name}.{domain}`.
 
-##### Automatic vs. manual
+![Proposed Architecture](./images/ODH-ADR-MS-0003-ai-gateway-tenancy-img-1.png)
 
-We are proposing here that the tenant lifecycle management is automatic in the sense that the AIGateway CR is the main starting point. From here maas-controller handles the necessary preparations.
+### Control Plane
 
-##### Tenant creation
+#### Tenant Lifecycle Management (RHOAI Admin Role)
 
-1. The RHOAI admin creates an AI-Gateway CR object in the tenancy namespace (tentatively named ai-tenants). The AI-Gateway CR can be named to something more generic such as AI-Tenant so it can serve as a platform level tenancy object not just for the AI-Gateway/MaaS system. So naming consolidation needs TBD. However, for now, this document will refer to this CR as the AI-Gateway CR.
+##### Tenant Creation
 
-2. At this point the existing maas-controller can manage the AI-Gateway CR and in the future this can be moved to a higher level platform controller if needed. To minimize the amounts of changes this CR should use a more generic API group such as `tenancy.opendatahub.io/v1alpha1` (name TBD). Upon CR creation maas-controller will:
-    - Create the maas tenant admin namespace . 
-    - Create the Gateway CR 
-    - Create the default MaasConfig CR in the tenant admin namespace. This CR can further be managed by a tenant admin user (or whomever the client decided to grant RBAC permissions) to further configure maas in the context of this tenant:
-        - set the default api-key expiration time
-        - configure observability
-        - ...
-    - Create the maas-api service instance. See [Option 2](#option-2)
+**Workflow**:
 
-###### AIGateway CR basic structure
+1. RHOAI admin creates an AIGateway CR in the `ai-tenants` namespace
+2. maas-controller reconciles the CR and performs the following:
+   - Creates tenant admin namespace: `ai-tenant-{tenant-name}`
+   - Creates Gateway CR in the tenant namespace
+   - Creates default MaasConfig CR in the tenant namespace
+   - Deploys maas-api service instance for this tenant
+   - Creates HttpRoute for maas-api attached to the tenant Gateway
+   - Updates AITenant status with provisioning results
 
-Non exhaustive example:
+**AITenant CR Specification**:
+
 ```yaml
 apiVersion: maas.opendatahub.io/v1alpha1
-kind: AIGateway
+kind: AITenant
 metadata:
   name: redteam
-  namespace: tenancy
+  namespace: ai-tenants  # Fixed namespace for all tenant CRs
   annotations:
-    openshift.io/display-name: "Red team tenant"
+    openshift.io/display-name: "Red Team Tenant"
     openshift.io/description: "To be used only by the red team members."
 spec:
-    oidc:
-        issuerUrl: https://keycloak.example.com/realms/maas
-        clientId: ai-gateway
-        clientSecret: 847528ry8ery97qrt36
+  # OIDC configuration for this tenant
+  oidc:
+    issuerUrl: https://keycloak.example.com/realms/redteam
+    clientId: ai-tenant-redteam
+    clientSecretRef:  # Reference to secret in ai-tenants namespace
+      name: redteam-oidc-secret
+      key: client-secret
+  
+  # Domain for this tenant (used for hostname-based routing)
+  domain: redteam.ai-gateway.apps.example.com
+  
+  # Optional TLS configuration
+  tls:
+    certificateRef:
+      name: redteam-tls-cert
+      namespace: ai-tenants
+  
+  # Optional resource quotas for this tenant
+  resourceQuotas:
+    maxModels: 10
+    maxSubscriptions: 100
+    maxApiKeys: 1000
+
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: TenantProvisioned
+      message: "Tenant resources successfully created"
+      lastTransitionTime: "2026-05-27T10:00:00Z"
+  
+  # References to created resources
+  tenantAdminNamespace: ai-tenant-redteam
+  gatewayName: redteam-gateway
+  maasApiEndpoint: https://redteam.ai-gateway.apps.example.com/api
+  
+  # Resource creation timestamps
+  provisionedAt: "2026-05-27T10:00:00Z"
 ```
 
-##### Tenant deletion
+**MaasConfig CR Structure**:
 
-To delete a tenant the admin only needs to delete the AIGateway CR. The following steps are performed automatically by the maas-controller:
+```yaml
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: MaasConfig
+metadata:
+  name: config
+  namespace: ai-tenant-redteam
+spec:
+  # API key defaults
+  apiKeyDefaults:
+    expirationDays: 90
+    autoRotate: false
+  
+  # Observability configuration
+  observability:
+    otelCollectorEndpoint: http://otel-collector:4317
+    metricsPrefix: "maas.redteam"
+    tracesSampleRate: 0.1
+  
+  # Default rate limits (can be overridden per subscription)
+  rateLimits:
+    defaultRequestsPerMinute: 60
+    burstSize: 10
+```
 
-1. The Gateway CR is deleted. This automatically triggers the Envoy PODs deletion as well.
-2. The tenant admin namespace is deleted and consequently all namespace scoped CRs get deleted in this process
-3. The CRs from the user namespace are not deleted. 
-4. KServe controller updates the HttpRoutes status to `not ready` or `conflicted`. The routes are not deleted. Also the LlmInferenceService CR is not deleted but the status is updated.
-4. The maas-controller needs to update the MaasModelRef status accordingly. 
-5. The ExternalProvider pointing to a deleted gateway should have the status updated similarly to the HttpRoute status.
+##### Tenant Deletion
 
-##### Tenant suspend & resume
+**Workflow**:
 
-This is not in scope for now. However it should be discussed if this is a requirement or not at some point.
+1. Admin deletes the AITenant CR from the `ai-tenants` namespace
+2. maas-controller reconciles deletion and performs the following:
+   - Deletes the Gateway CR (triggers Envoy pod deletion)
+   - Deletes the tenant admin namespace (cascades to MaasConfig, HttpRoute, maas-api deployment)
+   - Updates database records: marks tenant as deleted (soft delete)
+   - User namespace CRs (LlmInferenceService, HttpRoute) are **not** deleted
+   - KServe controller updates HttpRoute status to `NotReady` or `Conflicted`
+   - maas-controller updates MaasModelRef status to `GatewayNotFound`
 
-#### Deploying models - model deployer role
+**Resource Cleanup**:
+- Tenant namespace: deleted automatically
+- Database api_keys: soft deleted with 90-day retention (configurable)
+- User models: remain deployed but unreachable until attached to a new tenant
+- Audit logs: retained per compliance requirements
 
-We are not opinionated which namespace the clients choose to use to manage models. Thus they might want to have separate namespaces per tenants or use the same namespace for multiple tenants. 
+##### Tenant Suspend & Resume
 
-1. User creates a LlmInferenceService CR and points this CR to an AI-Gateway. We support a single gateway to be associated and this gateway needs to be an ai-gateway. This has been extensively discussed and attaching to multiple gateways some being ai-gateways others not, can lead to a series of implications that explodes the complexity. This may be revisited later on after we have the basic tenancy system proven. It is important to realize that there is a 1 to 1 association between a tenant and a gateway. We often casually simplify this by stating `tenant == ai-gateway`.
+**Status**: Not in scope for v1. Under discussion whether this is a requirement.
 
-2. KServe controller creates the HttpRoute and the InferencePool CRs for this LlmInferenceService
+If implemented in future:
+- Suspend would scale Gateway and maas-api to zero replicas
+- Resume would restore to previous replica counts
+- Database records remain active during suspension
 
-3. Model is deployed by KServe.
+#### Model Deployment (Model Deployer Role)
 
-4. User creates the MaasModelRef CR that points to the LlmInferenceService CR
+**Namespace Flexibility**: Users can deploy models in any namespace. They may use:
+- Separate namespaces per tenant
+- Shared namespace for multiple tenants
+- Per-project or per-team namespaces
 
-While the model is deployed and attached to the correct ai-gateway it is still not accessible via the ai-gateway because there are no auth and rate-limit policies created. 
+**Workflow**:
 
-#### Making models accessible - tenant admin role
+1. User creates a LlmInferenceService CR and references a single AITenant
+   - **Constraint**: Only one gateway per model (must be an AI Gateway)
+   - **Rationale**: Multi-gateway attachment creates policy management complexity (deferred to future)
+   - **Note**: 1:1 association between tenant and gateway (tenant == ai-gateway)
 
-1. From the tenant admin namespace, the admin creates the MaasAuthPolicy and the MaasSubscription CRs. The maas-controller further creates the Kuadrant AuthPolicy and TokenRateLimit (per-user rate limits) CRs. 
+2. KServe controller creates HttpRoute and InferencePool CRs for the LlmInferenceService
 
-Now the model can be used for inference and also for discoverability using the /v1/models endpoint exposed by maas-api.
+3. KServe deploys the model runtime
 
+4. User creates MaasModelRef CR pointing to the LlmInferenceService
 
-### Data plane
+**At this point**: Model is deployed and attached to the gateway but **not accessible** (no auth/rate-limit policies yet).
 
-Identifying the tenancy at the dataplane level is done by the host name. Thus the pattern is `{tenant-name}.{domain}`. For example a `research.redhat.com` would indicate a tenant named `research`. 
+#### Making Models Accessible (Tenant Admin Role)
 
+**Workflow**:
 
-#### Maas-api 
+1. From the tenant admin namespace, create:
+   - MaasAuthPolicy CR
+   - MaasSubscription CR
 
-The maas-api service exposes the following capabilities via REST APIs:
-- model discovery via /v1/models
-- api key management (CRUD) via /v1/apikeys
-- subscriptions listing via /v1/subscriptions
+2. maas-controller reconciles and creates:
+   - Kuadrant AuthPolicy CR
+   - Kuadrant RateLimitPolicy CR (per-user rate limits)
 
-We know that a tenant is essentially a separate gateway using the host as `{tenant}/{domain}`. Thus we want the above apis to be exposed via the tenant URLs. Assuming the domain `acme.com` here are some examples:
-- https://research.acme.com/api/v1/models
-- https://redteam.acme.com/api/v1/apikeys
-- https://dev.acme.com/api/v1/subscriptions
+**Now accessible**: Model can be used for inference and is discoverable via `/v1/models` endpoint.
 
-where `research`, `redteam` and `dev` are different tenants. We have 2 options here:
+### Data Plane
 
-##### OPTION 1
-1. There is one maas-api kube service with its own HttpRoute
-2. Upon a tenant creation this HttpRoute is updated by the controller to be attached the tenant gateway. In this case the maas-api HttpRoute would point to 3 separate gateways as per the examples above.
+#### Tenant Identification
 
-    - PROS 
-        - single instance a bit less cluster footprint. 
-        - a bit lower dev costs comparred to option 2.
-    - CONS 
-        - requires updates to the HttpRoute upon gateways creation and deletion and more reconciliation work
-        - At dataplane level the tenant name must be extracted from the host name either by the proxy and injected as an X-Tenant header or parsed by the service itself.
-        - Authentication and authorization becomes more difficult because each tenant may have a separate OIDC thus the bearer token validation in the context of a tenant is more complex.
+Tenants are identified by hostname: `{tenant-name}.{domain}`
 
+Examples:
+- `research.ai-gateway.apps.example.com` → `research` tenant
+- `redteam.ai-gateway.apps.example.com` → `redteam` tenant
+- `dev.ai-gateway.apps.example.com` → `dev` tenant
 
-##### OPTION 2
-1. Upon a tenant creation a new maas-api kube service is created.
-2. It is attached to an HttpRoute and the HttpRoute is only attached to one tenant gateway. This means that for each tenant there is a separate maas-api kube service and PODs deployment "minted" for this tenant.
+#### maas-api Architecture
 
-    - PROS
-        - Easier to manage. For tenant deletion simply delete the Kube service, deployment, the HttpRoute and the gateway. Upon tenant creation, simply create a new maas-api service instance, the HttpRoute and associate it with the tenant gateway.
-        - Segregated traffic, no neighbour noise.
-        - Potentially use different certificates for different tenants.
-        - No need to discriminate the tenant per host names since the maas-api service itself is "minted" at deployment time with the tenant name (via config or env_var) and it can only operate in the context of that tenant.
-        - Easier database segregation later on. Currently we are assuming that there is a single MaaS DB instance and we discriminate the tenant by a separate column. This is already agreed upon. However if a customer want separate physical databases for some tenants, they can easily do this so that maas-api service starts up by pointing to a different database. 
-    - CONS
-        - A bit larger memory footprint since there is a separate maas-api service and deployment for each tenant.
+The maas-api service exposes:
+- Model discovery: `GET /v1/models`
+- API key management: `POST /v1/apikeys`, `GET /v1/apikeys`, `DELETE /v1/apikeys/{id}`
+- Subscription listing: `GET /v1/subscriptions`
 
-##### OPTION 3
-1. There is one maas-api kube service with its own HttpRoute and its own Gateway (not an AI Gateway)
+**Three Options Evaluated**:
 
-The endpoints above would become something like:
-- https://maas.acme.com/api/v1/models
-- https://maas.acme.com/api/v1/apikeys
-- https://maas.acme.com/api/v1/subscriptions
+##### Option 1: Shared maas-api with Multi-Gateway HttpRoute
 
+- **Approach**: Single maas-api service with one HttpRoute attached to all tenant Gateways
+- **PROS**: Lower cluster footprint, single deployment
+- **CONS**: 
+  - Complex reconciliation (update HttpRoute on every tenant create/delete)
+  - Must extract tenant from hostname at runtime (proxy header or service parsing)
+  - Complex authentication (each tenant may have different OIDC provider)
 
-    - PROS 
-        - single instance a bit less cluster footprint. 
-    - CONS 
-        - Unaware of tenancy. 
-            - GET /v1/models would return all the models I (as a logged in user) have access regardless to which tenant/gateways it is shared/attached to.
-            - GET /v1/subscriptions would list all subscriptions regardless of tenancy. This can be a security risk.
-            - POST /v1/apikeys - apikeys creation would lead to apikeys creation with not information about the tenant. 
+##### Option 2: Dedicated maas-api per Tenant (RECOMMENDED)
 
+- **Approach**: Each tenant gets its own maas-api service, deployment, and HttpRoute
+- **PROS**:
+  - Simpler lifecycle management (create/delete tenant = create/delete service)
+  - Traffic isolation (no neighbor noise)
+  - Per-tenant TLS certificates
+  - Service pre-configured with tenant name (no runtime hostname parsing)
+  - Easier future physical database segregation
+- **CONS**: Higher memory footprint (~128MB per tenant)
 
-Based on the above, OPTION 2 seems to be more compelling and this is what we propose. 
+##### Option 3: Single Gateway for maas-api
 
-Option 3 seems risky and incomplete as creating apikeys would requite potentially an extra header to determine the tenant. This contradicts the above approach where the tenant name should be part of the cannonical host name. Also customers may be skeptical of having APIs that work outside the tenancy
+- **Approach**: One maas-api with its own Gateway (not AI Gateway): `https://maas.acme.com/api/...`
+- **PROS**: Single deployment, low footprint
+- **CONS**: 
+  - **Unaware of tenancy**: `/v1/models` returns all models user can access across all tenants (security risk)
+  - API key creation requires additional header to specify tenant (contradicts hostname-based routing)
+  - Customers may distrust APIs operating outside tenant boundaries
 
-In fact when a new Gateway CR (gateway.networking.k8s.io/v1) is created Istio creates separate Envoy proxy PODs. So most of the benefits of option 2 above applies at the proxy level as well. 
+**Decision**: **Option 2** (Dedicated maas-api per Tenant)
 
-### Inference
+**Rationale**:
+- Aligns with one-gateway-per-tenant architecture (Istio already creates separate Envoy pods per Gateway)
+- Clear security boundaries (no cross-tenant data leakage risk)
+- Simpler OIDC validation (one provider per instance)
+- Operational simplicity outweighs memory cost
 
-Since all policies are attached to the routes and the routes are attached to the tenant ai-gateway the inference traffic becomes simpler and more isolated. 
+#### Inference Traffic Flow
 
-### Database 
+1. Client sends request to `https://{tenant}.{domain}/v1/chat/completions`
+2. DNS resolves to tenant-specific Gateway (Envoy pods)
+3. Gateway enforces:
+   - Kuadrant AuthPolicy (OIDC or API key validation)
+   - Kuadrant RateLimitPolicy (per-user limits)
+4. Request proxied to vLLM backend via HttpRoute
+5. All policies are attached to HttpRoutes, which are attached to tenant Gateway
+6. Traffic isolated per tenant (no cross-tenant routing)
 
-Currently MaaS manages apikeys in a Postgres database. In the multi tenancy context a schema change is needed in order to add a new column tenant or gateway so that each api-key is scoped for that particular tenant. 
+### Database Schema
 
-### Migration
+#### Changes Required
 
-- Current ApiKeys do not point to any tenant however the current model-as-a-service namespace can become the default tenant. So for the existing api-keys the DB is updated to this tenant name
-- on migration the system will create the AIGateway CR to match with the existing namespace and gateway.
-- > Other considerations should be added here
+**api_keys table**:
 
-The expectation is that all models deployed prior to the upgrade will continue to work. 
+```sql
+-- Add tenant_id column
+ALTER TABLE api_keys ADD COLUMN tenant_id VARCHAR(253);
 
-## Open Questions
+-- Create index for tenant-scoped queries
+CREATE INDEX idx_api_keys_tenant ON api_keys(tenant_id);
 
-- Carefully decide CR and namespace naming so that there is limited impact for the future.
-- OIDC configuration should be at AI-Gateway CR level since this is a configuration that will be needed not just for MaaS. 
+-- Backfill default tenant for existing keys (migration only)
+UPDATE api_keys SET tenant_id = 'default' WHERE tenant_id IS NULL;
+
+-- Make tenant_id required
+ALTER TABLE api_keys ALTER COLUMN tenant_id SET NOT NULL;
+
+-- Add unique constraint: key hash must be unique within tenant
+-- (allows same key pattern across tenants if needed, though not recommended)
+ALTER TABLE api_keys ADD CONSTRAINT uk_api_keys_hash_tenant UNIQUE (key_hash, tenant_id);
+```
+
+**subscriptions table** (if applicable):
+
+```sql
+ALTER TABLE subscriptions ADD COLUMN tenant_id VARCHAR(253) NOT NULL;
+CREATE INDEX idx_subscriptions_tenant ON subscriptions(tenant_id);
+```
+
+**Query Changes**:
+
+All queries must filter by `tenant_id`:
+
+```sql
+-- Before (single-tenant)
+SELECT * FROM api_keys WHERE key_hash = ?;
+
+-- After (multi-tenant)
+SELECT * FROM api_keys WHERE key_hash = ? AND tenant_id = ?;
+```
+
+### Migration Strategy
+
+#### Pre-Upgrade State
+
+- Single `model-as-a-service` namespace with one Gateway
+- API keys in database without tenant association
+- Models deployed with HttpRoutes attached to global Gateway
+
+#### Upgrade Process
+
+**Phase 1: Database Schema Migration** (during operator upgrade)
+
+1. Add `tenant_id` column to `api_keys` and `subscriptions` tables
+2. Create indexes
+3. Backfill `tenant_id='default'` for all existing records
+4. Apply NOT NULL constraint
+
+**Phase 2: Create Default Tenant** (automatic on first reconciliation)
+
+1. Operator detects existing `model-as-a-service` namespace
+2. Creates AIGateway CR named `default` in `ai-tenants` namespace:
+
+```yaml
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: AITenant
+metadata:
+  name: default
+  namespace: ai-tenants
+spec:
+  oidc:
+    issuerUrl: <existing-oidc-issuer>
+    clientSecretRef:
+      name: default-oidc-secret
+      key: client-secret
+  domain: <existing-domain>  # Preserve existing domain
+```
+
+3. Controller creates `ai-tenant-default` namespace
+4. Controller reconciles:
+   - Gateway CR remains in `model-as-a-service` for backward compatibility
+   - Creates HttpRoute for maas-api pointing to default Gateway
+   - Deploys maas-api instance in `ai-tenant-default` namespace
+
+**Phase 3: Preserve Existing Routes**
+
+- Existing LlmInferenceService CRs remain unchanged
+- Existing HttpRoutes remain attached to default Gateway
+- Existing API keys work with `tenant_id='default'`
+
+**Phase 4: Validation**
+
+Automated tests verify:
+- [ ] All existing API keys authenticate successfully
+- [ ] All existing models accessible via default tenant domain
+- [ ] New tenants can be created without affecting default tenant
+- [ ] Default tenant behaves identically to pre-upgrade
+
+#### Rollback Procedure
+
+If upgrade fails during Phase 1 or 2:
+
+1. Drop `tenant_id` column from database (if backfill incomplete)
+2. Delete `ai-tenants` namespace (if created)
+3. Delete `ai-tenant-default` namespace (if created)
+4. Restore original Gateway configuration
+
+**Note**: Rollback not supported after users create additional tenants (data loss risk).
+
+### Error Handling
+
+#### Partial Tenant Creation Failure
+
+If any step fails during tenant provisioning:
+
+1. Update AIGateway CR status to `Failed` with detailed reason
+2. Do **not** auto-cleanup created resources (allow admin inspection)
+3. Admin options:
+   - Fix the issue (e.g., create missing secret) and trigger reconciliation
+   - Delete AITenant CR to trigger full cleanup
+
+**Example Failure Scenarios**:
+
+| Failure | Status | Reason | Resolution |
+|---------|--------|--------|------------|
+| Gateway CR creation fails | `Failed` | `GatewayCreationFailed` | Check Gateway API CRDs, RBAC permissions |
+| OIDC secret not found | `Failed` | `SecretNotFound` | Create secret in `ai-tenants` namespace |
+| maas-api deployment fails | `Degraded` | `ApiServiceDegraded` | Check image pull policy, resource quotas |
+
+#### Tenant Deletion Failure
+
+If namespace deletion hangs (finalizers blocking):
+
+1. Update AITenant status to `DeletionBlocked`
+2. Log which resources have blocking finalizers
+3. Require manual intervention (delete finalizers or fix underlying issue)
 
 ## Alternatives
 
-We had extensive discussions around two fundamental options:
+### Single Gateway, Multiple Tenants
 
-1. Single gateway multiple tenants
-2. Multiple gateways - one gateway per tenant
+**Approach**: One shared Gateway with tenant identification via hostname routing rules.
 
-After lots of debates we are proposing in this ADR option 2 as option 1 creates a lot more complexity with regards to policies and http-routes management.
+**Why rejected**:
+- Policy management complexity: All MaasAuthPolicy and RateLimitPolicy CRs attached to single Gateway
+- HttpRoute conflicts: All tenants' routes in one namespace or complex cross-namespace references
+- Security risk: Policy misconfiguration could expose models across tenants
+- Operational risk: Gateway restart affects all tenants simultaneously
+- No clear traffic isolation (Envoy processes all tenant traffic in shared pods)
+
+**Conclusion**: Complexity and security risks outweigh resource savings.
 
 ## Observability
 
-- Any tenant action for creation, update, deletion need to be tracked via OTEL traces or logs.
-- Any API call that currently emits OTEL traces needs to include the tenant/gateway information.
-- Any Prometheus metrics or OTEL logs (i.e. maas token usage metrics) needs to include the tenant/gateway information.
+### Metrics
+
+All Prometheus metrics include `tenant_name` label:
+
+```
+maas_api_requests_total{tenant_name="redteam", method="POST", endpoint="/v1/apikeys", status="200"} 42
+maas_token_usage_total{tenant_name="research", model="llama-3-70b"} 15680
+```
+
+### Traces
+
+OTEL traces span: Gateway → maas-api → vLLM backend
+
+Each span tagged with:
+- `tenant.name`: Tenant identifier
+- `tenant.namespace`: Tenant admin namespace
+- `gateway.name`: Gateway CR name
+
+### Logs
+
+Structured logs include tenant context:
+
+```json
+{
+  "timestamp": "2026-05-27T10:15:30Z",
+  "level": "info",
+  "msg": "API key created",
+  "tenant": "redteam",
+  "user": "alice@example.com",
+  "api_key_id": "key-12345"
+}
+```
+
+### Audit Logging
+
+All tenant admin operations logged:
+
+```json
+{
+  "action": "tenant.create",
+  "tenant": "redteam",
+  "user": "admin@example.com",
+  "timestamp": "2026-05-27T10:00:00Z",
+  "status": "success"
+}
+```
 
 ## Security and Privacy Considerations
 
-Multi tenancy has a crucial impact in the overall system security by further isolating access, traffic and system resources. 
+### Secret Management
+
+**OIDC Client Secrets**:
+
+1. Admin creates secret in `ai-tenants` namespace:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redteam-oidc-secret
+  namespace: ai-tenants
+stringData:
+  client-secret: "847528ry8ery97qrt36"
+```
+
+2. maas-controller copies secret to tenant admin namespace during provisioning
+3. maas-api pods mount secret from tenant namespace
+4. **Secret rotation**: Update in `ai-tenants` namespace → controller detects change → updates copy → pods restart
+
+**API Key Security**:
+- **Storage**: Hashed (bcrypt) in database
+- **Display**: Plaintext only shown once at creation
+- **Transmission**: TLS only
+- **Scope**: Limited to creating tenant
+- **Revocation**: Immediate (no caching)
+
+### Cross-Tenant Access Prevention
+
+**Database-level**:
+- All queries filter by `tenant_id`
+- Unique constraint on `(key_hash, tenant_id)` prevents key reuse across tenants
+
+**Kubernetes RBAC**:
+- Tenant admins have RoleBindings only in their tenant namespace
+- Users cannot list/read other tenants' MaasAuthPolicy or MaasSubscription CRs
+
+**Gateway-level**:
+- HttpRoutes attached only to tenant Gateway
+- No cross-tenant routing possible (separate Envoy pods)
+
+### Data Deletion (GDPR Compliance)
+
+When tenant deleted:
+- API keys soft deleted with 90-day retention (configurable)
+- Hard delete after retention period
+- Audit logs retained per compliance requirements
+- User models and data **not** deleted (user's responsibility)
 
 ## Risks
 
-Optional section. Talk about any risks here.
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Migration breaks existing API keys | Low | High | Extensive testing, canary rollout, rollback plan |
+| Resource exhaustion (100 tenants) | Medium | Medium | ResourceQuotas per tenant, cluster capacity planning |
+| OIDC secret leakage | Low | High | Secret scoped to `ai-tenants` namespace, RBAC controls |
+| Database performance degradation | Low | Medium | Index on `tenant_id`, connection pooling, query optimization |
+| Tenant deletion leaves orphaned resources | Medium | Low | Automated reconciliation, status tracking, admin alerts |
 
 ## Stakeholder Impacts
 
-| Group                         | Key Contacts     | Date       | Impacted? |
-| ----------------------------- | ---------------- | ---------- | --------- |
-| group or team name            | key contact name | date       | ? |
+| Group | Key Contacts | Date | Impacted? | Notes |
+|-------|--------------|------|-----------|-------|
+| Model Serving team | TBD | TBD | Yes | Primary implementers of multi-tenancy |
+| Dashboard team | TBD | TBD | Yes | UI must support tenant selection and switching |
+| Operator team | TBD | TBD | Yes | maas-controller must reconcile AITenant CRs |
+| KServe/Inference | TBD | TBD | Yes | LlmInferenceService must reference AITenant |
+| Kuadrant team | TBD | TBD | Maybe | AuthPolicy and RateLimitPolicy per tenant |
+| Platform/OpenShift | TBD | TBD | Maybe | Gateway API, Istio configuration |
 
+**Detailed impacts**:
+
+- **Model Serving**: Core implementation team. Must implement AITenant controller, maas-api multi-tenancy, database schema changes.
+- **Dashboard**: Must add tenant selector, scope all views to selected tenant, handle tenant creation/deletion UI.
+- **Operator**: Must extend maas-controller to reconcile AITenant CRs, manage tenant namespaces.
+- **KServe**: LlmInferenceService CRD must add `gatewayRef` field to reference tenant Gateway.
+- **Kuadrant**: Verify AuthPolicy and RateLimitPolicy work correctly when attached to multiple tenant Gateways.
 
 ## References
 
-* optional bulleted list
+- [Kubernetes Gateway API](https://gateway-api.sigs.k8s.io/)
+- [Kuadrant Multi-tenancy](https://docs.kuadrant.io/)
+- [Istio Multi-tenancy Best Practices](https://istio.io/latest/docs/ops/deployment/deployment-models/#multiple-tenants)
+- [OpenShift Multi-tenancy](https://docs.openshift.com/container-platform/latest/authentication/using-rbac.html)
 
 ## Reviews
 
-| Reviewed by                   | Date       | Notes |
-| ----------------------------- | ---------  | ------|
-| name                          | date       | ? |
+| Reviewed by | Date | Notes |
+|-------------|------|-------|
+| TBD | TBD | TBD |
