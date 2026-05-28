@@ -392,7 +392,7 @@ If any step fails during tenant provisioning:
 1. Update AITenant CR status to `Failed` with detailed reason
 2. Do **not** auto-cleanup created resources (allow admin inspection)
 3. Admin options:
-   - Fix the issue (e.g., create missing secret) and trigger reconciliation
+   - Fix the issue and trigger reconciliation
    - Delete AITenant CR to trigger full cleanup
 
 **Example Failure Scenarios**:
@@ -447,7 +447,7 @@ Each span tagged with:
 
 ### Logs
 
-Structured logs include tenant context:
+Structured logs include tenant context (example):
 
 ```json
 {
@@ -462,7 +462,7 @@ Structured logs include tenant context:
 
 ### Audit Logging
 
-All tenant admin operations logged:
+All tenant admin operations logged (example):
 
 ```json
 {
@@ -504,7 +504,6 @@ When tenant deleted:
 |------|------------|--------|------------|
 | Migration breaks existing API keys | Low | High | Extensive testing, canary rollout, rollback plan |
 | Resource exhaustion (100 tenants) | Medium | Medium | ResourceQuotas per tenant, cluster capacity planning |
-| OIDC secret leakage | Low | High | Secret scoped to `ai-tenants` namespace, RBAC controls |
 | Database performance degradation | Low | Medium | Index on `tenant_id`, connection pooling, query optimization |
 | Tenant deletion leaves orphaned resources | Medium | Low | Automated reconciliation, status tracking, admin alerts |
 
