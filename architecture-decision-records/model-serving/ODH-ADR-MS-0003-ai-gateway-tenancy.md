@@ -177,6 +177,26 @@ If implemented in future:
 - Resume would restore to previous replica counts
 - Database records remain active during suspension
 
+##### Default tenant
+
+During a fresh install the following will happen:
+
+1. The controller creates the `nodel-as-a-service` namespace as today
+2. The controller creates the AITenant CR in the `ai-tenants` namespace
+```yaml
+apiVersion: maas.opendatahub.io/v1alpha1
+kind: AITenant
+metadata:
+  name: models-as-a-service
+  namespace: ai-tenants
+spec:
+  domain: <existing-domain>  # Preserve existing domain
+```
+3. The controller creates the MaasTenantConfig CR in the `nodel-as-a-service` namespace
+4. The controller creates the corresponding Gateway object in the `openshift-ingress` namespace
+
+See the [Upgrade process](#upgrade-process) for more information about the upgrade.
+
 #### Model Deployment (Model Deployer Role)
 
 **Namespace Flexibility**: Users can deploy models in any namespace. They may use:
@@ -295,7 +315,7 @@ ALTER TABLE api_keys ADD COLUMN tenant_id VARCHAR(253);
 CREATE INDEX idx_api_keys_tenant ON api_keys(tenant_id);
 
 -- Backfill default tenant for existing keys (migration only)
-UPDATE api_keys SET tenant_id = 'default' WHERE tenant_id IS NULL;
+UPDATE api_keys SET tenant_id = 'models-as-a-service' WHERE tenant_id IS NULL;
 
 -- Make tenant_id required
 ALTER TABLE api_keys ALTER COLUMN tenant_id SET NOT NULL;
@@ -326,43 +346,30 @@ SELECT * FROM api_keys WHERE key_hash = ? AND tenant_id = ?;
 
 #### Upgrade Process
 
-**Phase 1: Database Schema Migration** (during operator upgrade)
+**Phase 1: Create the Default Tenant** (automatic on first reconciliation)
 
-1. Add `tenant_id` column to `api_keys` and `subscriptions` tables
+The current models-as-a-service namespace automatically becomes the default tenant. Maas-controller will automatically create the models-as-a-service AITenant CR to make this the actual default tenant. The existent Gateway becomes the gateway for this default tenant. 
+
+1. The controller detects the existent `models-as-a-service` namespace and adds the necessary tenant label.
+2. The controller creates the AITenant CR with `models-as-a-service` name
+3. If there is an existing Tenant CR the controller copies the oidc properties in the AITenant CR. 
+4. The Tenant CR is replaced with MaasTenantConfig CR.
+5. The existent AuthPolicies and MaasSubscriptions will remain unchanged
+4. All LllInferenceServices, MaasModelRef, ExternalModels, ExternalProviders will remain unchanged. 
+
+**Phase 2: Database Schema Migration** (during operator upgrade)
+
+1. Add `tenant_id` column to `api_keys` tables
 2. Create indexes
-3. Backfill `tenant_id='default'` for all existing records
+3. Backfill `tenant_id='models-as-a-service'` for all existing records
 4. Apply NOT NULL constraint
 
-**Phase 2: Create Default Tenant** (automatic on first reconciliation)
-
-1. Operator detects existing `model-as-a-service` namespace
-2. Creates AITenant CR named `default` in `ai-tenants` namespace:
-
-```yaml
-apiVersion: maas.opendatahub.io/v1alpha1
-kind: AITenant
-metadata:
-  name: default
-  namespace: ai-tenants
-spec:
-  oidc:
-    issuerUrl: <existing-oidc-issuer>
-    clientId: <clien-id>
-
-  domain: <existing-domain>  # Preserve existing domain
-```
-
-3. Controller creates `ai-tenant-default` namespace
-4. Controller reconciles:
-   - Gateway CR remains in `model-as-a-service` for backward compatibility
-   - Creates HttpRoute for maas-api pointing to default Gateway
-   - Deploys maas-api instance in `ai-tenant-default` namespace
 
 **Phase 3: Preserve Existing Routes**
 
 - Existing LlmInferenceService CRs remain unchanged
 - Existing HttpRoutes remain attached to default Gateway
-- Existing API keys work with `tenant_id='default'`
+- Existing API keys work with `tenant_id='models-as-a-service'`
 
 **Phase 4: Validation**
 
@@ -378,8 +385,7 @@ If upgrade fails during Phase 1 or 2:
 
 1. Drop `tenant_id` column from database (if backfill incomplete)
 2. Delete `ai-tenants` namespace (if created)
-3. Delete `ai-tenant-default` namespace (if created)
-4. Restore original Gateway configuration
+3. Restore original Gateway configuration
 
 **Note**: Rollback not supported after users create additional tenants (data loss risk).
 
