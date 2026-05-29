@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | May 24, 2026 |
 | Scope          | OpenShift AI — MLflow, GenAI Studio, Dashboard |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | [Edson Tirelli](@etirelli) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
@@ -273,4 +273,4 @@ Do not implement cross-namespace sharing. Instead, provide tooling to copy promp
 | ----------------------------- | ---------  | ------|
 | Edson Tirelli                 | May 24th, 2026 |       |
 | Matt Prahl                    | May 26th, 2026 |       |
-|                               |            |       |
+| Eder Ignatowicz               | May 27th, 2026 |       |
