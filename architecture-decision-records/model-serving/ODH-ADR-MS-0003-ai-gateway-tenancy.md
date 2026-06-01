@@ -3,7 +3,7 @@
 |                |            |
 | -------------- | ---------- |
 | Date           | 2026-05-27 |
-| Scope          | AI Gateway, Model-as-a-Service (MaaS), Multi-tenancy |
+| Scope          | AI Gateway, Models-as-a-Service (MaaS), Multi-tenancy |
 | Status         | Proposed |
 | Authors        | Marius Danciu, Lindani Phiri, Jamie Land |
 | Supersedes     | N/A |
@@ -156,7 +156,7 @@ spec:
 1. Admin deletes the AITenant CR from the `ai-tenants` namespace
 2. maas-controller reconciles deletion and performs the following:
    - Deletes the Gateway CR (triggers Envoy pod deletion)
-   - Deletes the tenant admin namespace (cascades to MaasTenantConfig, HttpRoute, maas-api deployment)
+   - Deletes the tenant admin namespace (cascades to MaasTenantConfig, maas-api deployment)
    - Updates database records: marks tenant as deleted (soft delete)
    - User namespace CRs (LlmInferenceService, HttpRoute) are **not** deleted
    - KServe controller updates HttpRoute status to `NotReady` or `Conflicted`
@@ -253,16 +253,7 @@ The maas-api service exposes:
 
 **Three Options Evaluated**:
 
-##### Option 1: Shared maas-api with Multi-Gateway HttpRoute
-
-- **Approach**: Single maas-api service with one HttpRoute attached to all tenant Gateways
-- **PROS**: Lower cluster footprint, single deployment
-- **CONS**: 
-  - Complex reconciliation (update HttpRoute on every tenant create/delete)
-  - Must extract tenant from hostname at runtime (proxy header or service parsing)
-  - Complex authentication (each tenant may have different OIDC provider)
-
-##### Option 2: Dedicated maas-api per Tenant (RECOMMENDED)
+##### Option 1: Dedicated maas-api per Tenant (RECOMMENDED)
 
 - **Approach**: Each tenant gets its own maas-api service, deployment, and HttpRoute
 - **PROS**:
@@ -273,6 +264,16 @@ The maas-api service exposes:
   - Easier future physical database segregation
 - **CONS**: Higher memory footprint (~128MB per tenant)
 
+##### Option 2: Shared maas-api with Multi-Gateway HttpRoute
+
+- **Approach**: Single maas-api service with one HttpRoute attached to all tenant Gateways
+- **PROS**: Lower cluster footprint, single deployment
+- **CONS**: 
+  - Complex reconciliation (update HttpRoute on every tenant create/delete)
+  - Must extract tenant from hostname at runtime (proxy header or service parsing)
+  - Complex authentication (each tenant may have different OIDC provider)
+
+
 ##### Option 3: Single Gateway for maas-api
 
 - **Approach**: One maas-api with its own Gateway (not AI Gateway): `https://maas.acme.com/api/...`
@@ -282,7 +283,7 @@ The maas-api service exposes:
   - API key creation requires additional header to specify tenant (contradicts hostname-based routing)
   - Customers may distrust APIs operating outside tenant boundaries
 
-**Decision**: **Option 2** (Dedicated maas-api per Tenant)
+**Decision**: **Option 1** (Dedicated maas-api per Tenant)
 
 **Rationale**:
 - Aligns with one-gateway-per-tenant architecture (Istio already creates separate Envoy pods per Gateway)
@@ -340,7 +341,7 @@ SELECT * FROM api_keys WHERE key_hash = ? AND tenant_id = ?;
 
 #### Pre-Upgrade State
 
-- Single `model-as-a-service` namespace with one Gateway
+- Single `models-as-a-service` namespace with one Gateway
 - API keys in database without tenant association
 - Models deployed with HttpRoutes attached to global Gateway
 
@@ -496,14 +497,6 @@ All tenant admin operations logged (example):
 - HttpRoutes attached only to tenant Gateway
 - No cross-tenant routing possible (separate Envoy pods)
 
-### Data Deletion (GDPR Compliance)
-
-When tenant deleted:
-- API keys soft deleted with 90-day retention (configurable)
-- Hard delete after retention period
-- Audit logs retained per compliance requirements
-- User models and data **not** deleted (user's responsibility)
-
 ## Risks
 
 | Risk | Likelihood | Impact | Mitigation |
@@ -529,7 +522,6 @@ When tenant deleted:
 - **Model Serving**: Core implementation team. Must implement AITenant controller, maas-api multi-tenancy, database schema changes.
 - **Dashboard**: Must add tenant selector, scope all views to selected tenant, handle tenant creation/deletion UI.
 - **Operator**: Must extend maas-controller to reconcile AITenant CRs, manage tenant namespaces.
-- **KServe**: LlmInferenceService CRD must add `gatewayRef` field to reference tenant Gateway.
 - **Kuadrant**: Verify AuthPolicy and RateLimitPolicy work correctly when attached to multiple tenant Gateways.
 
 ## References
