@@ -175,7 +175,6 @@ The separate `v1_responses_body.json` artifact is **eliminated**. The Responses 
   - **`provider_id`** (string): Llama Stack provider identifier (e.g., "milvus-provider") registered in ConfigMap `providers.vector_io[].provider_id`
   - **`provider_type`** (string): Provider implementation type matching ConfigMap `provider_type` (e.g., "inline::milvus", "remote::milvus")
   - **`vector_store_id`** (string): Unique Llama Stack vector store identifier (e.g., "vs_coll_pattern_01") that matches `registered_resources.vector_stores[].vector_store_id` in ConfigMap and is referenced in `responses_template.tools[].vector_store_ids`
-  - **`vector_store_name`** (string): Human-readable name matching ConfigMap `vector_store_name`
 
 ### Target payloads (examples)
 
@@ -193,8 +192,7 @@ Illustrative shape for **`pattern.json`** with **Responses API template** and **
       "vector_store_binding":{
          "provider_id":"milvus-provider",
          "provider_type":"remote::milvus",
-         "vector_store_id":"vs_coll_pattern_01",
-         "vector_store_name":"AutoRAG pattern_01 vector store"
+         "vector_store_id":"vs_coll_pattern_01"
       },
       "chunking":{
          "method":"recursive",
