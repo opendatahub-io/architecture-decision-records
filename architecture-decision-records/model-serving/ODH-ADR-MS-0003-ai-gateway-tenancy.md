@@ -155,12 +155,10 @@ spec:
 
 1. Admin deletes the AITenant CR from the `ai-tenants` namespace
 2. maas-controller reconciles deletion and performs the following:
-   - Deletes the Gateway CR (triggers Envoy pod deletion)
+   - Deletes the Gateway CR (triggers Envoy pod deletion). Consequently Istio updates HttpRoute status to `NotReady` or `Conflicted` when the Gatway is deleted.
    - Deletes the tenant admin namespace (cascades to MaasTenantConfig, maas-api deployment)
-   - Updates database records: marks tenant as deleted (soft delete)
-   - User namespace CRs (LlmInferenceService, HttpRoute) are **not** deleted
-   - KServe controller updates HttpRoute status to `NotReady` or `Conflicted`
-   - maas-controller updates MaasModelRef status to `GatewayNotFound`
+   - Updates database records: marks tenant as deleted (soft delete). 
+   - User namespace CRs (LlmInferenceService, HttpRoute, MaasModelRef) are **not** deleted
 
 **Resource Cleanup**:
 - Tenant namespace: deleted automatically
