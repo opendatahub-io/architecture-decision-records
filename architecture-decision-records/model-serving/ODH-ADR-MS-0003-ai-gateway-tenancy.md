@@ -46,7 +46,7 @@ MaaS currently operates as a single-tenant system where all subscriptions and au
 
 The multi-tenant architecture follows a **one-gateway-per-tenant** pattern. Each tenant gets:
 
-1. An AITenant CR in the `ai-tenants` namespace (cluster-level registry)
+1. An AITenant CR in the `ai-tenants` namespace (cluster-level registry). For now this CR is managed by the mass-controller but in the future this can be managed by a higher level platform controller. 
 2. A dedicated tenant admin namespace. This namespace is automatically labeled as `ai-gateway.opendatahub.io/tenant`.
 3. A dedicated Gateway CR (gateway.networking.k8s.io/v1) with separate Envoy pods
 4. A dedicated maas-api service instance with its own HttpRoute
@@ -91,9 +91,6 @@ spec:
     issuerUrl: https://keycloak.example.com/realms/redteam
     clientId: ai-tenant-redteam
   
-  # Domain for this tenant (used for hostname-based routing)
-  domain: redteam.ai-gateway.apps.example.com
-  
   # Optional TLS configuration
   tls:
     certificateRef:
@@ -135,13 +132,10 @@ spec:
   # API key defaults
   apiKeyDefaults:
     expirationDays: 90
-    autoRotate: false
   
   # Observability configuration
   observability:
     otelCollectorEndpoint: http://otel-collector:4317
-    metricsPrefix: "maas.redteam"
-    tracesSampleRate: 0.1
   
   # Default rate limits (can be overridden per subscription)
   rateLimits:
@@ -188,9 +182,9 @@ metadata:
   name: models-as-a-service
   namespace: ai-tenants
 spec:
-  domain: <existing-domain>  # Preserve existing domain
+
 ```
-3. The controller creates the MaasTenantConfig CR in the `nodel-as-a-service` namespace
+3. The controller creates the MaasTenantConfig CR in the `nodels-as-a-service` namespace
 4. The controller creates the corresponding Gateway object in the `openshift-ingress` namespace
 
 See the [Upgrade process](#upgrade-process) for more information about the upgrade.
@@ -227,7 +221,7 @@ See the [Upgrade process](#upgrade-process) for more information about the upgra
 
 2. maas-controller reconciles and creates:
    - Kuadrant AuthPolicy CR
-   - Kuadrant RateLimitPolicy CR (per-user rate limits)
+   - Kuadrant TokenRateLimitPolicy CR (per-user rate limits)
 
 **Now accessible**: Model can be used for inference and is discoverable via `/v1/models` endpoint.
 
