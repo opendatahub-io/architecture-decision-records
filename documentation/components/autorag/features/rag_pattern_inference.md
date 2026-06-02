@@ -145,7 +145,7 @@ The pipeline produces artifacts under each **`<pattern_subdir>/`** (one director
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation, vector store), aggregate `scores`, `final_score`, timing; Responses API request template (`input`, `tools`, `instructions`, `metadata`); `vector store binding`. Single source of truth for registration, deployment, and code generation |
+| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation—including **detected language**—vector store), aggregate `scores`, `final_score`, timing; Responses API request template (`input`, `tools`, `instructions`, `metadata`); `vector store binding`. Single source of truth for registration, deployment, and code generation |
 | `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
 | `evaluation_results.json` | Evaluation payload (per-question scores, traces, metadata) --- the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
@@ -176,6 +176,10 @@ The separate `v1_responses_body.json` artifact is **eliminated**. The Responses 
   - **`provider_type`** (string): Provider implementation type matching ConfigMap `provider_type` (e.g., "inline::milvus", "remote::milvus")
   - **`vector_store_id`** (string): Unique Llama Stack vector store identifier (e.g., "vs_coll_pattern_01") that matches `registered_resources.vector_stores[].vector_store_id` in ConfigMap and is referenced in `responses_template.tools[].vector_store_ids`
   - **`vector_store_name`** (string): Human-readable name matching ConfigMap `vector_store_name`
+
+- **`settings.generation.detected_language`** (object): Language detected from the benchmark / evaluation corpus during optimization (e.g. from test-data questions). Downstream UIs and deployment tooling can use this to label patterns, pre-fill locale settings, or align user-facing copy with the language the optimizer assumed.
+  - **`code`** (string): ISO 639-1 language code (e.g. `"ja"`, `"en"`)
+  - **`name`** (string): Human-readable language name (e.g. `"Japanese"`, `"English"`)
 
 ### Target payloads (examples)
 
@@ -220,7 +224,11 @@ Illustrative shape for **`pattern.json`** with **Responses API template** and **
          "model_id":"gpt-4.1-mini",
          "context_template_text":"{document}",
          "user_message_text":"\n\nContext:\n{reference_documents}:\n\nQuestion: {question}. ...",
-         "system_message_text":"Please answer the question ..."
+         "system_message_text":"Please answer the question ...",
+         "detected_language":{
+            "code":"ja",
+            "name":"Japanese"
+         }
       },
       "responses_template":{
          "model":"gpt-4.1-mini",
