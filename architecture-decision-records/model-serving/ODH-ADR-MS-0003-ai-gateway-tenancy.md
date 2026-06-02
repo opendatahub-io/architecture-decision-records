@@ -68,9 +68,10 @@ Tenant identification at the data plane level uses hostname: `{tenant-name}.{dom
 1. RHOAI admin creates an AITenant CR in the `ai-tenants` namespace
 2. maas-controller reconciles the CR and performs the following:
    - Creates tenant admin namespace: `ai-tenant-{tenant-name}`
-   - Creates Gateway CR in the tenant namespace
+   - Creates Gateway CR in openshift-ingress namespace. If the gateway.name field is not specified the gateway will have the same
+      name as the name of the AITenant CR. The gateway CR will also have the label `ai-gateway.opendatahub.io/tenant: {name}`
    - Creates default MaasTenantConfig CR in the tenant namespace
-   - Deploys maas-api service instance for this tenant
+   - Deploys maas-api service instance for this tenant. The maas-api service instance is assumed to be created in same `redhat-ai-applications` namespace as today. This however has the implication that in this namespace there can only be a single `maas-db-confi`g secret so all tenants use the same underlying database. In the future, in order to allow a separate database per tenant, maas-api service will likely need to exist in a separate namespace that is managed by the tenant and this can safely use a separate maas-db-config.
    - Creates HttpRoute for maas-api attached to the tenant Gateway
    - Updates AITenant status with provisioning results
 
@@ -90,6 +91,9 @@ spec:
   oidc:
     issuerUrl: https://keycloak.example.com/realms/redteam
     clientId: ai-tenant-redteam
+  
+  gateway: // This is optional and if missing the gatway will have the same name as the AITenant
+    name: red-team 
   
   # Optional TLS configuration
   tls:
@@ -141,6 +145,8 @@ spec:
   rateLimits:
     defaultRequestsPerMinute: 60
     burstSize: 10
+
+
 ```
 
 ##### Tenant Deletion
@@ -149,10 +155,12 @@ spec:
 
 1. Admin deletes the AITenant CR from the `ai-tenants` namespace
 2. maas-controller reconciles deletion and performs the following:
-   - Deletes the Gateway CR (triggers Envoy pod deletion). Consequently Istio updates HttpRoute status to `NotReady` or `Conflicted` when the Gatway is deleted.
-   - Deletes the tenant admin namespace (cascades to MaasTenantConfig, maas-api deployment)
-   - Updates database records: marks tenant as deleted (soft delete). 
-   - User namespace CRs (LlmInferenceService, HttpRoute, MaasModelRef) are **not** deleted
+   - Deletes the Gateway CR (triggers Envoy pod deletion). Consequently Istio updates HttpRoute status to `NotReady` or `Conflicted` when the Gateway is deleted.
+   - Triggers a Kube clean-up job that:
+      - Makes an internal REST API request to the maas-api to revoke all the api-keys for this tenant
+   - Delete the maas-api service and deployment
+   - Deletes the Kuadrant AuthPolicy CR (openshift-ingress namespace) and TokenRateLimitPolicy CRs (user namespace) pertaining to this tenant.
+   - Deletes the tenant namespace (cascades to MaasTenantConfig, MaasAuthPolicy, MaasSubscription)
 
 **Resource Cleanup**:
 - Tenant namespace: deleted automatically
@@ -168,6 +176,11 @@ If implemented in future:
 - Suspend would scale Gateway and maas-api to zero replicas
 - Resume would restore to previous replica counts
 - Database records remain active during suspension
+
+##### MaaS health report back in ODH
+
+- If at least one tenant is reported as nont healthy (incorrect configs etc) the overall status is: "degraded"
+- If all the tenants are reported as not healthy the overall status is: "blocked"
 
 ##### Default tenant
 
@@ -186,6 +199,10 @@ spec:
 ```
 3. The controller creates the MaasTenantConfig CR in the `nodels-as-a-service` namespace
 4. The controller creates the corresponding Gateway object in the `openshift-ingress` namespace
+
+Even though that we start up with a default tenant, the client can safely delete this tenant. It is possible at some point in time to 
+have zero tenants which means that only maas-controller works. However new tenants can be create at any point in time.
+
 
 See the [Upgrade process](#upgrade-process) for more information about the upgrade.
 
@@ -209,7 +226,8 @@ See the [Upgrade process](#upgrade-process) for more information about the upgra
 
 4. User creates MaasModelRef CR pointing to the LlmInferenceService
 
-**At this point**: Model is deployed and attached to the gateway but **not accessible** (no auth/rate-limit policies yet).
+  **At this point**: Model is deployed and attached to the gateway but **not accessible** (no auth/rate-limit policies yet).
+  The MaasModelRef status object will contain the tenant information that is surfaced from the Gateway "attached" to the LlmInferenceService CR and poatentially the gateway that ExternalProvider CR.
 
 #### Making Models Accessible (Tenant Admin Role)
 
