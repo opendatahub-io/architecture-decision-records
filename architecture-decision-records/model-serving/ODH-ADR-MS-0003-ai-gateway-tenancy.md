@@ -274,7 +274,7 @@ The maas-api service exposes:
   - Easier future physical database segregation
 - **CONS**: Higher memory footprint (~128MB per tenant)
 
-maas-api kube services will be created in a separate namespace named `ai-gateway-infra`. Therefore the maas-db-config secret will also need to be created in this namespace as opposed of `opendatahub` namespace.
+maas-api kube services will be created in a separate namespace named `redhat-ai-gateway-infra`. Therefore the maas-db-config secret will also need to be created in this namespace as opposed of `opendatahub` namespace.
 
 ##### Option 2: Shared maas-api with Multi-Gateway HttpRoute
 
@@ -373,7 +373,7 @@ The current models-as-a-service namespace automatically becomes the default tena
 3. If there is an existing Tenant CR the controller copies the oidc properties in the AITenant CR. 
 4. The Tenant CR is replaced by MaasTenantConfig CR.
 5. The existent AuthPolicies and MaasSubscriptions will remain unchanged
-6. The maas-api service is terminated from `opendatahub` namespace and recreated in the `ai-gateway-infra` namespace along with the `maas-db-config` secret.
+6. The maas-api service is terminated from `opendatahub` namespace and recreated in the `redhat-ai-gateway-infra` namespace along with the `maas-db-config` secret.
 
 All LllInferenceServices, MaasModelRef, ExternalModels, ExternalProviders will remain unchanged. 
 
