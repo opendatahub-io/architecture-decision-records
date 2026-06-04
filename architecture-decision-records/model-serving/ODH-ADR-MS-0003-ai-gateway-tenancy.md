@@ -48,7 +48,7 @@ The multi-tenant architecture follows a **one-gateway-per-tenant** pattern. Each
 
 1. An AITenant CR in the `ai-tenants` namespace (cluster-level registry). For now this CR is managed by the mass-controller but in the future this can be managed by a higher level platform controller. 
 2. A dedicated tenant admin namespace. This namespace is automatically labeled as `ai-gateway.opendatahub.io/tenant`.
-3. A dedicated Gateway CR (gateway.networking.k8s.io/v1) with separate Envoy pods
+3. A dedicated Gateway CR (gateway.networking.k8s.io/v1) with separate Envoy pods. Note that the Gateway is assumed to be created by a network admin typically. At this point in time we will not automatically create or delete Gateway CRs. This means that the nework admin and the rhoai admin will have to coordinate offline. A tenant cannot be created until a Gateway is available.
 4. A dedicated maas-api service instance with its own HttpRoute
 5. A MaasTenantConfig CR for tenant-specific configuration
 6. OIDC configuration scoped to the tenant
@@ -68,8 +68,7 @@ Tenant identification at the data plane level uses hostname: `{tenant-name}.{dom
 1. RHOAI admin creates an AITenant CR in the `ai-tenants` namespace
 2. maas-controller reconciles the CR and performs the following:
    - Creates tenant admin namespace: `ai-tenant-{tenant-name}`
-   - Creates Gateway CR in openshift-ingress namespace. If the gateway.name field is not specified the gateway will have the same
-      name as the name of the AITenant CR. The gateway CR will also have the label `ai-gateway.opendatahub.io/tenant: {name}`
+   - If the spec.gateway.name field is not specified, the gateway will have the same name as the name of the AITenant CR. If this does not exist the AITenant status will reflect this error condition.
    - Creates default MaasTenantConfig CR in the tenant namespace
    - Deploys maas-api service instance for this tenant. The maas-api service instance is assumed to be created in same `redhat-ai-applications` namespace as today. This however has the implication that in this namespace there can only be a single `maas-db-confi`g secret so all tenants use the same underlying database. In the future, in order to allow a separate database per tenant, maas-api service will likely need to exist in a separate namespace that is managed by the tenant and this can safely use a separate maas-db-config.
    - Creates HttpRoute for maas-api attached to the tenant Gateway
@@ -116,10 +115,10 @@ status:
       lastTransitionTime: "2026-05-27T10:00:00Z"
   
   # References to created resources
-  tenantAdminNamespace: ai-tenant-redteam
-  gatewayName: redteam-gateway
-  maasApiEndpoint: https://redteam.ai-gateway.apps.example.com/api
-  
+  tenantAdminNamespace: red-team 
+  externalHost: red-team.openshiftapps.com                                      // extracted from the Gateway CR
+  internalHost: red-team-openshift-default.openshift-ingress.svc.cluster.local  // extracted from the Gateway CR
+
   # Resource creation timestamps
   provisionedAt: "2026-05-27T10:00:00Z"
 ```
@@ -155,7 +154,7 @@ spec:
 
 1. Admin deletes the AITenant CR from the `ai-tenants` namespace
 2. maas-controller reconciles deletion and performs the following:
-   - Deletes the Gateway CR (triggers Envoy pod deletion). Consequently Istio updates HttpRoute status to `NotReady` or `Conflicted` when the Gateway is deleted.
+   - The  Gateway CR itself remains untouched by tenant deletion process.
    - Triggers a Kube clean-up job that:
       - Makes an internal REST API request to the maas-api to revoke all the api-keys for this tenant
    - Delete the maas-api service and deployment
@@ -198,7 +197,6 @@ spec:
 
 ```
 3. The controller creates the MaasTenantConfig CR in the `nodels-as-a-service` namespace
-4. The controller creates the corresponding Gateway object in the `openshift-ingress` namespace
 
 Even though that we start up with a default tenant, the client can safely delete this tenant. It is possible at some point in time to 
 have zero tenants which means that only maas-controller works. However new tenants can be create at any point in time.
@@ -425,7 +423,7 @@ If any step fails during tenant provisioning:
 
 | Failure | Status | Reason | Resolution |
 |---------|--------|--------|------------|
-| Gateway CR creation fails | `Failed` | `GatewayCreationFailed` | Check Gateway API CRDs, RBAC permissions |
+| Gateway CR validation fails | `Failed` | `GatewayCheckFailed` | Check Gateway API CRDs, RBAC permissions |
 | maas-api deployment fails | `Degraded` | `ApiServiceDegraded` | Check image pull policy, resource quotas |
 
 #### Tenant Deletion Failure
