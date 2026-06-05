@@ -336,9 +336,6 @@ UPDATE api_keys SET tenant_id = 'models-as-a-service' WHERE tenant_id IS NULL;
 -- Make tenant_id required
 ALTER TABLE api_keys ALTER COLUMN tenant_id SET NOT NULL;
 
--- Add unique constraint: key hash must be unique within tenant
--- (allows same key pattern across tenants if needed, though not recommended)
-ALTER TABLE api_keys ADD CONSTRAINT uk_api_keys_hash_tenant UNIQUE (key_hash, tenant_id);
 ```
 **Query Changes**:
 
