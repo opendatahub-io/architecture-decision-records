@@ -27,7 +27,19 @@ To ensure clarity throughout this document, the following terms are defined:
 
 ## Why
 
-The ODH Operator functions as a **meta-operator** that manages the complete lifecycle (install, upgrade, uninstall) of module controllers without relying on Operator Lifecycle Manager (OLM).
+The ODH Operator originally managed all platform modules directly - manifests, reconciliation logic, and domain-specific behavior lived in a single codebase. As the platform grew in both the number of modules and the number of contributing teams, three pressures compounded:
+
+1. **Team velocity does not scale in a monolith.** Adding developers does not add velocity; it adds coordination overhead. Multiple teams sharing one operator codebase means merge conflicts, shared test infrastructure where one failure blocks everyone, and coordinated releases that move at the speed of the slowest module.
+
+2. **Domain expertise is in the wrong place.** Each module has its own operational domain (serving infrastructure, pipeline orchestration, model registries, etc.), yet all that knowledge must be encoded inside the platform operator. This includes integration with shared platform concerns (hardware profiles, Kueue, networking, storage), upgrade logic, and environment-specific behavior - topics that require deep module-specific knowledge. Module teams depend on the platform team for every change, instead of owning their module end-to-end.
+
+3. **Failures and lifecycles are coupled.** A bug in one module's reconciliation logic can block releases for all modules. A resource leak or crash in one controller affects every module on the cluster. There is no isolation boundary.
+
+4. **Permissions are too broad.** Because the ODH Operator manages every module's resources directly, it requires near cluster-admin privileges. The principle of least privilege demands that each component only holds the permissions it actually needs. Separating module controllers allows each to request only the RBAC required for its specific domain, while the ODH Operator's permissions are reduced to core Kubernetes types.
+
+These pressures compound - fixing one does not help if the others remain. The architecture addresses all three by separating the ODH Operator into a **meta-operator** that handles only lifecycle orchestration (install, upgrade, uninstall) and **independent module controllers** that are the domain experts for their specific modules. Each module team owns their own operator, develops and releases independently, and failures are isolated. The ODH Operator manages module controller lifecycles directly, without relying on OLM for installation or upgrades.
+
+By narrowing the ODH Operator's scope to platform foundations (controller lifecycle, platform configuration, status aggregation), it becomes a stable and focused layer that everything else builds on. Module teams build on this foundation for their specific domains, but the same pattern also applies to platform-wide concerns: new platform logic (e.g., hardware provisioning, quota management, observability) can be implemented as dedicated modules rather than growing the core operator. Each module, whether domain-specific or platform-wide, follows standard Kubernetes patterns for composition and discovery, reducing coupling and behaving like any other Kubernetes extension.
 
 **Module Controllers are Independent Operators:**
 - Each module controller is designed as a standalone operator that could run independently
@@ -37,15 +49,17 @@ The ODH Operator functions as a **meta-operator** that manages the complete life
 **ODH Operator Manages Module Controller Lifecycles:**
 - Handles installation, upgrades, and uninstallation of module controllers
 - Orchestrates module controllers but does not manage the deep internal resources of modules
-- No OLM dependency - the ODH Operator handles all lifecycle management directly
+- Renders platform configuration (auth, TLS, observability, networking) into each module's ConfigMap
 
-![Module Architecture](assets/ODH-ADR-Operator-0012/module.png)
+**Two Operational Modes:**
 
-This architectural separation provides:
-- Scalability through independent reconciliation loops per module
-- Reduced coupling between the platform and individual modules
-- Better isolation of failures and easier troubleshooting
-- Independent development and evolution of modules
+The ODH Operator is always present and responsible for deploying module controllers and injecting platform configuration via ConfigMap. The ConfigMap injection ensures the platform behaves consistently regardless of the operational mode and regardless of who owns the Module CR spec. The `DataScienceCluster` (DSC) CR is an optional high-level entry point that controls who creates Module CRs:
+
+- **DSC mode** (e.g., RHAI): The ODH Operator watches the DSC, creates/updates Module CRs based on `spec.components`, and aggregates module status back to the DSC. The ODH Operator owns the Module CR spec and will revert manual edits to maintain consistency with the DSC.
+  ![DSC Mode](assets/ODH-ADR-Operator-0012/dsc.jpg)
+
+- **Standalone module mode** (e.g., RHAII): Users or GitOps pipelines create and own Module CRs directly. The ODH Operator still deploys module controllers and projects platform configuration via ConfigMap, but does not manage Module CR lifecycle.
+  ![Standalone Mode](assets/ODH-ADR-Operator-0012/non-dsc.jpg)
 
 ## Goals
 
@@ -61,100 +75,47 @@ The ODH Operator acts as a meta-operator that manages module controllers through
 **ODH Operator Responsibilities:**
 - Manages the lifecycle (install, upgrade, uninstall) of module controllers
 - Deploys module controller manifests (Deployment, RBAC, CRDs)
-- Creates and updates module CRs based on DataScienceCluster configuration
-- Aggregates status from module CRs back to the DataScienceCluster
+- Renders platform configuration into each module's ConfigMap
 - Prunes module resources when modules are disabled or removed
+  - **DSC mode:** additionally creates and updates module CRs based on DataScienceCluster configuration, and aggregates status from module CRs back to the DataScienceCluster
+  - **Standalone mode:** does not manage Module CR lifecycle; users or GitOps own Module CRs directly
 
 **Module Controller Responsibilities:**
 - Reconciles the module-specific CR
 - Manages the complete lifecycle of the module's application resources
-- Detects cluster capabilities and adjusts behavior accordingly
-- Reports health and status information back to the module CR
-- Extends upstream components with platform-specific functionality when needed
+- Configuration merging: reads platform configuration from its ConfigMap and merges it with the user's spec to produce the effective configuration
+- Detects cluster capabilities (FIPS mode, platform variant, available CRDs) and adjusts behavior accordingly
+- Discovers dependencies dynamically and handles missing dependencies gracefully (degrade vs. fail)
+- Manages internal TLS certificates (e.g., for webhooks, mTLS) using cert-manager
+- Reports health and status information back to the module CR, surfacing module context (auth mode, endpoints, TLS settings) in status for platform discoverability
 
 ### API Contracts (Summary)
 
-**Module Controller Requirements:**
+**Module CR Requirements:**
 - **Scope:** Cluster-scoped singleton CR (enforced via CEL validation)
-- **API Group:** `components.platform.opendatahub.io` or `services.platform.opendatahub.io`
-- **Version:** Must match support level:
-  - Developer preview: `vXalphaY` (e.g., `v1alpha1`)
-  - Technology preview: `vXbetaY` (e.g., `v1beta1`)
-  - General availability: `vX` (e.g., `v1`)
-- **Required Status Fields:**
-  - `observedGeneration` (int64)
-  - `conditions` ([]metav1.Condition) - must include `Ready`, `ProvisioningSucceeded`, `Degraded`
-  - `releases` (Array) - list of deployed components with `name`, `version`, `repoUrl`
+- **API Group:**
+  - `components.platform.opendatahub.io` for modules (e.g., Kserve, Workbenches)
+  - `services.platform.opendatahub.io` for platform services (e.g., observability)
+- **Version:** Must match support level (`vXalphaY` for developer preview, `vXbetaY` for tech preview, `vX` for GA)
+- **Required Status Fields:** `observedGeneration`, `conditions` (Ready, ProvisioningSucceeded, Degraded), `distribution` (name + version), `releases`
 - **Labeling:** `components.platform.opendatahub.io/managed-by: <module-name>`
+- **Condition Severity:** Conditions support `Error` (blocking, default) and `Info` (non-blocking) severity levels, helping external observers determine whether a `False` condition represents an actual problem or is informational
+- **Spec Ownership:** The CRD spec is user-owned; platform-enforced settings are delivered via ConfigMap, not spec fields
+- **Platform Configuration:** Each module ships a ConfigMap with sensible defaults; the ODH Operator overrides platform-managed keys and enforces them
 
-**Module CR Spec Configuration:**
+See the [Module Onboarding Guide](design/module-onboarding-guide.md) for complete API specifications, validation rules, and status aggregation semantics.
 
-Module CRs can expose additional fields beyond what is configured in the DataScienceCluster. Users can set these fields directly on the Module CR for advanced configuration (e.g., resource requirements, replicas, advanced networking settings).
+### Implementation Requirements
 
-**Platform Configuration Projection:**
+**Manifest Packaging:**
 
-Module CRs receive platform-wide settings (authentication, certificates, monitoring) projected from DataScienceCluster and DSCInitialization. Module controllers MUST respect these projected configurations. Manual user modifications to platform-managed fields will be reverted by the ODH Operator to maintain platform compliance.
+Helm is the preferred method for packaging module controller manifests. Kustomize is supported but switching to Helm is highly encouraged. Manifests are embedded in the ODH controller binary at build time, ensuring the operator is self-contained.
 
-**Status Aggregation:**
+The manifests that the ODH Operator installs for a module controller must be limited to core Kubernetes types (Deployment, ServiceAccount, RBAC, CRD). This constraint is driven by the principle of least privilege: the ODH Operator today operates with near cluster-admin permissions, and reducing its scope to core Kubernetes types only - with no knowledge of workload-specific CRDs - is a key goal of this architecture.
 
-The ODH Operator aggregates Module CR status to DataScienceCluster as follows:
-- Module CR conditions are reflected to DSC.status.conditions with module-prefixed types (e.g., Ready becomes <Module>Ready)
-- Module CR releases are copied to DSC.status.components.<module>.releases
-- Module CR observedGeneration is used to detect reconciliation state
+The module operator is the orchestrator for its feature area and should run as a separate Deployment from its operand controllers to maintain failure isolation and independent scaling. Common patterns include a single image with multiple entrypoints (recommended), multiple images when running upstream controllers alongside the module operator, or a single-process deployment for very simple modules.
 
-See [Module Onboarding Guide](design/module-onboarding-guide.md) for complete status aggregation rules and specifications.
-
-### Lifecycle State Transitions
-
-| Trigger | ODH Operator Action | Module Controller Action |
-|---------|---------------------|--------------------------|
-| DSC enables module | Deploy controller manifests (Deployment, RBAC, CRD), create Module CR | N/A (not running yet) |
-| Module CR created/updated | Watch CR status, project configuration updates | Reconcile module operands |
-| DSC configuration changes | Update Module CR spec with new configuration | Reconcile affected operands |
-| Module operand fails | Watch CR status | Update conditions (Ready=False, Degraded=True) |
-| DSC disables module | Delete Module CR, prune controller resources | Graceful shutdown, cleanup operands |
-
-**Implementation Details:**
-
-All detailed requirements, including complete CRD specifications, validation rules, manifest types, dependency management, and integration patterns are documented in the [Module Onboarding Guide](design/module-onboarding-guide.md).
-
-## Illustrative Example
-
-**Note:** This example illustrates the basic architectural pattern in simplified form. For complete step-by-step walkthroughs with full YAML specifications and additional scenarios, see the [Module Onboarding Guide](design/module-onboarding-guide.md#53-complete-lifecycle-flow-example).
-
-**Basic Flow:**
-
-1. **User enables module in DataScienceCluster:**
-   ```yaml
-   spec:
-     components:
-       kserve:
-         managementState: Managed
-   ```
-
-2. **ODH Operator (meta-operator) actions:**
-   - Deploys Kserve module controller (Deployment, RBAC, CRD)
-   - Creates Kserve CR with projected configuration from DSC/DSCI
-
-3. **Kserve module controller (independent operator) actions:**
-   - Reconciles Kserve CR
-   - Deploys operands (kserve-controller, odh-model-controller, odh-maas-controller, Services, Routes, etc.)
-   - Reports status back to Kserve CR
-
-4. **ODH Operator aggregates status to DSC:**
-   - Module CR `Ready` condition becomes `KserveReady` in DSC
-   - Module CR `releases` copied to DSC component status
-
-**Key Patterns:**
-- **Configuration updates:** ODH Operator projects DSC changes to Module CR spec
-- **Operand failures:** Module controller sets Ready=False, Degraded=True
-- **Platform enforcement:** Manual edits to platform-managed fields are automatically reverted
-
-See [Module Onboarding Guide](design/module-onboarding-guide.md#53-complete-lifecycle-flow-example) for:
-- Complete step-by-step walkthroughs with full YAML
-- Configuration update scenarios
-- Failure handling examples
-- Platform enforcement demonstrations
+See the [Module Onboarding Guide](design/module-onboarding-guide.md) for complete implementation requirements including deployment pattern details, dependency management, certificate management, and RBAC guidelines.
 
 ## Open Questions
 
@@ -162,7 +123,7 @@ N/A
 
 ## Responsibility
 
-The ODH Platform team is responsible for maintaining this architecture and providing shared utilities to facilitate module development.
+The ODH Platform team is responsible for maintaining this architecture and the [odh-platform-utilities](https://github.com/opendatahub-io/odh-platform-utilities) shared library to facilitate module development.
 
 ## Alternatives
 
@@ -178,5 +139,6 @@ N/A
 ## References
 
 - [Detailed Module Onboarding Guide](design/module-onboarding-guide.md)
+- [ODH Platform Utilities](https://github.com/opendatahub-io/odh-platform-utilities)
 - [ODH-ADR-Operator-0006: Internal API](ODH-ADR-Operator-0006-internal-api.md)
 - [ODH-ADR-Operator-0008: Resource Lifecycle Management](ODH-ADR-Operator-0008-resources-lifecycle.md)
