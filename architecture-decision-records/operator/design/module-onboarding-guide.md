@@ -179,7 +179,7 @@ The module operator is the orchestrator for its feature area: it handles upgrade
 
 ### **3.3 Logic & detection**
 
-The module controller is responsible for "smart" behavior (a dedicated set of functionalities will be provided in the form of Go modules, see [Shared Utilities Repository](#62-shared-utilities-repository)). For example, the module controller could check if the cluster has FIPS enabled and switch internal crypto libraries; the module must not rely on the ODH operator to perform "smart" behavior and pass that down.
+The module controller is responsible for "smart" behavior (a dedicated set of functionalities will be provided in the form of Go modules, see [Shared Utilities Repository](#6.2-shared-utilities-repository)). For example, the module controller could check if the cluster has FIPS enabled and switch internal crypto libraries; the module must not rely on the ODH operator to perform "smart" behavior and pass that down.
 
 ### **3.4 Dependency management**
 
