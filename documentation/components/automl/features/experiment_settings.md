@@ -42,7 +42,7 @@ Additional KFP pipeline parameters planned for the tabular graph (the same two n
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `preset` | `str` | `medium_quality` | Passed through to AutoGluon **`fit(..., presets=...)`** as a string preset. Use only values listed under [Preset support](#preset-support) for typical **CPU-only** pipeline steps sized around **~16 GiB RAM / 8 vCPU**; full AutoGluon catalog and definitions remain in [`TabularPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html). |
+| `preset` | `str` | `speed` | Pipeline-level quality tier. The pipeline maps this to an underlying AutoGluon preset before calling **`fit(..., presets=...)`**. Use only values listed under [Preset support](#preset-support). Full AutoGluon catalog and definitions remain in [`TabularPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html). |
 | `eval_metric` | `str` | **`accuracy`** if `task_type` is `binary` or `multiclass`; **`r2`** if `task_type` is `regression` | Passed to AutoGluon as **`eval_metric`**. Omitted / `None` resolves to those defaults from **`problem_type`** (see **`eval_metric`** on [`TabularPredictor`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.html)). Other common string metrics include `roc_auc`, `f1`, `log_loss`, `balanced_accuracy`, `root_mean_squared_error`, `mean_absolute_error`, etc., subject to AutoGluon’s validity rules for the chosen task. |
 
 
@@ -72,7 +72,7 @@ AutoGluon’s **[`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/aut
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `preset` | `str` | `fast_training` | Passed to AutoGluon **`TimeSeriesPredictor.fit(..., presets=...)`**. Time-series names differ from tabular; use only values under [Preset support](#preset-support). Full list and semantics: [`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.timeseries.TimeSeriesPredictor.fit.html). If `presets` is not set in `fit`, AutoGluon uses **`hyperparameters`** defaults. |
+| `preset` | `str` | `speed` | Pipeline-level quality tier. The pipeline maps this to an underlying AutoGluon preset before calling **`TimeSeriesPredictor.fit(..., presets=...)`**. Use only values under [Preset support](#preset-support). Full list and semantics: [`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.timeseries.TimeSeriesPredictor.fit.html). |
 | `eval_metric` | `str` | `MASE` | Passed to **`TimeSeriesPredictor(..., eval_metric=...)`**. AutoGluon’s built-in default is **`WQL`** (weighted quantile loss), but the pipeline defaults to **`MASE`** (mean absolute scaled error). Allowed string values are the time-series metrics in [Evaluation metrics](#evaluation-metrics) (time series table). |
 
 
@@ -88,20 +88,19 @@ AutoGluon documents many **`presets`** values for [`TabularPredictor.fit`](https
 
 | Preset | Min resources (model training step) | Role (summary) |
 |--------|--------------------------------------|----------------|
-| `medium_quality` | 4 vCPU / 16 GiB RAM | AutoGluon default tier: moderate accuracy, **fast** training and inference; **`auto_stack`: False** in preset definition (see [TabularPredictor.fit](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html)). Recommended default for constrained steps. The pipeline overrides `max_depth=10` for **RandomForest (RF)** and **ExtraTrees (XT)** models as an optimisation measure. |
-| `good_quality` | 8 vCPU / 32 GiB RAM | Stronger accuracy than `medium_quality` using the **`light`** hyperparameter portfolio with refit. The pipeline overwrites the following preset-level flags with fixed values — `refit_full=False`, `set_best_to_refit_full=False`, `save_bag_folds=True` — because a dedicated refit step is performed afterwards (these preset defaults would otherwise conflict with that step). |
+| `speed` | 8 vCPU / 32 GiB RAM | Good accuracy/speed trade-off (45-min time limit). Uses a **`light`** hyperparameter portfolio. |
+| `balanced` | 16 vCPU / 64 GiB RAM | Stronger accuracy at higher resource cost (90-min time limit). Uses a **`zeroshot`** hyperparameter portfolio with a larger model candidate set and longer training. |
 
-> **Note:** AutoGluon also defines **`optimize_for_deployment`** as a preset that shrinks **disk and inference** footprint after training. It is not a “quality tier” on its own; pass it **together with** a quality preset as a **grouped** `presets` argument to `fit` (for example `['good_quality', 'optimize_for_deployment']`). See [`TabularPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html).
 
 ### Time series (`TimeSeriesPredictor.fit`)
 
 | Preset | Min resources (model training step) | Role (summary) |
 |--------|--------------------------------------|----------------|
-| `fast_training` | 4 vCPU / 16 GiB RAM | **Fastest** path: simpler statistical and tree/ML models per AutoGluon docs. |
-| `medium_quality` | 8 vCPU / 32 GiB RAM | Adds **TemporalFusionTransformer** and **Chronos-2 (small)** on top of `fast_training` models; the intended “balanced” tier for CPU-only if data volume fits in memory. The pipeline **excludes all Chronos-type models** from training under this preset to reduce resource consumption. |
+| `speed` | 4 vCPU / 16 GiB | Fastest training path: simpler statistical and tree/ML models. |
+| `balanced` | 8 vCPU / 32 GiB | Stronger models at higher resource cost: adds more complex models on top of `speed` models. The pipeline **excludes all Chronos-type models** from training under this preset to reduce resource consumption. |
 
 
-> **Tabular vs time series:** Preset **strings** are not aligned across modes. Tabular **`good_quality`** and time-series **`medium_quality`** are the closest pair by AutoGluon wiring: both use the **`light`** hyperparameter portfolio in [`presets_configs.py` (tabular)](https://github.com/autogluon/autogluon/blob/stable/tabular/src/autogluon/tabular/configs/presets_configs.py) and [`predictor_presets.py` (time series)](https://github.com/autogluon/autogluon/blob/stable/timeseries/src/autogluon/timeseries/configs/predictor_presets.py), respectively.
+> **Tabular vs time series:** The pipeline preset names (`speed`, `balanced`) are shared across modes, but each mode maps them to different underlying AutoGluon presets. The model sets and resource requirements therefore differ between tabular and time-series runs even for the same tier name. See [`presets_configs.py` (tabular)](https://github.com/autogluon/autogluon/blob/stable/tabular/src/autogluon/tabular/configs/presets_configs.py) and [`predictor_presets.py` (time series)](https://github.com/autogluon/autogluon/blob/stable/timeseries/src/autogluon/timeseries/configs/predictor_presets.py) for the full AutoGluon preset definitions.
 
 ---
 
