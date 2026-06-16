@@ -13,7 +13,8 @@ Higher-level architecture and ADR-level parameter groups are in [ODH-ADR-0001-au
   - [OpenShift AI 3.5 and later](#openshift-ai-35-and-later-1)
 - [Preset support](#preset-support)
 - [Evaluation metrics](#evaluation-metrics)
-  - [Tabular — classification (`task_type` `binary` or `multiclass`)](#tabular--classification-task_type-binary-or-multiclass)
+  - [Tabular — binary classification (`task_type` `binary`)](#tabular--binary-classification-task_type-binary)
+  - [Tabular — multiclass classification (`task_type` `multiclass`)](#tabular--multiclass-classification-task_type-multiclass)
   - [Tabular — regression (`task_type` `regression`)](#tabular--regression-task_type-regression)
   - [Time series (`TimeSeriesPredictor`)](#time-series-timeseriespredictor)
 
@@ -38,7 +39,7 @@ Arguments exposed today on the tabular training pipeline (verify on your **pipel
 
 ### OpenShift AI 3.5 and later
 
-Additional KFP pipeline parameters planned for the tabular graph (the same two names are intended for the **timeseries** pipeline as well; see below). Confirm names and optionality in **`pipeline.py`** for your build. Semantics and defaults follow **[AutoGluon Tabular](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.html)** and **`presets` / `eval_metric`** on [`TabularPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html). **`preset`:** use only values in [Preset support](#preset-support). **`eval_metric`:** allowed tabular strings are under [Evaluation metrics](#evaluation-metrics) (tabular tables).
+Additional KFP pipeline parameters planned for the tabular graph (the same two names are intended for the **timeseries** pipeline as well; see below). Confirm names and optionality in **`pipeline.py`** for your build. Semantics and defaults follow **[AutoGluon Tabular](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.html)** and **`presets` / `eval_metric`** on [`TabularPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html). **`preset`:** use only values in [Preset support](#preset-support). **`eval_metric`:** allowed tabular strings are under [Evaluation metrics](#evaluation-metrics) (binary and multiclass tables).
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -110,38 +111,57 @@ AutoGluon’s **leaderboard and reported scores** are expressed in a **higher-is
 
 The **Direction** column below means: how you improve the **raw** metric when comparing models on held-out data. The **Leaderboard** column states how AutoGluon typically presents that same choice (after any transformation).
 
-### Tabular — classification (`task_type` `binary` or `multiclass`)
+### Tabular — binary classification (`task_type` `binary`)
 
-These **`eval_metric`** string names are taken from [`TabularPredictor`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.html) (classification list). Each must be valid for your **`task_type`**; behavior aligns with **scikit-learn** metrics where applicable ([sklearn.metrics](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics)).
+These **`eval_metric`** string names are taken from [`TabularPredictor`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.html) (binary classification list). Behavior aligns with **scikit-learn** metrics where applicable ([sklearn.metrics](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics)). Metrics marked "both" also apply to `multiclass`; see the [multiclass table](#tabular--multiclass-classification-task_type-multiclass) for the full multiclass set.
 
 | `eval_metric` | Description | Direction (raw) | Leaderboard |
 |---------------|-------------|-----------------|---------------|
-| `accuracy` | Fraction of labels predicted correctly. Default when `eval_metric=None` for binary and multiclass. | Higher is better | Same (higher is better) |
-| `balanced_accuracy` | Balanced accuracy: average recall per class, accounting for class imbalance. | Higher is better | Same |
-| `log_loss` | Logarithmic loss (cross-entropy) on predicted probabilities. | **Lower** log-loss is better | Higher displayed score is better (sign flipped) |
-| `f1` | F1 score for the **positive class** in binary problems (see **`positive_class`** on `TabularPredictor`); for multiclass, uses default averaging. | Higher is better | Same |
+| `accuracy` | Fraction of labels predicted correctly. Default when `eval_metric=None`. | Higher is better | Same (higher is better) |
+| `balanced_accuracy` | Average recall per class, accounting for class imbalance. | Higher is better | Same |
+| `log_loss` | Logarithmic loss (cross-entropy) on predicted probabilities. | **Lower** is better | Higher displayed score is better (sign flipped) |
+| `f1` | F1 score for the **positive class** (see **`positive_class`** on `TabularPredictor`). | Higher is better | Same |
 | `f1_macro` | F1 averaged **unweighted** across classes. | Higher is better | Same |
 | `f1_micro` | F1 computed globally over all TP / FP / FN. | Higher is better | Same |
 | `f1_weighted` | F1 averaged **weighted** by support per class. | Higher is better | Same |
-| `roc_auc` | Area under the ROC curve (binary one-vs-rest style as implemented by AutoGluon / sklearn). | Higher is better | Same |
-| `roc_auc_ovo` | ROC AUC with **one-vs-one** multiclass strategy. | Higher is better | Same |
-| `roc_auc_ovo_macro` | One-vs-one ROC AUC, **macro**-averaged. | Higher is better | Same |
-| `roc_auc_ovo_weighted` | One-vs-one ROC AUC, **weighted** by support. | Higher is better | Same |
-| `roc_auc_ovr` | ROC AUC with **one-vs-rest** multiclass strategy. | Higher is better | Same |
-| `roc_auc_ovr_macro` | One-vs-rest ROC AUC, **macro**-averaged. | Higher is better | Same |
-| `roc_auc_ovr_micro` | One-vs-rest ROC AUC, **micro**-averaged. | Higher is better | Same |
-| `roc_auc_ovr_weighted` | One-vs-rest ROC AUC, **weighted** by support. | Higher is better | Same |
-| `average_precision` | Area under the precision–recall curve (from predicted scores). | Higher is better | Same |
-| `precision` | Precision for the positive class (binary) or default averaging (multiclass). | Higher is better | Same |
+| `roc_auc` | Area under the ROC curve for the positive class (binary one-vs-rest, as implemented by AutoGluon / sklearn). | Higher is better | Same |
+| `average_precision` | Area under the precision–recall curve (from predicted scores for the positive class). | Higher is better | Same |
+| `precision` | Precision for the **positive class** (see **`positive_class`** on `TabularPredictor`). | Higher is better | Same |
 | `precision_macro` | Precision, **macro** average. | Higher is better | Same |
 | `precision_micro` | Precision, **micro** average. | Higher is better | Same |
 | `precision_weighted` | Precision, **weighted** by support. | Higher is better | Same |
-| `recall` | Recall for the positive class (binary) or default averaging (multiclass). | Higher is better | Same |
+| `recall` | Recall for the **positive class** (see **`positive_class`** on `TabularPredictor`). | Higher is better | Same |
 | `recall_macro` | Recall, **macro** average. | Higher is better | Same |
 | `recall_micro` | Recall, **micro** average. | Higher is better | Same |
 | `recall_weighted` | Recall, **weighted** by support. | Higher is better | Same |
 | `mcc` | Matthews correlation coefficient (–1 to +1). | Higher is better (toward +1) | Same |
-| `pac_score` | Probabilistic accuracy (PAC) score from AutoGluon’s metric definitions. | Higher is better | Same |
+| `pac` / `pac_score` | Probabilistic accuracy score (PAC). `pac_score` is a registered alias for `pac`. | Higher is better | Same |
+
+### Tabular — multiclass classification (`task_type` `multiclass`)
+
+These **`eval_metric`** string names are taken from [`TabularPredictor`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.html) (multiclass classification list). Behavior aligns with **scikit-learn** metrics where applicable ([sklearn.metrics](https://scikit-learn.org/stable/modules/classes.html#module-sklearn.metrics)).
+
+| `eval_metric` | Description | Direction (raw) | Leaderboard |
+|---------------|-------------|-----------------|---------------|
+| `accuracy` | Fraction of labels predicted correctly. Default when `eval_metric=None`. | Higher is better | Same (higher is better) |
+| `balanced_accuracy` | Average recall per class, accounting for class imbalance. | Higher is better | Same |
+| `log_loss` | Logarithmic loss (cross-entropy) on predicted probabilities. | **Lower** is better | Higher displayed score is better (sign flipped) |
+| `f1_macro` | F1 averaged **unweighted** across classes. | Higher is better | Same |
+| `f1_micro` | F1 computed globally over all TP / FP / FN. | Higher is better | Same |
+| `f1_weighted` | F1 averaged **weighted** by support per class. | Higher is better | Same |
+| `roc_auc_ovo` / `roc_auc_ovo_macro` | ROC AUC with **one-vs-one** multiclass strategy, **macro**-averaged across pairs. `roc_auc_ovo_macro` is a registered alias. | Higher is better | Same |
+| `roc_auc_ovo_weighted` | One-vs-one ROC AUC, **weighted** by class prevalence. | Higher is better | Same |
+| `roc_auc_ovr` / `roc_auc_ovr_macro` | ROC AUC with **one-vs-rest** multiclass strategy, **macro**-averaged across classes. `roc_auc_ovr_macro` is a registered alias. | Higher is better | Same |
+| `roc_auc_ovr_micro` | One-vs-rest ROC AUC, **micro**-averaged. | Higher is better | Same |
+| `roc_auc_ovr_weighted` | One-vs-rest ROC AUC, **weighted** by class prevalence. | Higher is better | Same |
+| `precision_macro` | Precision, **macro** average. | Higher is better | Same |
+| `precision_micro` | Precision, **micro** average. | Higher is better | Same |
+| `precision_weighted` | Precision, **weighted** by support. | Higher is better | Same |
+| `recall_macro` | Recall, **macro** average. | Higher is better | Same |
+| `recall_micro` | Recall, **micro** average. | Higher is better | Same |
+| `recall_weighted` | Recall, **weighted** by support. | Higher is better | Same |
+| `mcc` | Matthews correlation coefficient (–1 to +1). | Higher is better (toward +1) | Same |
+| `pac` / `pac_score` | Probabilistic accuracy score (PAC). `pac_score` is a registered alias for `pac`. | Higher is better | Same |
 
 ### Tabular — regression (`task_type` `regression`)
 
