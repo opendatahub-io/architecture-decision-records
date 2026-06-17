@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | May 24, 2026 |
 | Scope          | OpenShift AI — AI Asset Registry Strategy |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | [Edson Tirelli](@etirelli) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
@@ -186,4 +186,5 @@ Adopting this decision establishes the following architectural constraints for O
 | Reviewed by                   | Date       | Notes |
 | ----------------------------- | ---------  | ------|
 | Edson Tirelli | May 24th, 2026 |       |
+| Daniele Zonca | June 17th, 2026 |       |
 |               |                |       |
