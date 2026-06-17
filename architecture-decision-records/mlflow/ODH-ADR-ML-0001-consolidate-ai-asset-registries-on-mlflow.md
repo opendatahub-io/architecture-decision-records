@@ -90,6 +90,18 @@ The following non-exhaustive list of asset types are examples of in scope assets
 | Guardrails | No registry | Future — design pending |
 | Knowledge Sources | No registry | Future — design pending |
 
+### Collaboration Model
+
+The registry must support a multi-actor collaboration workflow spanning asset authoring, governance, and distribution:
+
+- **Authoring and registration** — Individual users and teams can register assets into their workspace registry. Registration does not imply approval for production use.
+- **Lifecycle promotion** — Assets progress through defined lifecycle states (e.g., draft → candidate → published → deprecated). Each promotion step requires authorization from a designated role (e.g., workspace owner, platform admin), enforced server-side.
+- **Cross-workspace sharing** — Teams may need to consume assets registered in other workspaces. The sharing model (explicit grants, federated discovery, or shared workspaces) must be defined per deployment topology. See ODH-ADR-ML-0002 for cross-namespace resource sharing.
+- **Catalog contribution** — The path for promoting a team-developed asset from a workspace registry into AI Hub for broader organizational consumption is outside the scope of this ADR and must be defined jointly with the AI Hub team.
+- **Cross-asset dependency governance** — When a composed asset (e.g., an agent) depends on assets owned by other teams, the registry must surface these cross-team dependencies and notify downstream consumers of lifecycle changes (deprecation, retirement) in their dependency graph.
+
+Detailed role definitions, approval workflows, and notification mechanisms are implementation-level concerns to be addressed in per-asset-type registry ADRs.
+
 ## Alternatives
 
 ### 1. Expand Kubeflow AI Hub to Cover Additional Asset Types
