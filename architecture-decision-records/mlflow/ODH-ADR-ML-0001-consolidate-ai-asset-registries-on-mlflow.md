@@ -13,18 +13,19 @@
 
 ## What
 
-Adopt MLflow as the unified registry backend for all AI asset types in OpenShift AI. Rather than building or maintaining a separate registry per asset type (models, MCP servers, skills, agents, prompts, guardrails, knowledge sources), all asset registries converge on MLflow as the single governance layer, with seamless integration allowing each asset type to define its own metadata, lifecycle, and relationships; it also enables cross-reference between assets for observability, auditing, evaluation, and automation.
+Adopt MLflow as the unified registry backend for all AI asset types in OpenShift AI. Rather than building or maintaining a separate registry service per asset type, each asset type (models, MCP servers, skills, agents, prompts, guardrails, knowledge sources) gets its own dedicated registry API and plugin within MLflow — with its own metadata schema, lifecycle, and relationships — while sharing common governance infrastructure. This consolidation also enables cross-reference between assets for observability, auditing, evaluation, and automation.
 
 ## Why
 
-As OpenShift AI expands, the platform must govern an increasing number of asset types — models, agents, MCP servers, skills, prompts, guardrails, and knowledge sources. Without a consolidation strategy, each asset type gets its own registry with its own governance policies and maintenance burden. This leads to:
+As OpenShift AI expands, the platform must govern an increasing number of asset types — models, agents, MCP servers, skills, prompts, guardrails, and knowledge sources. These assets could be registered through an expansion of the existing Kubeflow-based registry or through independent per-asset-type registries. Either path risks:
 
 - **Governance fragmentation** — inconsistent lifecycle management, access policies, and auditing across asset types.
 - **Duplicated infrastructure** — each registry reimplements versioning, tagging, aliasing, workspace scoping, and RBAC from scratch.
 - **No cross-asset visibility** — an agent references models, prompts, tools, and guardrails, but if each is in a separate registry, there is no unified view of what an agent depends on and whether those dependencies are approved for production.
 - **Increased operational burden** — platform administrators must learn and operate multiple registry systems, each with different APIs and configuration models.
+- **Better user experience** — Each asset type gets a purpose-built API, client, and UI within MLflow, tailored to its specific schema and workflows. This is preferable to a generic API with no consistent schema, which forces users to work with untyped metadata and build their own tooling around it.
 
-MLflow is already the strategic platform for experiment tracking, tracing, and evaluation in OpenShift AI. It natively provides model registry and prompt registry capabilities. The upstream MLflow community (Databricks) is actively investing in expanding registry capabilities to cover skills, MCP servers, agents and other asset types. Consolidating on MLflow avoids duplicating this investment and aligns Red Hat's product direction with upstream momentum.
+MLflow is already the strategic platform for experiment tracking, tracing, and evaluation in OpenShift AI. It natively provides model registry and prompt registry capabilities. The upstream MLflow community (Databricks) has begun extending registry capabilities to additional asset types, with RFCs for skills and MCP servers. Consolidating on MLflow avoids duplicating this investment and aligns Red Hat's product direction with upstream momentum.
 
 The MLflow Tiger Team (January–March 2026) validated the integration architecture and confirmed that MLflow is the right foundation for registry consolidation. The registries sync (May 4, 2026) formalized the decision to centralize MCP server, skill, and agent registries in MLflow, with sign-off from architecture stakeholders.
 
@@ -42,7 +43,7 @@ The MLflow Tiger Team (January–March 2026) validated the integration architect
 * **Prescribing the migration path for existing registries** — the migration from Kubeflow Model Registry to MLflow Model Registry is a separate, implementation-level decision that will be documented in its own ADR.
 * **Defining the complete data model for each asset type** — individual asset type registries (MCP servers, skills, agents) will have their own design documents and, where warranted, their own ADRs.
 * **Replacing AI Hub** — AI Hub remains the catalog and discovery layer. This ADR concerns the governance backend, not the consumption experience.
-* **Building a new abstraction layer above MLflow** — the intent is to use MLflow directly as the registry backend with asset-type plugins, not to build a separate framework that wraps MLflow behind another API surface.
+* **Defining the model deployment or serving layer** — How registered models are deployed and served (e.g., via KServe) is outside the scope of this ADR.
 
 ## How
 
@@ -52,13 +53,13 @@ The MLflow Tiger Team (January–March 2026) validated the integration architect
 
 Registries and catalogs serve complementary but distinct functions. The registry handles governance: ownership, versioning, lifecycle state, access policies, approval status, and audit trails. The catalog is the vehicle for Red Hat to distribute approved, tested, and verified assets, and to provide users with a way to handle consumption: discovery, browsing, understanding, and adopting assets.
 
-These responsibilities must remain architecturally separate. MLflow is the registry. Users import curated artifacts from the catalog (e.g., AI Hub) into their workspace registry for governance and lifecycle management; the two systems are not merged.
+These responsibilities are architecturally separate. MLflow is the registry. Users import curated artifacts from the catalog (e.g., AI Hub) into their workspace registry for governance and lifecycle management.
 
-This principle is already present in the current architecture and must be preserved through the consolidation.
+This principle is already present in the current architecture and applies to all new registry work under this ADR.
 
 **2. Metadata-First Design**
 
-The registry stores metadata and references, not the assets themselves. Models live in object storage. MCP servers are installed from OCI images, npm, or PyPI. Skills are bundled as artifacts. The registry records what exists, who owns it, what version it is, what lifecycle state it is in, and where to find the actual asset — following the same pattern MLflow uses for experiment tracking.
+The registry stores metadata and references, not the assets themselves. Models live in object storage. MCP servers are installed from OCI images, npm, or PyPI. Skills are bundled as artifacts. The registry records what exists, who owns it, what version it is, what lifecycle state it is in, and where to find the actual asset — following the same pattern MLflow uses for its model registry.
 
 **3. Federated Plugin Model**
 
@@ -66,7 +67,7 @@ Each asset type participates in the shared registry infrastructure and defines:
 
 - **Metadata schema** — what fields are required and optional for this asset type.
 - **Lifecycle states** — what progression an asset follows (e.g., draft → candidate → published → deprecated → retired).
-- **Relationships** — how this asset type relates to others (e.g., an agent references models, prompts, and MCP servers).
+- **Relationships** — how this asset type relates to others (e.g., traces reference models, prompts, and MCP servers).
 - **Validation rules** — what invariants must hold (e.g., a published asset must have an approved status).
 
 Each asset type encodes its domain-specific knowledge without forcing all assets through a generic interface, while sharing common infrastructure for versioning, tagging, aliasing, workspace scoping, and RBAC.
@@ -91,7 +92,24 @@ The following non-exhaustive list of asset types are examples of in scope assets
 
 ## Alternatives
 
-### 1. Continue Building Separate Registries Per Asset Type
+### 1. Expand Kubeflow AI Hub to Cover Additional Asset Types
+
+Continue building registry capabilities within the Kubeflow-based infrastructure, extending it to cover new asset types (MCP servers, skills, agents) alongside the existing model registry.
+
+**Pros:**
+- Builds on existing infrastructure already deployed in OpenShift AI.
+- No migration required for the current model registry.
+- Single codebase under Red Hat's direct control.
+
+**Cons:**
+- Kubeflow Model Registry does not have the upstream community momentum that MLflow has for expanding registry capabilities beyond models.
+- Red Hat would carry the full development and maintenance burden for new asset type registries, rather than leveraging upstream investment.
+- Cross-asset visibility and relationship tracking would need to be built from scratch.
+- No alignment with the broader MLflow ecosystem that is already the strategic platform for experiment tracking, tracing, and evaluation.
+
+**Decision: Rejected.** MLflow's upstream momentum, existing registry capabilities, and community investment make it a stronger foundation than building additional registries within Kubeflow.
+
+### 2. Continue Building Separate Registries Per Asset Type
 
 Each new asset type (MCP servers, skills, agents) gets its own independent registry with its own data model, API, storage, and governance implementation.
 
@@ -107,7 +125,7 @@ Each new asset type (MCP servers, skills, agents) gets its own independent regis
 
 **Decision: Rejected.** The governance fragmentation and duplicated effort outweigh the flexibility gains, especially as the number of asset types grows.
 
-### 2. Build a New Unified Registry Framework Above MLflow
+### 3. Build a New Unified Registry Framework Above MLflow
 
 Create a new abstraction layer — a "meta-registry" — that provides a unified API surface above multiple backend registries (MLflow, Kubeflow, future backends). Each backend is a pluggable adapter behind the unified interface.
 
@@ -132,7 +150,7 @@ Adopting this decision establishes the following architectural constraints for O
 
 1. **New AI asset types requiring governed lifecycle management must use MLflow as the registry backend.** Teams must not introduce new standalone registries without an explicit exception approved through the ADR process.
 
-2. **Registry and catalog remain separate systems.** Components that need discovery and browsing capabilities should adopt a catalog solution. Components that need governance and lifecycle management should adopt the registry solution defined in this ADR. 
+2. **Registry and catalog are separate systems.** Components that need discovery and browsing capabilities should adopt a catalog solution. Components that need governance and lifecycle management should adopt the registry solution defined in this ADR. 
 
 3. **Asset type plugins must follow established MLflow patterns.** New registry plugins use the entity model, store interface, API surface, and workspace scoping patterns established by the MLflow project. Deviations require justification.
 
@@ -140,7 +158,7 @@ Adopting this decision establishes the following architectural constraints for O
 
 ## Security and Privacy Considerations
 
-- **Executable content** — Some registered assets (skills, MCP servers) are or reference executable code. The registry must integrate with product security review workflows before these assets can be promoted to production lifecycle states. 
+- **Executable content** — Some registered assets (skills, MCP servers) are or reference executable code. The registry must support lifecycle state gates that allow promotion to production states to be gated on external validation (e.g., security scans, provenance checks), so that platform operators can enforce review workflows before executable assets reach production.
 
 - **Access control** — Registry RBAC must integrate with OpenShift RBAC to ensure that workspace-level access policies in MLflow align with namespace-level permissions in the cluster. Misalignment would allow users to register or promote assets they should not have access to.
 
