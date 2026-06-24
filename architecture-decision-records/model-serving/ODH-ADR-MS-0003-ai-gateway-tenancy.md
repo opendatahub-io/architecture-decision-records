@@ -510,6 +510,7 @@ All tenant admin operations logged (example):
 **Gateway-level**:
 - HttpRoutes attached only to tenant Gateway
 - No cross-tenant routing possible (separate Envoy pods)
+- All API requests, including API key generation, gated by authpolicy and subscriptions linked to user identity,
 
 ## Risks
 
