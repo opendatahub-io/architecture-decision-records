@@ -66,7 +66,7 @@ Design follows the same concepts as the AutoML doc: **one parent run per KFP pip
 | MLflow concept | Proposed mapping                                                                                                                                                                                                                                                                           |
 |----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Experiment** | Use KFP-managed experiment (`MLFLOW_EXPERIMENT_ID`). **Otherwise:** e.g. `autorag_documents_rag_optimization` plus optional suffix (team, cluster).                                                                                                                                        |
-| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, `dataset hashes or URIs (non-secret)`. **Params:** `optimization_metric`, `optimization_max_rag_patterns`, `llama_stack_vector_io_provider_id`, `image`, `kfp_version`, `ai4rag_version`     |
+| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, `dataset hashes or URIs (non-secret)`. **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `llama_stack_vector_io_provider_id`, `image`, `kfp_version`, `ai4rag_version`     |
 | **Child runs** | **One nested child run per RAG pattern** (folder name or `pattern.json` `name`). Enables side-by-side comparison in the MLflow UI for faithfulness / answer_correctness / context_correctness and chunking / retrieval / model choices.                                                    |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. **One trace per benchmark request**, attached to the **pattern child run** (not the parent). If the eval set has *N* rows and the pipeline produces *P* patterns, expect **P × N** traces total (*N* under each pattern’s child run). |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with [MLflow `SpanType`](https://mlflow.org/docs/latest/genai/concepts/span#span-types) where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for OGX `responses.create`. |
@@ -89,7 +89,7 @@ Design follows the same concepts as the AutoML doc: **one parent run per KFP pip
 | 3 | Same, before optimization | `mlflow.tracing.enable()` and `mlflow.openai.autolog()` (see [Tracing per pattern child run](#tracing-per-pattern-child-run)). |
 | 4 | Per pattern (in ai4rag or component) | Open a **nested child run**; for each benchmark row create **one trace** with **`autorag.*` spans** and `SpanType`s (see [Spans and span types](#spans-and-span-types)); then `log_params` / `log_metrics` / KFP pointers from **`pattern.json`**. |
 
-**Parent run discovery:** KFP-injected **`MLFLOW_RUN_ID`** and **`MLFLOW_EXPERIMENT_ID`** are sufficient to open the pipeline run and nested pattern child runs in the MLflow UI. A separate **`mlflow_tracking_artifact`** JSON step is **not required**.
+**Parent run discovery:** KFP-injected **`MLFLOW_RUN_ID`** and **`MLFLOW_EXPERIMENT_ID`** are sufficient to open the pipeline run and nested pattern child runs in the MLflow UI. A separate MLflow tracking artifact is **not required**. (AutoML extends the existing **`component_stage_map`** artifact instead—see [KFP artifact: component stage map](../../automl/features/mlflow_integration.md#kfp-artifact-component-stage-map).)
 
 **Explicitly out of scope for the first release:**
 
@@ -138,6 +138,7 @@ def rag_templates_optimization(...):
         mlflow.openai.autolog()
         with mlflow.start_run(run_id=parent_run_id):
             mlflow.log_params({
+                "preset": preset,
                 "optimization_metric": optimization_metric,
                 "optimization_max_rag_patterns": str(optimization_max_rag_patterns),
             })
@@ -265,6 +266,7 @@ Further reading: [OpenAI tracing](https://mlflow.org/docs/latest/genai/tracing/i
 
 - OGX / Llama Stack MLflow tracing: https://ogx-ai.github.io/blog/mlflow-observability
 - AutoRAG component overview: [../README.md](../README.md)
+- Pipeline parameters and presets: [Experiment settings (pipeline parameters)](./experiment_settings.md)
 - AutoRAG ADR: [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
 - Shared platform MLflow details: [AutoML MLflow integration](../../automl/features/mlflow_integration.md)
 - Data Science Pipelines architecture: [../../pipelines/README.md](../../pipelines/README.md)

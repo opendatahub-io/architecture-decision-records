@@ -2,7 +2,7 @@
 
 This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML** workflows implemented in [opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components) under **`components/training/automl`** and **`pipelines/training/automl`**, with product goals: **experiment tracking, comparison, reproducibility**.
 
-**RHOAI 3.5 scope:** Core MLflow integration with KFP environment variables, parent/child run hierarchy, and existing artifacts (leaderboard, metrics, feature importance, confusion matrix).
+**RHOAI 3.5 scope:** Core MLflow integration with KFP environment variables, parent/child run hierarchy, MLflow fields on the existing **`component_stage_map`** artifact, and existing training artifacts (leaderboard, metrics, feature importance, confusion matrix).
 
 
 ## Table of Contents
@@ -13,10 +13,8 @@ This document proposes an **MLflow** integration for OpenShift AI / ODH **AutoML
   - [Alignment with AutoGluon-native logging](#alignment-with-autogluon-native-logging)
   - [MLflow UI Examples](#mlflow-ui-examples)
 - [Implementation guidance](#implementation-guidance)
-- [KFP Pipeline Integration: MLflow Tracking Artifact](#kfp-pipeline-integration-mlflow-tracking-artifact)
-  - [Artifact Purpose](#artifact-purpose)
-  - [Component Output Definition](#component-output-definition)
-  - [Artifact Schema](#artifact-schema)
+- [KFP artifact: component stage map](#kfp-artifact-component-stage-map)
+  - [Extending `component_stage_map.json`](#extending-component_stage_mapjson)
 - [References](#references)
   - [AutoML Implementation](#automl-implementation)
   - [MLflow on RHOAI](#mlflow-on-rhoai)
@@ -181,65 +179,67 @@ def log_automl_results(metrics_json_path: str, model_names: list[str], pipeline_
 ```
 ---
 
-## KFP Pipeline Integration: MLflow Tracking Artifact
+## KFP artifact: component stage map
 
-To enable the AutoML Dashboard and end users to discover and access MLflow tracking information from KFP pipeline runs, 
-the **first component** in a pipeline produces a dedicated **MLflow tracking artifact** as a KFP output.
+AutoML tabular and time-series pipelines already run **`publish_component_stage_map`** as the first task ([`component_stage_map_publisher`](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl/component_stage_map_publisher)). That component writes **`component_stage_map.json`** with the static component/stage/step catalog plus runtime fields **`kfp_run_id`** and **`published_at`**.
 
-### Artifact Purpose
 
-The `mlflow_tracking_artifact` serves as the **single source of truth** for linking KFP pipeline executions to MLflow experiment tracking, enabling:
+Artifact path (unchanged):
 
-1. **Dashboard integration:** AutoML Dashboard fetches this artifact via KFP API to retrieve MLflow experiment/run IDs
-2. **Deep-linking:** Users can navigate directly from KFP UI to MLflow UI to view detailed metrics, charts, and model comparisons
-3. **Programmatic access:** CI/CD pipelines and automation scripts can query MLflow tracking info without parsing component logs
-4. **Audit trail:** Permanent record of which MLflow run corresponds to each KFP pipeline execution
-
-### Component Output Definition
-
-```python
- mlflow_tracking_artifact: dsl.Output[dsl.Artifact]
+```text
+publish-component-stage-map/<task_id>/component_stage_map/component_stage_map.json
 ```
 
-### Artifact Schema
+### Extending `component_stage_map.json`
 
-The artifact is a JSON file written to `mlflow_tracking_artifact.path` with the following structure:
+Add a top-level **`mlflow`** object when the stage map is published. Other fields (`pipeline_id`, `description`, `components`, `kfp_run_id`, `published_at`) stay as today.
+
+**When MLflow tracking is enabled** (`MLFLOW_TRACKING_URI` set):
 
 ```json
 {
-  "tracking_enabled": true,
-  "mlflow_tracking_uri": "https://mlflow-server.example.com",
-  "mlflow_experiment_id": "5",
-  "mlflow_run_id": "a3f8b2c1d4e5f6g7h8i9j0k1l2m3n4o5",
-  "mlflow_workspace": "data-science-project",
-  "mlflow_run_url": "https://mlflow-server.example.com/#/experiments/5/runs/a3f8b2c1d4e5f6g7h8i9j0k1l2m3n4o5"
+  "pipeline_id": "autogluon-tabular-training-pipeline",
+  "description": "Tabular AutoGluon pipeline: load and split data, train and refit models, build leaderboard.",
+  "components": [ "..." ],
   "kfp_run_id": "run-abc123-def456",
-  "pipeline_name": "autogluon-tabular-training-pipeline",
+  "published_at": "2026-05-19T12:00:00Z",
+  "mlflow": {
+    "tracking_enabled": true,
+    "tracking_uri": "https://mlflow-server.example.com",
+    "experiment_id": "5",
+    "run_id": "a3f8b2c1d4e5f6g7h8i9j0k1l2m3n4o5",
+    "workspace": "data-science-project",
+    "run_url": "https://mlflow-server.example.com/#/experiments/5/runs/a3f8b2c1d4e5f6g7h8i9j0k1l2m3n4o5"
+  }
 }
 ```
 
-**Field descriptions:**
-
-| Field | Type | Source | Description |
-|-------|------|--------|-------------|
-| `mlflow_tracking_uri` | string | `MLFLOW_TRACKING_URI` env var | MLflow tracking server endpoint |
-| `mlflow_experiment_id` | string | `MLFLOW_EXPERIMENT_ID` env var | Experiment ID (KFP creates one per pipeline) |
-| `mlflow_run_id` | string | `MLFLOW_RUN_ID` env var | Parent run ID for this pipeline execution |
-| `mlflow_workspace` | string | `MLFLOW_WORKSPACE` env var | OpenShift AI project/namespace |
-| `kfp_run_id` | string | `dsl.PIPELINE_JOB_ID_PLACEHOLDER` | KFP pipeline run ID for cross-referencing |
-| `pipeline_name` | string | `dsl.PIPELINE_JOB_RESOURCE_NAME_PLACEHOLDER` | Pipeline name |
-| `tracking_enabled` | bool | `bool(MLFLOW_TRACKING_URI)` | Whether MLflow tracking was active |
-| `mlflow_run_url` | string | Computed | Deep-link URL to MLflow UI parent run view |
-
-**When MLflow tracking is disabled** (`MLFLOW_TRACKING_URI` not set):
+**When MLflow tracking is disabled:**
 
 ```json
 {
-  "tracking_enabled": false,
+  "pipeline_id": "autogluon-tabular-training-pipeline",
+  "components": [ "..." ],
   "kfp_run_id": "run-abc123-def456",
-  "pipeline_name": "autogluon-tabular-training-pipeline",
+  "published_at": "2026-05-19T12:00:00Z",
+  "mlflow": {
+    "tracking_enabled": false
+  }
 }
 ```
+
+| `mlflow` field | Type | Source | Description |
+|----------------|------|--------|-------------|
+| `tracking_enabled` | bool | `bool(MLFLOW_TRACKING_URI)` | Whether MLflow tracking was active for this run |
+| `tracking_uri` | string | `MLFLOW_TRACKING_URI` | MLflow tracking server endpoint (omitted when disabled) |
+| `experiment_id` | string | `MLFLOW_EXPERIMENT_ID` | KFP-managed experiment for this pipeline |
+| `run_id` | string | `MLFLOW_RUN_ID` | KFP-managed parent run for this execution |
+| `workspace` | string | `MLFLOW_WORKSPACE` | OpenShift AI project / namespace |
+| `run_url` | string | Computed from `tracking_uri`, `experiment_id`, `run_id` | Deep-link to MLflow UI parent run |
+
+Downstream training components still resume the parent run via **`MLFLOW_RUN_ID`** in the pod environment; the stage map is for **discovery and deep-linking** (AutoML Dashboard, KFP UI, CI/CD), not for replacing env-based logging.
+
+**`publish_component_stage_map`** populates the `mlflow` block from the same KFP-injected environment variables at pipeline start. No new KFP output parameter or pipeline task is required—the existing **`component_stage_map`** artifact remains the single dashboard join artifact.
 
 ---
 
@@ -248,6 +248,7 @@ The artifact is a JSON file written to `mlflow_tracking_artifact.path` with the 
 
 ### AutoML Implementation
 
+- Component stage map publisher: [opendatahub-io/pipelines-components — `component_stage_map_publisher`](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl/component_stage_map_publisher)
 - Upstream AutoML components: [opendatahub-io/pipelines-components — `components/training/automl`](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl)
 - Upstream AutoML pipelines: [opendatahub-io/pipelines-components — `pipelines/training/automl`](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/automl)
 - End-user examples (RH): [red-hat-ai-examples — `examples/automl`](https://github.com/red-hat-data-services/red-hat-ai-examples/tree/main/examples/automl)
