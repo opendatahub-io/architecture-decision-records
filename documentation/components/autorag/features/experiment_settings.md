@@ -48,12 +48,12 @@ Additional KFP pipeline parameter planned for the optimization graph. Confirm na
 
 ## Preset support
 
-**OpenShift AI AutoRAG** exposes two pipeline presets. Each preset fixes **ingestion and search-space defaults**; ai4rag still optimizes embedding, retrieval, and generation settings within that envelope.
+**OpenShift AI AutoRAG** exposes two pipeline presets. Each preset fixes **ingestion and search-space defaults**; ai4rag still optimizes embedding, retrieval, and generation settings within that envelope. **Both presets use the same pipeline resource tier** (8 vCPU / 32 GiB RAM per workload step).
 
-| Preset | Min resources (typical run) | Role (summary) |
-|--------|----------------------------|----------------|
+| Preset | Min resources (workload steps) | Role (summary) |
+|--------|-------------------------------|----------------|
 | `speed` | 8 vCPU / 32 GiB RAM | Fastest path: recursive chunking on exported text, no table-structure parsing, no LLM contextual enrichment. |
-| `balanced` | 16 vCPU / 64 GiB RAM | Higher quality for structured PDFs/DOCX: Docling table layout parser, hybrid chunker, and [contextual retrieval](./chunking_and_retrievals_methods.md#llm-contextual-enrichment-index-time-rhoai-35) at index time. |
+| `balanced` | 8 vCPU / 32 GiB RAM | Higher quality for structured PDFs/DOCX: Docling table layout parser, hybrid chunker, and [contextual retrieval](./chunking_and_retrievals_methods.md#llm-contextual-enrichment-index-time-rhoai-35) at index time. |
 
 ### `speed` (default)
 
@@ -62,6 +62,7 @@ Additional KFP pipeline parameter planned for the optimization graph. Confirm na
 | **Docling (`text_extraction`)** | PDF pipeline: `do_table_structure: false` — layout detection only; tables are not reconstructed with TableFormer. |
 | **Chunking search space** | `chunking.method: recursive` — Markdown (or flat text) export, then size/overlap splitting. |
 | **Contextual enrichment** | `chunking.contextual_enrichment.enabled: false` — not explored in the search space. |
+| **Benchmark query concurrency** | ai4rag `query_rag` **`max_threads`**: **10** (default). |
 
 ### `balanced`
 
@@ -72,6 +73,7 @@ Enables the three features below relative to `speed`:
 | **Docling table layout parser** | `text_extraction` (PDF) | `do_table_structure: true` — [TableFormer](https://docling-project.github.io/docling/guides/pdf-processing/) reconstructs table rows and columns from detected layout. |
 | **Docling hybrid chunker** | Optimization / indexing search space | `chunking.method: hybrid` — structure-aware chunks from persisted `DoclingDocument`, with tokenizer-aware split/merge (see [Hierarchical / hybrid chunking](./chunking_and_retrievals_methods.md#hierarchical-chunking-rhoai-35)). |
 | **Contextual retrieval** | Indexing (`chunking`) | `chunking.contextual_enrichment.enabled: true` — LLM-generated situating text prepended before embedding and sparse indexing ([Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)). |
+| **Benchmark query concurrency** | ai4rag `query_rag` **`max_threads`**: **4** (lower than `speed` because each concurrent request carries more retrieved context). |
 
 **Example `pattern.json` fragment** produced under `balanced` (other fields still optimized by ai4rag):
 
@@ -95,7 +97,9 @@ Enables the three features below relative to `speed`:
 
 Docling extraction settings are applied in **`text_extraction`** and are not repeated per pattern in `pattern.json`; they are fixed for the pipeline run by the chosen preset.
 
-> **Cost note:** `balanced` increases ingestion time and LLM usage (context generation per chunk) compared to `speed`. Prefer `speed` for plain-text corpora or exploratory runs; use `balanced` when documents contain tables, headings, and multi-section structure.
+**Benchmark concurrency:** Each pattern evaluation runs benchmark questions through ai4rag [`query_rag`](https://github.com/IBM/ai4rag/blob/main/ai4rag/core/experiment/utils.py) (`ThreadPoolExecutor`, configurable **`max_threads`**). Each worker performs retrieval plus one generation LLM call with up to `number_of_chunks` strings in the prompt. The pipeline preset maps **`max_threads`** into ai4rag (implementation tracked separately in ai4rag). Indexing embeddings use batched API calls; Unitxt evaluation uses batch `evaluate()`, not this thread pool.
+
+> **Cost note:** `balanced` increases ingestion time and LLM usage (context generation per chunk) compared to `speed`, but both presets target the same **8 vCPU / 32 GiB** step sizing. Prefer `speed` for plain-text corpora or exploratory runs; use `balanced` when documents contain tables, headings, and multi-section structure.
 
 ---
 
