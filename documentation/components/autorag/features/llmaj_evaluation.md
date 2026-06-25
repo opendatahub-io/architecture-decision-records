@@ -91,7 +91,7 @@ Calibration metadata (`judge_selection`, `judge_calibration_score`, candidate ra
 | Pipeline | `evaluator` (default **`judge`**); optional `judge_model_id` (else [auto-select](#auto-selecting-the-judge-model)) |
 | `pattern.json` | New **`evaluation`** block; new derived **`scores.overall_score`** |
 | Evaluator | `LLMaJEvaluator` replaces `UnitxtEvaluator` on the default path |
-| Everything else | Same metric names, `scores` / `final_score` shape, `evaluation_results.json`, GAM flow |
+
 
 ### Standard metrics
 
