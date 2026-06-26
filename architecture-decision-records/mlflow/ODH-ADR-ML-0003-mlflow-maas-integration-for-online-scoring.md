@@ -145,7 +145,7 @@ _get_provider_instance("gateway", name)
   → call MaaS directly                          # no proxy
 ```
 
-The server-side detection is straightforward: check if the tracking store is a `SqlAlchemyStore` (indicating the code runs in the server process). If not (client-side with `RestStore`), fall back to the existing proxy path.
+The server-side detection is a capability check: if the tracking store is a `SqlAlchemyStore`, direct resolution is available. This is not a security boundary — the tracking store type is set at server startup and is not user-controllable. Client-side code uses `RestStore` and naturally falls back to the existing proxy path. Scorer jobs run as Huey workers within the server process and inherit the server's store instance.
 
 This change is generic — it benefits all gateway endpoints, not just MaaS ones. Any endpoint stored in the gateway DB can be resolved directly server-side, reducing latency by eliminating the proxy HTTP round-trip.
 
@@ -185,8 +185,8 @@ In Phase 1, users manually provide a MaaS API key when configuring a scorer endp
 **Key lifecycle with auto-minting:**
 
 - Auto-minted keys use the regular 90-day TTL by default.
-- The system tracks key expiry per endpoint and can proactively re-mint before expiry using a stored refresh mechanism (the user's OCP token is not retained — re-minting requires either the user to re-authenticate or a service account with delegated authority).
-- Alternatively, ephemeral keys (1-hour max TTL) can be minted per scoring batch, eliminating the rotation problem entirely at the cost of more frequent MaaS API calls.
+- The user's OCP token is used only during the mint request and is NOT retained by MLflow. Re-minting on expiry requires one of: (a) the user re-authenticates and triggers a key refresh via the UI, (b) a service account with delegated minting authority refreshes on behalf of the user, or (c) ephemeral keys (1-hour max TTL) are minted per scoring batch, eliminating the rotation problem at the cost of more frequent MaaS API calls. The specific re-minting mechanism will be designed in Phase 2.
+- MLflow does not perform SubjectAccessReview itself — it passes the user's OCP token to the MaaS API, which performs its own authorization checks (subscription membership, model access). If the user lacks access, the MaaS API returns an error that MLflow surfaces directly.
 
 **Implementation considerations:**
 
@@ -206,7 +206,7 @@ At the gateway, Authorino validates the API key, performs a SubjectAccessReview 
 ## Open Questions
 
 1. **Model-in-path vs model-in-body:** MaaS currently uses path-based routing (`/{ns}/{model}/v1/chat/completions`). MLflow's OpenAI provider sends the model name in the request body. MaaS accepts model-in-body, but the path-based URL must still be correct. How should the model URL be constructed when the unified entry point (RHAIRFE-1304) is not yet available?
-2. **UI prefix for MaaS endpoints:** The UI currently hardcodes `gateway:/` as the model URI prefix (`formatGatewayModelFromEndpoint()`). For direct resolution to work, this prefix must still be `gateway:/` (since the direct resolver handles it). Confirm this works end-to-end or whether a new prefix (e.g., `maas:/`) is needed.
+2. **UI prefix for MaaS endpoints:** The UI currently hardcodes `gateway:/` as the model URI prefix (`formatGatewayModelFromEndpoint()`). Since the direct resolver handles the `gateway:/` scheme, MaaS endpoints stored as gateway endpoints will use the same prefix — no new scheme is needed. The `source: maas` tag distinguishes them from locally-managed endpoints at the data level, not the URI level. This must be validated end-to-end during implementation.
 3. **Key rotation for online scoring:** The server's MaaS API key has a 90-day max TTL. What mechanism handles rotation? Options: init container that re-mints on startup, sidecar that watches expiry, or CronJob.
 4. **Upstream contribution sequencing:** All MLflow changes must be designed and packaged for upstream acceptance, including creating plugin hooks where they don't currently exist (e.g., pluggable endpoint discovery, direct config resolution). Carrying changes in our downstream fork is a temporary fallback only — it should be avoided if at all possible. The open question is sequencing: which changes should be proposed as upstream RFCs first, and which can proceed in parallel with implementation?
 
@@ -262,15 +262,15 @@ Register a custom tracking store (via `mlflow.tracking_store` entrypoint) that o
 
 ## Security and Privacy Considerations
 
-- **MaaS API keys are stored encrypted** in MLflow's secret store using envelope encryption (KEKManager). Only the server process can decrypt them. Keys are never exposed to clients via the REST API.
+- **MaaS API keys are stored encrypted** in MLflow's secret store using envelope encryption (KEKManager). Keys are never exposed to clients via the REST API. KEK isolation and access controls are enforced by the deployment configuration (see RHOAI operator documentation).
 - **Provider credentials never enter MLflow** — MaaS handles the swap from user API key to provider API key at the Authorino layer. MLflow stores and transmits only MaaS API keys.
-- **Key scope is subscription-bound** — a MaaS API key can only access models permitted by its associated `MaaSSubscription`. If the subscription is modified or revoked, the key loses access immediately.
+- **Key scope is subscription-bound** — a MaaS API key can only access models permitted by its associated `MaaSSubscription`. Access enforcement is performed entirely by the MaaS gateway (Authorino) on every request — MLflow does not cache subscription validity. If a subscription is modified or revoked, the next scoring call receives a 403 from MaaS. MLflow treats any MaaS 403/401 response as a terminal error for that scoring job (fail closed) and surfaces the error to the user.
 
 ## Risks
 
 - **MaaS API stability:** The MaaS REST API (`maas.opendatahub.io/v1alpha1`) is alpha. Breaking changes could require updates to the MLflow integration. Mitigation: isolate MaaS-specific logic behind an abstraction layer.
 - **API key expiry during long-running evaluations:** A 90-day key could expire mid-evaluation if not rotated. Mitigation: monitor key expiry, rotate proactively with buffer.
-- **Direct config resolution bypasses guardrails:** The gateway proxy applies guardrails (content filters) to scoring requests. Bypassing the proxy skips guardrails. For MaaS endpoints, guardrails could be applied at the MaaS gateway level instead. This needs explicit decision.
+- **Guardrails are a MaaS platform concern:** The MLflow AI Gateway proxy includes guardrail capabilities (content filters), but since the proxy is disabled in RHOAI, these were never active. This ADR does not introduce a guardrails regression. Content filtering and safety guardrails for model access are the responsibility of the MaaS gateway layer (NeMo/TrustyAI via Kuadrant ext_proc adapters).
 - **Upstream acceptance of direct resolution:** The `_get_provider_instance` change is generic, but modifying the server-side scoring path may face scrutiny. Supporting argument: highlight as a performance optimization (eliminates HTTP round-trip) as well.
 
 ## Stakeholder Impacts
