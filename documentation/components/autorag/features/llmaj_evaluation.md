@@ -36,7 +36,6 @@ Pipeline parameters on **`documents_rag_optimization_pipeline`**:
 | Parameter | Default | Role |
 |-----------|---------|------|
 | `evaluator` | **`judge`** | `judge` \| `ragas` |
-| `judge_model_id` | *(auto)* | Optional override; when omitted, ai4rag [auto-selects](#auto-selecting-the-judge-model) at `search_space_preparation` |
 | `optimization_metric` | **`faithfulness`** | GAM objective (`objective_metric` in ai4rag) |
 
 Default path uses the judge evaluator; set `evaluator=ragas` to keep today’s `UnitxtEvaluator` behavior. Judge cost scales with benchmark rows × patterns.
