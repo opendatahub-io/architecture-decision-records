@@ -53,7 +53,7 @@ Additional KFP pipeline parameter planned for the optimization graph. Confirm na
 | Preset | Min resources (workload steps) | Role (summary) |
 |--------|-------------------------------|----------------|
 | `speed` | 4 vCPU / 16 GiB RAM | Fastest path: recursive chunking on exported text, no table-structure parsing, no LLM contextual enrichment. |
-| `balanced` | 8 vCPU / 32 GiB RAM | Higher quality for structured PDFs/DOCX: Docling table layout parser, hybrid chunker, and [contextual retrieval](./chunking_and_retrievals_methods.md#llm-contextual-enrichment-index-time-rhoai-35) at index time. |
+| `balanced` | 8 vCPU / 32 GiB RAM | Higher quality for structured PDFs/DOCX: Docling table layout parser and [contextual retrieval](./chunking_and_retrievals_methods.md#llm-contextual-enrichment-index-time-rhoai-35) at index time. |
 
 ### `speed` (default)
 
@@ -66,12 +66,11 @@ Additional KFP pipeline parameter planned for the optimization graph. Confirm na
 
 ### `balanced`
 
-Enables the three features below relative to `speed`:
+Enables the two features below relative to `speed`:
 
 | Feature | Where it applies | Setting |
 |---------|------------------|---------|
 | **Docling table layout parser** | `text_extraction` (PDF) | `do_table_structure: true` — [TableFormer](https://docling-project.github.io/docling/guides/pdf-processing/) reconstructs table rows and columns from detected layout. |
-| **Docling hybrid chunker** | Optimization / indexing search space | `chunking.method: hybrid` — structure-aware chunks from persisted `DoclingDocument`, with tokenizer-aware split/merge (see [Hierarchical / hybrid chunking](./chunking_and_retrievals_methods.md#hierarchical-chunking-rhoai-35)). |
 | **Contextual retrieval** | Indexing (`chunking`) | `chunking.contextual_enrichment.enabled: true` — LLM-generated situating text prepended before embedding and sparse indexing ([Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)). |
 | **Benchmark query concurrency** | ai4rag `query_rag` **`max_threads`**: **4** (lower than `speed` because each concurrent request carries more retrieved context). |
 
@@ -81,11 +80,9 @@ Enables the three features below relative to `speed`:
 {
   "settings": {
     "chunking": {
-      "method": "hybrid",
+      "method": "recursive",
       "chunk_size": 1024,
       "chunk_overlap": 128,
-      "merge_lists": true,
-      "include_context": true,
       "contextual_enrichment": {
         "enabled": true,
         "context_generation_model": "<from search space or platform default>"
