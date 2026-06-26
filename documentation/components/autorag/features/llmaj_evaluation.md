@@ -24,21 +24,21 @@ Unitxt works for regression and leaderboards but rubrics are opaque, fixed, and 
 
 ### Evaluator naming
 
-Pipeline parameter **`evaluator`**: **`judge`** \| **`ragas`**. Recorded in `pattern.json` → `evaluation.evaluator`.
+Pipeline parameter **`evaluator`**: **`judge`** \| **`unitxt`**. Recorded in `pattern.json` → `evaluation.evaluator`.
 
 | `evaluator` | ai4rag class | Notes |
 |-------------|--------------|-------|
 | **`judge`** | `LLMaJEvaluator` | **Default** — explicit judge model + rubrics |
-| `ragas` | `UnitxtEvaluator` | Legacy bundled RAGAS-style metric suite |
+| `unitxt` | `UnitxtEvaluator` | Legacy bundled Unitxt metric suite |
 
 Pipeline parameters on **`documents_rag_optimization_pipeline`**: 
 
 | Parameter | Default | Role |
 |-----------|---------|------|
-| `evaluator` | **`judge`** | `judge` \| `ragas` |
+| `evaluator` | **`judge`** | `judge` \| `unitxt` |
 | `optimization_metric` | **`faithfulness`** | GAM objective (`objective_metric` in ai4rag) |
 
-Default path uses the judge evaluator; set `evaluator=ragas` to keep today’s `UnitxtEvaluator` behavior. Judge cost scales with benchmark rows × patterns.
+Default path uses the judge evaluator; set `evaluator=unitxt` to keep today’s `UnitxtEvaluator` behavior. Judge cost scales with benchmark rows × patterns.
 
 ---
 
@@ -65,9 +65,9 @@ When **`judge_model_id`** is omitted and `evaluator=judge`, **ai4rag** picks the
 On a **fixed calibration subset** of the benchmark (`min(20, 10% of rows)`, stratified if possible):
 
 1. Use answers already produced for a **reference RAG configuration** (first GAM trial or a lightweight default pattern from search-space prep).
-2. Score each row with **`ragas` path `faithfulness`** (`UnitxtEvaluator` reference).
+2. Score each row with **`unitxt` path `faithfulness`** (`UnitxtEvaluator` reference).
 3. For each **candidate judge model**, score the same rows with **`judge` `faithfulness`** (single metric, one judge call per row per candidate).
-4. Compute **`judge_calibration_score`** = Pearson correlation between ragas-path and judge faithfulness on the subset.
+4. Compute **`judge_calibration_score`** = Pearson correlation between unitxt-path and judge faithfulness on the subset.
 5. **Select** the candidate with the **highest** `judge_calibration_score`.
 
 **Tie-breakers (in order):** prefer a model **not** listed as a generation candidate in the search space; else prefer the model ranked **higher** in the existing search-space prep validation; else lowest `model_id` lexicographically.
