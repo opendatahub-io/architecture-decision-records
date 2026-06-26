@@ -280,7 +280,7 @@ Register a custom tracking store (via `mlflow.tracking_store` entrypoint) that o
 | MLflow / Experiment Tracking | Matt Prahl      |            | Yes — scoring path change, endpoint creation flow |
 | MaaS / AI Gateway            | Marius Daciu    |            | Yes — MLflow becomes a MaaS API consumer          |
 | RHOAI Dashboard              | Juntao Wang     |            | Yes — UI changes for MaaS model discovery         |
-| Architecture                 | Edson Tirelli   |            | Yes — cross-component integration                 |
+| Architecture                 | Edson Tirelli, Lindani Phiri |  | Yes — cross-component integration, API key management and MaaS |
 | RHOAI Operator               | Luca Burgazzoli |            | Maybe — API key lifecycle management              |
 
 
