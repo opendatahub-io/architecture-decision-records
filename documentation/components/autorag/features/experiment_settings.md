@@ -52,7 +52,7 @@ Additional KFP pipeline parameter planned for the optimization graph. Confirm na
 
 | Preset | Min resources (workload steps) | Role (summary) |
 |--------|-------------------------------|----------------|
-| `speed` | 8 vCPU / 32 GiB RAM | Fastest path: recursive chunking on exported text, no table-structure parsing, no LLM contextual enrichment. |
+| `speed` | 4 vCPU / 16 GiB RAM | Fastest path: recursive chunking on exported text, no table-structure parsing, no LLM contextual enrichment. |
 | `balanced` | 8 vCPU / 32 GiB RAM | Higher quality for structured PDFs/DOCX: Docling table layout parser, hybrid chunker, and [contextual retrieval](./chunking_and_retrievals_methods.md#llm-contextual-enrichment-index-time-rhoai-35) at index time. |
 
 ### `speed` (default)
