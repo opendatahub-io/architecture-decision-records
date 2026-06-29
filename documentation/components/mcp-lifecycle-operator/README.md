@@ -69,7 +69,7 @@ Cluster-scoped CR created by the ODH platform operator. Controls whether the MCP
 | Field | Description |
 |---|---|
 | `spec.managementState` | `Managed` (deploy and reconcile the operand) or `Removed` (delete all operand resources) |
-| `status.phase` | `Ready` or `NotReady` |
+| `status.phase` | `Ready` or `Not Ready` |
 | `status.conditions` | `Ready`, `ProvisioningSucceeded`, `Degraded`, `MCPLifecycleOperatorAvailable` |
 | `status.releases` | Reports the module operator version and repository URL |
 
@@ -90,7 +90,7 @@ Namespaced CR created by users to deploy MCP servers.
 |---|---|
 | `spec.source` | Container image reference for the MCP server (currently supports `ContainerImage` type) |
 | `spec.config` | Server configuration: port, arguments, environment variables, storage mounts, HTTP path |
-| `spec.runtimeConfig` | Replicas, security context, resource requests/limits, health probes |
+| `spec.runtime` | Replicas, security context, resource requests/limits, health probes |
 | `spec.mcp` | MCP-specific settings (e.g., `stateless` for session affinity control) |
 | `status.address` | Cluster-internal URL for connecting to the MCP server |
 | `status.serverInfo` | MCP server identity and capabilities discovered via protocol handshake |
@@ -109,7 +109,7 @@ spec:
       ref: quay.io/containers/kubernetes_mcp_server:latest
   config:
     port: 8080
-  runtimeConfig:
+  runtime:
     security:
       serviceAccountName: mcp-server-sa
   mcp:
