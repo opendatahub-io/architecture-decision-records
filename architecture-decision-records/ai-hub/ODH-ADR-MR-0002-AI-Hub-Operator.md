@@ -23,7 +23,7 @@ Rename `opendatahub-io/model-registry-operator` to `opendatahub-io/ai-hub-operat
 
 The platform operator is migrating from a monolithic architecture to a modular one (see ODH-ADR-Operator-0006 and RHOAIENG-60945). Under this model, each component team owns a module operator that the platform deploys and manages. The AI Hub team must provide such an operator.
 
-Separately, once the Kubeflow model registry is replaced by the MLflow model registry, the `model-registry-operator` will no longer deploy its eponymous component. The operator name will be misleading, and the catalog will need its own CRD to expose configuration options that are currently hard-coded (for example, the PostgreSQL PVC size).
+Separately, once the Kubeflow model registry is replaced by the MLflow model registry, the `model-registry-operator` will no longer deploy its eponymous component. The operator name will be misleading, and the catalog will need its own CRD to expose configuration options that are currently hard-coded (for example, resource requests).
 
 The application namespace has the same problem. Today the catalog and model registries are deployed to `rhoai-model-registries` (or `odh-model-registries`), a name that references a component that no longer describes the workloads running there. Because service URLs embed the namespace, changing it requires coordinating with API consumers--primarily the Dashboard. The modular architecture provides a clean way to handle this: the `AIHub` CR status can advertise the application namespace, giving the Dashboard a stable indirection point that is independent of the actual namespace name.
 
@@ -83,9 +83,8 @@ spec:
       requests: {cpu: "100m", memory: "256Mi"}
       limits: {cpu: "500m", memory: "512Mi"}
   database:
-    pvc:
-      size: "10Gi"
-      storageClass: "the-storage-class" # omit to use the cluster default
+    volume:
+      sizeLimit: "10Gi"
 ```
 
 The created Kubernetes resources will have the same names as they do now from `model-registry-operator`. Catalog sources remain ConfigMap-based; the labeled-ConfigMap discovery mechanism (`opendatahub.io/catalog-source=true`) carries over unchanged.
@@ -123,18 +122,17 @@ This separates two concerns: *where to read the namespace* (always the `AIHub` C
 
 The transition from `model-registry-operator` to the AI Hub operator's Catalog operator requires no explicit user steps.
 
-**Ownership transfer.** The Catalog operator uses an adopt-or-create strategy for every resource it manages (Deployments, Services, PVCs, etc.). On each reconcile, if the expected resource already exists, the operator patches its `ownerReferences` to point to the `Catalog` CR. If the resource does not exist, the operator creates it. This is idempotent — running it against already-adopted resources is a no-op.
+**Ownership transfer.** The Catalog operator uses an adopt-or-create strategy for every resource it manages (Deployments, Services, etc.). On each reconcile, if the expected resource already exists, the operator patches its `ownerReferences` to point to the `Catalog` CR. If the resource does not exist, the operator creates it. This is idempotent — running it against already-adopted resources is a no-op.
 
 When the old `default-modelregistry` CR is deleted, the garbage collector will delete dependent resources whose only `ownerReferences` point to it. The Catalog operator handles this through its adopt-or-create strategy: on its first reconcile it recreates any missing resources.
 
 **Upgrade window.** During the transition there may be a brief window where neither operator is running (gap) or both are running (overlap):
 
-- *Gap*: The garbage collector may delete resources whose `ownerReferences` point only to the deleted CR. The Catalog operator recreates them on its first reconcile. The main cost is PostgreSQL PVC reprovisioning time (up to several minutes of catalog downtime).
+- *Gap*: The garbage collector may delete resources whose `ownerReferences` point only to the deleted CR. The Catalog operator recreates them on its first reconcile. PostgreSQL uses an `emptyDir` volume, so data is repopulated from catalog sources on restart.
 - *Overlap*: Both operators may briefly reconcile the same resources. Because both produce the same desired state, this is a convergent no-op. The old operator stops reconciling once its CR is deleted.
 
-**Requirement:** the `model-registry-operator` must not delete managed resources (Deployments, Services, PVCs) when its CR is deleted. Destructive finalizer logic on the old CR would cause resource loss before the Catalog operator can adopt them.
+**Requirement:** the `model-registry-operator` must not delete managed resources (Deployments, Services) when its CR is deleted. Destructive finalizer logic on the old CR would cause resource loss before the Catalog operator can adopt them.
 
-**Skip-version upgrade risk:** if the catalog resources are garbage collected before the Catalog operator does its first reconcile, the PostgreSQL PVC may be lost and rebuilt (several minutes of catalog downtime). User-managed ConfigMaps are unaffected (no `ownerReference`). This risk is mitigated by not skipping major RHOAI releases.
 
 ## Open Questions
 
@@ -166,7 +164,6 @@ The catalog has been deployed from `model-registry-operator` because the two sha
 * **Modular architecture pattern is evolving**: ODH-ADR-Operator-0006 is still being implemented. The AI Hub team may need to adapt if the `ModuleHandler` interface changes.
 * **Repo rename ripple effects**: renaming the repo breaks CI pipelines, image references, OLM bundle metadata, and any external documentation pointing to the old name. Needs a coordinated rollout.
 * **CRD ownership coordination**: the `ModelRegistry` CRD is currently owned by `model-registry-operator`. Ownership must transfer cleanly to the renamed repo without disrupting existing `ModelRegistry` CRs.
-* **Skip-version upgrades**: catalog resources may be garbage collected before the new operator reconciles, causing brief catalog downtime (see Migration section).
 * **Dashboard breakage**: the Dashboard must be updated to read the application namespace from the `AIHub` CR status in the initial release. After that, namespace renames are transparent to the Dashboard.
 
 ## Stakeholder Impacts
