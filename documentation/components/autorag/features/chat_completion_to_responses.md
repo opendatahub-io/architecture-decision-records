@@ -6,6 +6,76 @@ Reference: how HPO **Chat Completions** prompts map to exported **`responses_tem
 
 Source: `ai4rag/search_space/src/model_props.py` + `ai4rag/components/assets_generator/pattern_builder.py`. OGX config: [`benchmarking/rag/config.yaml`](https://github.com/ogx-ai/ogx/blob/main/benchmarking/rag/config.yaml).
 
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Phase 1: AutoRAG HPO Optimization"
+        A[AutoRAG HPO] -->|Optimizes using| B[Chat Completions API]
+        B -->|Documents inline in prompts| C[HPO Pattern]
+        C -->|system: persona + grounding| D1[system_message_text]
+        C -->|user: templates + docs + citations| D2[user_message_text]
+        D2 -->|Contains| D3["[1],[2] citations<br/>{reference_documents}<br/>Answer scaffolds"]
+    end
+    
+    subgraph "Phase 2: Export Transformation"
+        E[pattern_builder.py] -->|build_pattern_json| F[responses_template]
+        D1 -->|Adapted| E
+        D2 -->|Filtered & Merged| E
+        F -->|input[0] system| G1[Persona + Answer Scaffolds]
+        F -->|input[1] user| G2["&lt;user_query_placeholder&gt;"]
+        F -->|tools| G3[file_search config]
+        F -->|tool_choice| G4[mode: required]
+        
+        style E fill:#e1f5ff
+        
+        H[Transformation Rules] -.->|Drop| I1["HPO [1],[2] citations"]
+        H -.->|Drop| I2["{reference_documents}"]
+        H -.->|Drop| I3["User grounding blocks"]
+        H -.->|Drop| I4["OGX retrieval / citation framing"]
+        H -.->|Merge| I5["Answer length + language → system"]
+    end
+    
+    subgraph "Phase 3: OGX Runtime"
+        J[OGX Responses API] -->|Receives| F
+        J -->|Calls| K[file_search tool]
+        K -->|Queries| L[Vector Store<br/>Milvus/Qdrant/etc]
+        L -->|Returns| M[Retrieved Chunks]
+        
+        N[OGX Config<br/>config.yaml] -->|Configures| K
+        N -->|Templates| O1[chunk_annotation_template]
+        N -->|Templates| O2[context_template]
+        N -->|Templates| O3["annotation_instruction_template<br/>&lt;|file-id|&gt; format"]
+        
+        M -->|Formatted via| O1
+        M -->|Framed via| O2
+        M -->|Citation hints via| O3
+        
+        O1 & O2 & O3 -->|Injected as| P[Enhanced Prompt]
+        P -->|Sent to| Q[LLM Model]
+        Q -->|Response with| R["Answer + &lt;|file-id|&gt; citations"]
+    end
+    
+    style A fill:#fff4e6
+    style J fill:#e8f5e9
+    style N fill:#e8f5e9
+    style F fill:#f3e5f5
+```
+
+**Key Points:**
+
+1. **AutoRAG HPO** optimizes patterns using Chat Completions with inline documents
+2. **Export** transforms to Responses API format, dropping retrieval/citation elements that OGX will provide
+3. **OGX Runtime** injects retrieval context via `file_search` tool with custom `<|file-id|>` citation format
+
+**OGX vs OpenAI:** OGX implements an OpenAI-compatible Responses API but with custom `file_search` supporting:
+- Configurable citation formats (`<|file-id|>` vs OpenAI's `file_citation` annotations)
+- Custom chunk templates and retrieval framing
+- Multiple vector store backends (Milvus, Qdrant, etc.)
+- On-premise deployment
+
+See [OGX documentation](https://github.com/ogx-ai/ogx) for implementation details.
+
 ## OGX vs export — responsibility split
 
 When patterns run on OGX, `file_search` injects retrieval context **after** the exported `input[]` messages. Export must **not** duplicate those runtime elements.
@@ -109,26 +179,27 @@ Each exported pattern supplies (via `build_pattern_json()`):
 | `[1], [2]` citation instructions | **Dropped** from export | `annotation_prompt_params` (`<\|file-id\|>`) |
 | `temperature`, `max_completion_tokens` | `temperature`, `max_output_tokens` | — |
 
-**Export rule:** drop HPO citation lines — do not replace with export-side citation text. **Keep in export:** persona, answer scaffold, language policy, persona-level grounding rephrase.
+**Export rule:** drop HPO citation lines and OGX-duplicative retrieval framing — **do not replace** with export-side citation or `file_search` wording (OGX `context_template` + `annotation_instruction_template` inject those at runtime). **Keep in export:** model persona, answer-length policy, language policy, and family-specific user supplements that are not OGX-owned.
 
 ## Transformation rules (export parity)
 
 | HPO / user-template content | Export behavior |
 |-----------------------------|-----------------|
-| `Answer using ONLY the provided documents.` | Rephrased → `…retrieved via file search.` |
-| `Answer ONLY using information from the documents below…` | **Dropped** if system has grounding |
-| `You MUST cite sources using [1], [2]…` | **Dropped** — OGX handles citation |
-| Granite RAG persona in user template | **Dropped** (duplicates system) |
+| `Answer using ONLY the provided documents.` | **Dropped** — OGX `context_template` frames retrieval |
+| `Answer ONLY using information from the documents below…` | **Dropped** (never rephrased into export) |
+| `You MUST cite sources using [1], [2]…` | **Dropped** — OGX `annotation_instruction_template` |
+| Granite RAG block in user template | **Merged** when absent from system (current `model_props`) |
 | `{reference_documents}` | **Not exported** |
-| `Question: {question}` | **Not exported** — runtime user `input` |
-| `Answer (max 150 words, with citations):` | **Merged** into system |
-| English-only / multilingual line | **Merged** into system |
+| `Question: {question}` / `[conversation]: {question}` | **Not exported** — runtime user `input` |
+| `Answer Length: detailed/concise` / `150 words` | **Merged** into system |
+| `{multilingual_support}` (resolved language line) | **Merged** into system |
+| `with citations` in answer scaffolds | **Stripped** — OGX owns citation format |
 
 ## Side-by-side summary (IBM Granite)
 
 | Piece | Chat Completions | Exported pattern | OGX at runtime |
 |-------|------------------|------------------|----------------|
-| Persona + grounding | System | System (rephrased) | — |
+| Persona | System | System (OGX-duplicative lines stripped) | — |
 | User grounding block | User (top) | **Removed** | `context_template` |
 | `[1],[2]` citation | User | **Removed** | `annotation_instruction_template` |
 | Retrieved documents | User body | **Removed** | `file_search` + chunk templates |
@@ -145,37 +216,32 @@ Four layers at inference. Layers **0–2** are the export/mapping concern; layer
 
 ```text
 [system]
-You are a retrieval-augmented assistant. Answer using ONLY the provided documents. You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
+You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
 
 [user — filled]
-Answer ONLY using information from the documents below. Do not use outside knowledge. If the documents do not contain the answer, say you do not have enough information.
-You MUST cite sources using [1], [2], etc. matching the document numbers for every factual claim.
+You are an AI language model designed to function as a specialized Retrieval Augmented Generation (RAG) assistant. When generating responses, prioritize correctness, i.e., ensure that your response is grounded in context and user query. Always make sure that your response is relevant to the question.
+Answer Length: detailed
 
-You are a specialized Retrieval Augmented Generation (RAG) assistant. Prioritize correctness and ensure your response is grounded in the documents.
-
-Documents:
-Document 1:
+[Document]
 Revenue grew 12% in Q3.
-
-Document 2:
+[End]
+[Document]
 The product launched in March 2024.
+[End]
 
-Question: When did the product launch?
+When did the product launch?
 
-Answer (max 150 words, with citations):
-You MUST write your entire answer in English only. Do NOT use any other language, even if the question or documents are in another language. Every word of your answer must be in English.
-
+Respond exclusively in English, regardless of the language of the question or any other language used in the provided context. Ensure that your entire response is in English only.
 ```
-
-Full `messages[]` JSON: see [IBM Granite (english-only)](#granite-english-only).
 
 ### Layer 1 — exported `responses_template.input[system]`
 
 ```text
-You are a retrieval-augmented assistant. Answer using ONLY information from documents retrieved via file search. You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
+You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
 
-Answer (max 150 words, with citations):
-You MUST write your entire answer in English only. Do NOT use any other language, even if the question or documents are in another language. Every word of your answer must be in English.
+You are an AI language model designed to function as a specialized Retrieval Augmented Generation (RAG) assistant. When generating responses, prioritize correctness, i.e., ensure that your response is grounded in context and user query. Always make sure that your response is relevant to the question.
+Answer Length: detailed
+Respond exclusively in English, regardless of the language of the question or any other language used in the provided context. Ensure that your entire response is in English only.
 ```
 
 ### Layer 2 — exported `responses_template.input[user]` (question at runtime)
@@ -270,39 +336,38 @@ Sections **1–10** are summarized in [Registered model families](#registered-mo
 
 ## Registered model families (sections 1–10)
 
-Sections **1–10** in the [variation index](#variation-index) share the **same export transformation** (see [Transformation rules](#transformation-rules-export-parity) and the [end-to-end walkthrough](#end-to-end-walkthrough-ibm-granite-english-only)). Differences are limited to **model persona** (`system_message_text` suffix), **language policy** (english-only vs multilingual answer line), and— for IBM Granite only—an extra RAG persona line in the user template that export drops.
+Sections **1–10** in the [variation index](#variation-index) share the **same export transformation** (see [Transformation rules](#transformation-rules-export-parity) and the [end-to-end walkthrough](#end-to-end-walkthrough-ibm-granite-english-only)). Differences are limited to **model persona** (`system_message_text`), **user-only supplements** merged into export (RAG block, answer length, language line), and english-only vs multilingual `{multilingual_support}` resolution.
 
 **PR baseline** (`raw system_message_text` only) is identical across families: `input[0]` = unmodified HPO system, `input[1]` = `<user_query_placeholder>`. See [Export modes](#export-modes); do not duplicate per family.
 
 ### Shared export transformation
 
-- User grounding block (`documents below`) not copied verbatim into export
+- User grounding block (`documents below`) **not** copied or rephrased into export
 - HPO `[1], [2]` citation instructions **dropped** — OGX injects `<|file-id|>` citation via `annotation_prompt_params` at `file_search` runtime
-- Citation lines omitted from export (no duplication with OGX file_search annotations)
-- System grounding rephrased for tool-based retrieval (persona-level only)
+- OGX `context_template` / `annotation_instruction_template` phrases **never** added to export (strip only, no substitute wording)
 - Documents slot removed from export (OGX `file_search_params` + chunk templates)
 - Question slot moved to `input[role=user]` at runtime
-- Answer scaffold merged into export system text (HPO-specific, not OGX-injected)
+- Answer-length and language policy merged into export system text (HPO-specific, not OGX-injected)
 
 ### Per-family differences
 
-| Section ID | Family | Representative `model_id` | Language | Extra system persona (after RAG prefix) | User-only content dropped at export |
-|------------|--------|---------------------------|----------|----------------------------------------|-------------------------------------|
-| `generic-default-english-only` | Generic default | `unknown-model` | English only | `If the question is unanswerable from the documents, say you cannot answer.` | — |
-| `generic-default-multilingual` | Generic default | `unknown-model` | Multilingual | same as english-only | Language line: match question language |
-| `granite-english-only` | IBM Granite | `ibm/granite-3-8b-instruct` | English only | Granite Chat / IBM cautious-assistant persona | Granite RAG assistant line in user template |
-| `granite-multilingual` | IBM Granite | `ibm/granite-3-8b-instruct` | Multilingual | same persona as english-only | RAG assistant line + multilingual language line |
-| `llama-english-only` | Meta Llama | `meta-llama/llama-3-1-8b-instruct` | English only | Helpful / respectful / honest Llama safety persona | — |
-| `llama-multilingual` | Meta Llama | `meta-llama/llama-3-1-8b-instruct` | Multilingual | same persona as english-only | Multilingual language line |
-| `mistral-english-only` | Mistral | `mistralai/mistral-large` | English only | Same helpful / honest persona as Llama | — |
-| `mistral-multilingual` | Mistral | `mistralai/mistral-large` | Multilingual | same persona as english-only | Multilingual language line |
-| `openai-english-only` | OpenAI GPT-OSS | `openai/gpt-oss-120b` | English only | Correctness / grounding / refusal template | — |
-| `openai-multilingual` | OpenAI GPT-OSS | `openai/gpt-oss-120b` | Multilingual | same persona as english-only | Multilingual language line |
+| Section ID | Family | Representative `model_id` | Language | System (`system_message_text`) | User supplements merged into export |
+|------------|--------|---------------------------|----------|--------------------------------|-------------------------------------|
+| `generic-default-english-only` | Generic default | `unknown-model` | English only | Context/question framing persona | Grounding reminder + English-only line |
+| `generic-default-multilingual` | Generic default | `unknown-model` | Multilingual | same as english-only | Grounding reminder + match-question-language line |
+| `granite-english-only` | IBM Granite | `ibm/granite-3-8b-instruct` | English only | Granite Chat persona | RAG assistant block + `Answer Length: detailed` + English-only line |
+| `granite-multilingual` | IBM Granite | `ibm/granite-3-8b-instruct` | Multilingual | same persona as english-only | RAG block + answer length + multilingual line |
+| `llama-english-only` | Meta Llama | `meta-llama/llama-3-1-8b-instruct` | English only | Llama safety persona | 150-word limit + English-only line |
+| `llama-multilingual` | Meta Llama | `meta-llama/llama-3-1-8b-instruct` | Multilingual | same persona as english-only | 150-word limit + multilingual line |
+| `mistral-english-only` | Mistral | `mistralai/mistral-large` | English only | Helpful / honest persona | Document-title routing instructions + English-only line |
+| `mistral-multilingual` | Mistral | `mistralai/mistral-large` | Multilingual | same persona as english-only | Document-title instructions + multilingual line |
+| `openai-english-only` | OpenAI GPT-OSS | `openai/gpt-oss-120b` | English only | Full RAG persona + `Answer Length: concise` | English-only line only (RAG already in system) |
+| `openai-multilingual` | OpenAI GPT-OSS | `openai/gpt-oss-120b` | Multilingual | same persona as english-only | Multilingual line only |
 
-**Language suffixes** merged into export system text:
+**Language suffixes** merged into export system text (from `get_user_message_text()` `{multilingual_support}` resolution):
 
-- **English only:** `You MUST write your entire answer in English only. Do NOT use any other language…`
-- **Multilingual:** `You MUST write your entire answer in the same language as the question. Do NOT respond in any other language…`
+- **English only:** `Respond exclusively in English, regardless of the language of the question…`
+- **Multilingual:** `Respond exclusively in the language of the question, regardless of any other language used in the provided context…`
 
 Full worked example for the most common family:
 
@@ -319,24 +384,17 @@ Full worked example for the most common family:
 #### `messages[0]` — system
 
 ```text
-You are a retrieval-augmented assistant. Answer using ONLY the provided documents. You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
+You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
 ```
 
 #### `messages[1]` — user (template)
 
 ```text
-Answer ONLY using information from the documents below. Do not use outside knowledge. If the documents do not contain the answer, say you do not have enough information.
-You MUST cite sources using [1], [2], etc. matching the document numbers for every factual claim.
-
-You are a specialized Retrieval Augmented Generation (RAG) assistant. Prioritize correctness and ensure your response is grounded in the documents.
-
-Documents:
+You are an AI language model designed to function as a specialized Retrieval Augmented Generation (RAG) assistant. When generating responses, prioritize correctness, i.e., ensure that your response is grounded in context and user query. Always make sure that your response is relevant to the question.
+Answer Length: detailed
 {reference_documents}
-
-Question: {question}
-
-Answer (max 150 words, with citations):
-You MUST write your entire answer in English only. Do NOT use any other language, even if the question or documents are in another language. Every word of your answer must be in English.
+{multilingual_support}
+{question}
 ```
 
 ### Responses export — **export parity** (`build_responses_system_input`)
@@ -344,10 +402,11 @@ You MUST write your entire answer in English only. Do NOT use any other language
 #### `responses_template.input[0]` — system
 
 ```text
-You are a retrieval-augmented assistant. Answer using ONLY information from documents retrieved via file search. You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
+You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.
 
-Answer (max 150 words, with citations):
-You MUST write your entire answer in English only. Do NOT use any other language, even if the question or documents are in another language. Every word of your answer must be in English.
+You are an AI language model designed to function as a specialized Retrieval Augmented Generation (RAG) assistant. When generating responses, prioritize correctness, i.e., ensure that your response is grounded in context and user query. Always make sure that your response is relevant to the question.
+Answer Length: detailed
+Respond exclusively in English, regardless of the language of the question or any other language used in the provided context. Ensure that your entire response is in English only.
 ```
 
 #### `responses_template.input`
@@ -359,7 +418,7 @@ You MUST write your entire answer in English only. Do NOT use any other language
     "content": [
       {
         "type": "input_text",
-        "text": "You are a retrieval-augmented assistant. Answer using ONLY information from documents retrieved via file search. You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.\n\nAnswer (max 150 words, with citations):\nYou MUST write your entire answer in English only. Do NOT use any other language, even if the question or documents are in another language. Every word of your answer must be in English."
+        "text": "You are Granite Chat, an AI language model developed by IBM. You are a cautious assistant. You carefully follow instructions. You are helpful and harmless and you follow ethical guidelines and promote positive behaviour.\n\nYou are an AI language model designed to function as a specialized Retrieval Augmented Generation (RAG) assistant. When generating responses, prioritize correctness, i.e., ensure that your response is grounded in context and user query. Always make sure that your response is relevant to the question.\nAnswer Length: detailed\nRespond exclusively in English, regardless of the language of the question or any other language used in the provided context. Ensure that your entire response is in English only."
       }
     ]
   },
@@ -490,9 +549,9 @@ _Uses `build_responses_system_input()` — adapted persona + HPO supplements; ci
 #### `responses_template.input[0]` — system
 
 ```text
-You are a retrieval-augmented assistant. Answer using ONLY information from documents retrieved via file search.
+You are a retrieval-augmented assistant.
 
-Answer (max 150 words, with citations):
+Answer (max 150 words):
 You MUST write your entire answer in English only.
 ```
 
@@ -505,7 +564,7 @@ You MUST write your entire answer in English only.
     "content": [
       {
         "type": "input_text",
-        "text": "You are a retrieval-augmented assistant. Answer using ONLY information from documents retrieved via file search.\n\nAnswer (max 150 words, with citations):\nYou MUST write your entire answer in English only."
+        "text": "You are a retrieval-augmented assistant.\n\nAnswer (max 150 words):\nYou MUST write your entire answer in English only."
       }
     ]
   },
@@ -523,13 +582,12 @@ You MUST write your entire answer in English only.
 
 ### Transformation summary
 
-- User grounding block (`documents below`) not copied verbatim into export
+- User grounding block (`documents below`) **not** copied or rephrased into export
 - HPO `[1], [2]` citation instructions **dropped** — OGX injects `<|file-id|>` citation via `annotation_prompt_params` at `file_search` runtime
-- Citation lines omitted from export (no duplication with OGX file_search annotations)
-- System grounding rephrased for tool-based retrieval (persona-level only)
+- `provided documents` / `retrieved via file search` grounding **not** added to export
 - Documents slot removed from export (OGX `file_search_params` + chunk templates)
 - Question slot moved to `input[role=user]` at runtime
-- Answer scaffold merged into export system text (HPO-specific, not OGX-injected)
+- Answer scaffold merged without `with citations` (OGX owns citation format)
 
 <a id="test-dedupe-citation"></a>
 
@@ -574,7 +632,7 @@ _Uses `build_responses_system_input()` — adapted persona + HPO supplements; ci
 ```text
 You are a retrieval-augmented assistant.
 
-Answer (max 150 words, with citations):
+Answer (max 150 words):
 You MUST write your entire answer in English only.
 ```
 
@@ -587,7 +645,7 @@ You MUST write your entire answer in English only.
     "content": [
       {
         "type": "input_text",
-        "text": "You are a retrieval-augmented assistant.\n\nAnswer (max 150 words, with citations):\nYou MUST write your entire answer in English only."
+        "text": "You are a retrieval-augmented assistant.\n\nAnswer (max 150 words):\nYou MUST write your entire answer in English only."
       }
     ]
   },
@@ -651,8 +709,6 @@ _Uses `build_responses_system_input()` — adapted persona + HPO supplements; ci
 
 ```text
 Short system prefix.
-
-Answer ONLY using information from documents retrieved via file search. Do not use outside knowledge. If the retrieved documents do not contain the answer, say you do not have enough information.
 ```
 
 #### `responses_template.input`
@@ -664,7 +720,7 @@ Answer ONLY using information from documents retrieved via file search. Do not u
     "content": [
       {
         "type": "input_text",
-        "text": "Short system prefix.\n\nAnswer ONLY using information from documents retrieved via file search. Do not use outside knowledge. If the retrieved documents do not contain the answer, say you do not have enough information."
+        "text": "Short system prefix."
       }
     ]
   },
@@ -682,12 +738,9 @@ Answer ONLY using information from documents retrieved via file search. Do not u
 
 ### Transformation summary
 
-- User grounding block (`documents below`) not copied verbatim into export
-- HPO `[1], [2]` citation instructions **dropped** — OGX injects `<|file-id|>` citation via `annotation_prompt_params` at `file_search` runtime
-- Citation lines omitted from export (no duplication with OGX file_search annotations)
-- Documents slot removed from export (OGX `file_search_params` + chunk templates)
-- Question slot moved to `input[role=user]` at runtime
-- Export system extends raw system with merged supplements
+- User grounding block (`documents below`) **not** merged into export (OGX `context_template` owns retrieval framing)
+- HPO `[1], [2]` citation instructions **dropped**
+- Export system equals raw system when user rules are entirely OGX-duplicative
 
 <a id="openai-cookbook-minimal"></a>
 
