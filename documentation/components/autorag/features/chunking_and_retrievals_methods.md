@@ -24,7 +24,7 @@ This page documents the **chunking strategies** and **retrieval methods** suppor
 
 Chunking splits source documents into smaller segments (chunks) that fit within embedding model and LLM context windows while preserving semantic coherence. AutoRAG supports multiple chunking strategies during optimization to find the best approach for your documents.
 
-**Where settings live:** boundaries and **Docling** serialization (`include_context`) are **`chunking`** fields. **[Anthropic-style contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)** (an LLM writes short document-situating text **before** embedding) is also configured under **`chunking`** as **`contextual_enrichment`**, because it runs during **indexing** (documents indexing pipeline / vector store build), not during the query-time retrieval step. Query behavior (`number_of_chunks`, `search_mode`, fusion) stays under **`retrieval`**.
+**Where settings live:** boundaries and **Docling** serialization (`include_context`, native chunkers) are **`chunking`** fields. **[Anthropic-style contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)** (an LLM writes short document-situating text **before** embedding) is also configured under **`chunking`** as **`contextual_enrichment`**, because it runs during **indexing** (documents indexing pipeline / vector store build), not during the query-time retrieval step. Query behavior (`number_of_chunks`, `search_mode`, fusion) stays under **`retrieval`**.
 
 ### Recursive Chunking
 
@@ -54,13 +54,13 @@ Official Docling documentation distinguishes **two** chunking strategies in prin
 | Approach | Idea | Typical trade-offs |
 |----------|------|-------------------|
 | **Markdown (or similar) export, then post-processing** | Serialize **`DoclingDocument`** to Markdown (or related text) and run **user-defined** splitting (for example LangChain-style recursive splitters on the string). | Simple to wire into existing RAG stacks; easy to inspect. Structure (sections, tables, list groupings, doc item references) may be **flattened or weakened**, so downstream chunk boundaries may not align with Docling’s native document elements. Example recipe: [RAG with LangChain / Markdown-oriented flow](https://docling-project.github.io/docling/examples/rag_langchain/). |
-| **Native Docling chunkers on `DoclingDocument`** | Call chunkers that **iterate over the parsed document model**, not over a single pre-flattened string. Native chunkers use detected structure (headings, captions, elements; list merging is configurable) and can apply tokenizer-aware split/merge aligned with embedding limits. | **Structure-aware** chunks and **`contextualize()`** for metadata-enriched strings for embeddings. **`BaseChunker`** allows **custom or third-party** implementations and is the integration surface for frameworks such as LlamaIndex (same concepts page). Example: [Advanced chunking and serialization](https://docling-project.github.io/docling/examples/advanced_chunking_and_serialization/). |
+| **Native Docling chunkers on `DoclingDocument`** | Call chunkers that **iterate over the parsed document model**, not over a single pre-flattened string. Native chunkers use detected structure (headings, captions, elements; list merging is configurable). **`HybridChunker`** adds tokenizer-aware split/merge on top of structure-aware chunks (aligned with embedding limits; table header behavior is configurable). | **Structure-aware** chunks and **`contextualize()`** for metadata-enriched strings for embeddings. **`BaseChunker`** allows **custom or third-party** implementations and is the integration surface for frameworks such as LlamaIndex (same concepts page). Examples: [Hybrid chunking](https://docling-project.github.io/docling/examples/hybrid_chunking/), [Advanced chunking and serialization](https://docling-project.github.io/docling/examples/advanced_chunking_and_serialization/). |
 
-**Implication for AutoRAG:** the optimization surface documented on this page (`recursive`, token limits, `pattern.json`) applies to **text fed into the vector store** after Docling extraction. AutoRAG today optimizes **recursive** splitting on exported Markdown (or flat text). Docling’s **native structure-aware chunkers** remain an upstream Docling capability; they are not separate `chunking.method` values in the AutoRAG search space documented here.
+**Implication for AutoRAG:** the optimization surface documented on this page (recursive / token limits / `pattern.json`) remains valid for **whatever text (or chunk stream)** the ingestion path feeds into the vector store. Longer-term quality improvements for complex corpora may come from **keeping structure in `DoclingDocument` longer** and using **native structure-aware (or hybrid) chunking** plus custom serialization, rather than relying on **”everything to Markdown first”** as the only path—consistent with Docling’s own split between export-based and native chunking approaches.
 
 ### Extraction persistence and optimization flow
 
-This section describes the **recommended end-to-end shape** for [`pipelines-components`](https://github.com/red-hat-data-services/pipelines-components): parse once, persist **`DoclingDocument`**, then run optimization trials that **export and recursively split** text without re-parsing PDFs.
+This section describes the **recommended end-to-end shape** for [`pipelines-components`](https://github.com/red-hat-data-services/pipelines-components) when the **search space** includes more than one chunking family (for example **recursive on flat text** vs **Docling native / hybrid**).
 
 #### 1. Text extraction persists `DoclingDocument` (JSON or YAML)
 
@@ -120,7 +120,14 @@ doc = DoclingDocument.load_from_json("/workspace/parsed/<doc_id>/docling.json")
 
 **`rag_templates_optimization`** (ai4rag) receives **paths or URIs** to the extracted corpus (for example a **manifest** listing each `doc_id` and its `docling.json` / `docling.yaml` path). It does **not** need to re-parse PDFs for each trial if the persisted **`DoclingDocument`** is the single source of truth.
 
-For **each optimization trial**, ai4rag reads the **search space / template** and applies the trial’s **`chunking.method`** and related parameters. With **`recursive`** chunking (the AutoRAG default), trials start from the persisted **`DoclingDocument`**, call **`export_to_markdown()`** on demand (or read a **Markdown file** produced once during extraction to save CPU), then apply recursive / token splitting with the trial’s **`chunk_size`** / **`chunk_overlap`**.
+For **each optimization trial**, ai4rag reads the **search space / template** and applies the trial’s **`chunking.method`** and related parameters:
+
+| Trial `chunking.method` (examples) | Working representation | Where “flat” conversion happens |
+|-----------------------------------|-------------------------|--------------------------------|
+| **`hybrid`** or other **native Docling** chunkers | Deserialize **`DoclingDocument`** from JSON/YAML | **No** Markdown intermediate required; chunkers run on the document model, then optional **`contextualize()`** for embed strings. |
+| **`recursive`** (or any splitter that needs a **single string**) | Start from the same **`DoclingDocument`** | **On demand** in the trial path: call **`export_to_markdown()`** (or reuse a **Markdown file** produced once during extraction if you want to avoid repeated export). Then apply recursive / token splitting with the trial’s **`chunk_size`** / **`chunk_overlap`**. |
+
+So: **persistence is always the structured model**; **flattening to Markdown (or plain text) is a conversion step** only for chunkers that require it, driven by the **search space** rather than by a separate manual corpus fork—unless you explicitly pre-derive Markdown during extraction to save CPU (then the manifest lists **both** URIs and the trial picks the appropriate input).
 
 **Flow summary**
 
@@ -128,10 +135,202 @@ For **each optimization trial**, ai4rag reads the **search space / template** an
 text_extraction  →  DoclingDocument.save_as_json|yaml  →  manifest + object store
                                                       ↘
 rag_templates_optimization (ai4rag)  →  load DoclingDocument per trial input
-                                     →  export_to_markdown (or read pre-derived MD) → recursive split
+                                     →  branch on chunking.method
+                                     →  native path: chunk on model
+                                     →  recursive path: export_to_markdown (or read pre-derived MD) → split string
 ```
 
 This keeps **one parse per document** while still letting AutoRAG **explore** chunking methods in the optimization loop.
+
+### Hierarchical Chunking (RHOAI 3.5+)
+
+**Hierarchical chunking** uses Docling’s native `HierarchicalChunker` to create structure-aware chunks directly from the parsed `DoclingDocument`, preserving document hierarchy (headings, sections, tables, lists) without flattening to Markdown first.
+
+**How it works:**
+1. **Document parsing**: Docling parses PDF/DOCX/HTML to structured `DoclingDocument` with detected elements (headings, paragraphs, tables, figures, lists)
+2. **Hierarchical chunking**: `HierarchicalChunker` traverses the document tree, creating chunks that respect structural boundaries
+3. **Structure preservation**: Chunks align with document sections, keeping related content together
+4. **Contextualization**: Optional `contextualize()` serializes **structural metadata** (section path, heading hierarchy) with chunk text for embedding—**no** whole-document LLM summary
+5. **Embedding**: Structure-aware chunks are embedded for vector store indexing
+
+**Example configuration (RHOAI 3.5):**
+```json
+{
+  "chunking": {
+    "method": "hierarchical",
+    "chunk_size": 1024,
+    "chunk_overlap": 0,
+    "merge_lists": true,
+    "include_context": true,
+    "max_heading_depth": 3
+  }
+}
+```
+
+**Key features:**
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Structure-aware** | Chunks respect headings, sections, tables, lists | Better semantic coherence per chunk |
+| **No flattening** | Works on `DoclingDocument` tree, not Markdown string | Preserves document structure metadata |
+| **List merging** | Configurable merging of list items into coherent chunks | Avoids fragmented list chunks |
+| **Table handling** | Keeps table headers with rows, configurable split strategies | Tables remain interpretable |
+| **Contextualization** | Enriches chunks with section path, heading hierarchy | Improved retrieval with structural context |
+| **Hybrid variant** | `HybridChunker` adds tokenizer-aware split/merge | Ensures chunks fit embedding model limits |
+
+**When to use hierarchical chunking:**
+- **Well-structured documents**: Technical manuals, API docs, research papers with clear heading hierarchy
+- **Complex tables**: Documents with multi-row tables that must stay together
+- **Lists and enumerations**: Documents with numbered/bulleted lists where context spans items
+- **PDF/DOCX with rich structure**: Documents where visual structure (detected by Docling) is key to meaning
+- **Multi-level hierarchies**: Reports, books, specifications with nested sections
+
+**Comparison to recursive chunking:**
+
+| Aspect | Recursive Chunking | Hierarchical Chunking (3.5+) |
+|--------|-------------------|------------------------------|
+| **Input** | Flattened text/Markdown string | Structured `DoclingDocument` tree |
+| **Boundary detection** | Text separators (`\n\n`, `\n`, ` `) | Document structure (headings, elements) |
+| **Table handling** | May split tables mid-row | Keeps table headers with rows, configurable strategies |
+| **List handling** | May fragment list items | Configurable list merging |
+| **Metadata** | Text only | Structure metadata (section path, headings, element types) |
+| **Heading awareness** | Inferred from separators | Explicit from Docling’s layout detection |
+| **Use case** | General text, Markdown documents | PDF/DOCX with rich structure, complex layouts |
+
+**Example: Hierarchical chunking output**
+
+Given a document structure:
+```
+# Section 1: Introduction
+This is the introduction paragraph.
+
+## 1.1 Background
+Background text here.
+
+### 1.1.1 History
+Historical context.
+
+# Section 2: Methods
+## 2.1 Data Collection
+- Step 1: Collect data
+- Step 2: Process data
+- Step 3: Validate data
+
+| Metric | Value |
+|--------|-------|
+| Accuracy | 95% |
+| Recall | 92% |
+```
+
+**Hierarchical chunker** might produce:
+```python
+Chunk 1 (section-aware):
+  Content: “# Section 1: Introduction\nThis is the introduction paragraph.”
+  Metadata: {section: “1”, heading: “Introduction”, depth: 1}
+
+Chunk 2 (subsection):
+  Content: “## 1.1 Background\nBackground text here.”
+  Metadata: {section: “1.1”, heading: “Background”, parent: “Introduction”, depth: 2}
+
+Chunk 3 (sub-subsection):
+  Content: “### 1.1.1 History\nHistorical context.”
+  Metadata: {section: “1.1.1”, heading: “History”, parent: “Background”, depth: 3}
+
+Chunk 4 (section with merged list):
+  Content: “# Section 2: Methods\n## 2.1 Data Collection\n- Step 1: Collect data\n- Step 2: Process data\n- Step 3: Validate data”
+  Metadata: {section: “2.1”, heading: “Data Collection”, list_merged: true}
+
+Chunk 5 (table with headers):
+  Content: “| Metric | Value |\n|--------|-------|\n| Accuracy | 95% |\n| Recall | 92% |”
+  Metadata: {section: “2.1”, element_type: “table”, headers: [“Metric”, “Value”]}
+```
+
+**Recursive chunker** (Markdown-first) might split differently:
+```python
+Chunk 1 (separator-based):
+  Content: “# Section 1: Introduction\nThis is the introduction paragraph.\n\n## 1.1 Background\nBackground text here.”
+  Metadata: {} (no structure awareness)
+
+Chunk 2 (mid-list split possible):
+  Content: “### 1.1.1 History\nHistorical context.\n\n# Section 2: Methods\n## 2.1 Data Collection\n- Step 1: Collect data\n- Step 2: Process data”
+  Metadata: {}
+
+Chunk 3 (table potentially fragmented):
+  Content: “- Step 3: Validate data\n\n| Metric | Value |\n|--------|-------|”
+  Metadata: {}
+```
+
+**Hybrid chunker**:
+
+Combines hierarchical structure awareness with tokenizer limits:
+
+```json
+{
+  "chunking": {
+    "method": "hybrid",
+    "chunk_size": 512,
+    "chunk_overlap": 50,
+    "tokenizer": "granite-embedding",
+    "merge_lists": true,
+    "table_strategy": "keep_headers_with_rows"
+  }
+}
+```
+
+**Hybrid chunker behavior:**
+1. Start with `HierarchicalChunker` to get structure-aware chunks
+2. Apply tokenizer to measure actual token count per chunk
+3. **Split** chunks exceeding `chunk_size` at logical boundaries (paragraph, sentence)
+4. **Merge** adjacent small chunks to approach `chunk_size` (efficiency)
+5. Ensure all chunks fit embedding model context window
+
+**Advantages of hierarchical/hybrid chunking:**
+- ✅ **Preserves document structure**: Headings, sections, tables, lists stay coherent
+- ✅ **Better semantic boundaries**: Chunks align with author-intended structure, not arbitrary separators
+- ✅ **Rich metadata**: Section paths, heading hierarchy enable better filtering and retrieval
+- ✅ **Table integrity**: Tables don’t split mid-row; headers stay with data
+- ✅ **List coherence**: Related list items kept together (configurable)
+- ✅ **Hybrid variant**: Guarantees token limits while preserving structure
+- ✅ **Optimized for Docling**: Leverages Docling’s superior PDF/DOCX parsing (layout, tables, figures)
+
+**Limitations:**
+- ❌ **Less flexible for plain text**: Markdown/TXT without clear structure may not benefit
+- ❌ **Chunker configuration complexity**: More parameters to tune (list merging, table strategies, depth limits)
+- ❌ **Depends on Docling quality**: Poor heading detection → poor chunk boundaries
+
+**Combining hierarchical chunking with LLM contextual enrichment (3.5+ recommended):**
+
+For maximum accuracy with structured documents:
+
+```json
+{
+  "chunking": {
+    "method": "hybrid",
+    "chunk_size": 1024,
+    "merge_lists": true,
+    "include_context": true,
+    "contextual_enrichment": {
+      "enabled": true,
+      "context_generation_model": "granite-3.1-8b-instruct"
+    }
+  },
+  "retrieval": {
+    "method": "simple",
+    "number_of_chunks": 5,
+    "search_mode": "hybrid",
+    "ranker_strategy": "rrf"
+  }
+}
+```
+
+This combines:
+1. **Hierarchical/hybrid chunking**: Structure-aware chunks from Docling
+2. **Docling `contextualize()` / `include_context`**: deterministic metadata (headings, section path) concatenated with chunk text—**no LLM**
+3. **LLM contextual enrichment**: optional LLM-generated situating sentences **prepended before embedding and BM25 indexing** (same idea as [Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval))
+4. **Hybrid search** (query time): vector + keyword retrieval with RRF fusion
+
+**Result**: Strong retrieval for complex, structured documents (technical manuals, research papers, legal documents) when ingestion cost is acceptable.
+
 
 ### LLM contextual enrichment (index time, RHOAI 3.5+)
 
@@ -223,8 +422,9 @@ Common **`chunking`** fields (exact names may match the pipeline / ai4rag templa
 
 | Parameter | Description | Notes |
 |-----------|-------------|--------|
-| `method` | Chunking algorithm | e.g. `recursive` |
-| `chunk_size` / `chunk_overlap` | Size and overlap for token- or char-aware splitters | Primary tunables for `recursive` |
+| `method` | Chunking algorithm | e.g. `recursive`, `hybrid` |
+| `chunk_size` / `chunk_overlap` | Size and overlap for token- or char-aware splitters | Depends on method |
+| `merge_lists`, `include_context`, `max_heading_depth`, … | Docling-native options | `include_context` relates to **serialization for embed**, not an LLM |
 | **`contextual_enrichment`** | Object controlling **LLM** situating text before embed | Consumed by **documents indexing** / vector store build |
 | **`contextual_enrichment.enabled`** | Turn LLM enrichment on or off | Default off where unsupported |
 | **`contextual_enrichment.context_generation_model`** | Model id or endpoint for context sentences | Runs at **ingestion**, not retrieval |
@@ -343,6 +543,7 @@ This generates up to `3 × 3 × 2 × 1 × 3 × 2 × 3 × 3 = 972` combinations b
 ### Docling (extraction and chunking model)
 
 - [Chunking concepts — Markdown export vs native `DoclingDocument` chunkers](https://docling-project.github.io/docling/concepts/chunking/)
+- [Hybrid chunking example](https://docling-project.github.io/docling/examples/hybrid_chunking/)
 - [Advanced chunking and serialization](https://docling-project.github.io/docling/examples/advanced_chunking_and_serialization/)
 
 ### Chunking Strategies
