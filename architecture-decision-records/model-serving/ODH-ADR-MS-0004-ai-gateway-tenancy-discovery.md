@@ -1,4 +1,4 @@
-# Open Data Hub - Architecture Decision Record template
+# Open Data Hub - AI Gateway tenants discovery
 
 <!-- copy and paste this template to start authoring your own ADR -->
 <!-- for the Status of new ADRs, please use Approved, since it will be approved by the time it is merged -->
