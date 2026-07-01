@@ -13,7 +13,7 @@
 
 ## What
 
-Introduce a Kubernetes controller that watches `MCPServer` custom resources (managed by the [MCP Lifecycle Operator](https://github.com/kubernetes-sigs/mcp-lifecycle-operator)) and automatically synchronizes their state into the MLflow MCP Server Registry. The controller will live in the [Model Registry Operator](https://github.com/opendatahub-io/model-registry-operator) repository.
+Introduce a Kubernetes controller that watches `MCPServer` custom resources (managed by the [MCP Lifecycle Operator](https://github.com/kubernetes-sigs/mcp-lifecycle-operator)) and automatically synchronizes their state into the MLflow MCP Server Registry. The controller will live in the [Model Registry Operator](https://github.com/opendatahub-io/model-registry-operator) repository (soon to be renamed AI Hub Operator).
 
 ## Why
 
@@ -74,6 +74,17 @@ The controller will live in the **Model Registry Operator** (`opendatahub-io/mod
 
 The MLflow Operator could host this controller since it already manages the MLflow deployment. However, the MLflow Operator's scope is deploying and operating the MLflow server itself — it does not make calls to the MLflow REST API today and does not watch non-MLflow CRDs. Adding registry sync responsibilities would expand its scope and couple MCP lifecycle concerns to MLflow deployment lifecycle. The Model Registry Operator is a better fit because it already owns this class of work.
 
+### Standalone controller
+
+A dedicated controller in its own repository and deployment, separate from the Model Registry Operator / AI Hub Operator, would avoid coupling to either operator's release cycle. However, it would introduce a new component to build, deploy, and maintain — including its own OLM bundle, RBAC definitions, and upgrade path. The sync logic is a natural extension of the registry integration work already owned by the AI Hub Operator, so a standalone controller adds operational overhead without a clear benefit.
+
+### Sync in the MCP Lifecycle Operator
+
+The MCP Lifecycle Operator could perform the registry sync itself, for example by configuring a webhook that calls the MLflow API when an `MCPServer` CR reaches a ready state. This keeps the sync close to the source of truth for MCP server lifecycle. However, it would add an MLflow dependency to an upstream SIG-managed operator that currently has no knowledge of MLflow or any specific registry backend. Upstreaming registry-specific logic into `kubernetes-sigs/mcp-lifecycle-operator` is unlikely to be accepted, and maintaining a fork would negate the benefit of using an upstream operator.
+
+### Dashboard-driven sync
+
+The ODH Dashboard already creates `MCPServer` CRs when users deploy MCP servers, so it could also register those deployments in the MLflow MCP Registry at the same time. This avoids adding a new controller entirely. However, it only covers deployments made through the Dashboard — MCP servers created directly via `kubectl` or GitOps pipelines would not be registered. The Dashboard would also need to handle retries, partial failures, and drift detection for what is fundamentally control-plane reconciliation work. Placing this responsibility in a controller provides stronger consistency guarantees and keeps the Dashboard focused on user interaction rather than bookkeeping.
 
 ## Security and Privacy Considerations
 
