@@ -108,6 +108,8 @@ TBD
 ##### maas-controller continuously informs the discovery service of any change in the tenants/gateway state
    The problem with this is the increase in complexity. Also, it is not enough for the maas-controller to send an update request to the discovery service because the service may have N replicas at one point in time, and all replicas would need to be informed about the changes. This can be mitigated with the above alternative of using a DB layer, but again, this would increase complexity. 
 
+##### Signal cache refresh via a storage (Postgress, Redis, etc)
+    In this scenario maas-controller can singnal that "something changed' in the AITenant or Gateway byt making an internal request to the discovery-service. This request may land in any POD replica and this will record that the state chageds in a persistent store. Then, each replica can watch this flag and when detected each replica refreshes its cache. This can be more efficient that time based cache refresh as changes in tenants may happen rarely and the discovery service does not really need to hit the kube-api server periodically. However this is more complex to implement than time base cach refresh and may be considered in a later phase.
 
 ## Security and Privacy Considerations
 
