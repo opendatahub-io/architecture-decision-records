@@ -94,7 +94,10 @@ GET /v1/tenants
 ```
 The gateway name and namespace are important for model deployer personas, as this information is needed when creating LlmInferenceService CRs.
 
+#### API Scope
 
+The tenants returned by this endpoint should return only the tenants that the authenticated user has access to. This means that if this API returns Tenant A,
+this user or group is part of at least one MaaSAuthPolicy created for Tenant A.
 
 ## Open Questions
 
