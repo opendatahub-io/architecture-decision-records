@@ -111,7 +111,13 @@ The problem with this approach is that while it greatly reduces the number of hi
 
 ##### 2. maas-controller continuously informs the discovery service of any change in the tenants/gateway state
 
-The problem with this is the increase in complexity. Also, it is not enough for the maas-controller to send an update request to the discovery service because the service may have N replicas at one point in time, and all replicas would need to be informed about the changes. This can be mitigated with the above alternative of using a DB layer, but again, this would increase complexity. 
+The problem with this is the increase in complexity. Also, it is not enough for the maas-controller to send an update request to the discovery service because the service may have N replicas at one point in time, and all replicas would need to be informed about the changes. This can be easily solved by maas-controller to use kube endpointslices API and discover all replica IP addresses and update the cache on each POD.
+
+```
+GET /apis/discovery.k8s.io/v1/namespaces/{namespace}/endpointslices?labelSelector=kubernetes.io/service-name={tenant discovery svc name}
+```
+
+Once OPD IPs are retrived, the controller can inform each service POD with the corrent state update. 
 
 ##### 3. Signal cache refresh via a storage (Postgress, Redis, etc)
 
