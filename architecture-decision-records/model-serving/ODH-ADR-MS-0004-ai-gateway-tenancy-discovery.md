@@ -105,17 +105,23 @@ TBD
 
 ## Alternatives
 
-##### Tenants cache stored in Postgres
+##### 1. Tenants cache stored in Postgres
 
 The problem with this approach is that while it greatly reduces the number of hits to the kube-api server, it creates more complexity for the service and potentially adds a risk since there is no longer a single source of truth for the tenancy information, but rather two: kube-api and Postgres, and these need to be kept in sync.
 
-##### maas-controller continuously informs the discovery service of any change in the tenants/gateway state
+##### 2. maas-controller continuously informs the discovery service of any change in the tenants/gateway state
 
 The problem with this is the increase in complexity. Also, it is not enough for the maas-controller to send an update request to the discovery service because the service may have N replicas at one point in time, and all replicas would need to be informed about the changes. This can be mitigated with the above alternative of using a DB layer, but again, this would increase complexity. 
 
-##### Signal cache refresh via a storage (Postgress, Redis, etc)
+##### 3. Signal cache refresh via a storage (Postgress, Redis, etc)
 
 In this scenario maas-controller can signal that "something changed' in the AITenant or Gateway by making an internal request to the discovery-service. This request may land in any POD replica and this will record that the state changed in a persistent store. Then, each replica can watch this flag and when detected the cache gets refreshed. This can be more efficient that time based cache refresh as changes in tenants may happen rarely and the discovery service does not really need to hit the kube-api server periodically. However this is more complex to implement than time base cach refresh and may be considered in a later phase.
+
+##### 4. Service PODs perform kube api watch
+
+Much like controllers, the deiscovery service PODs can watch the kube resources (AITenant and Gateway) to keep the in memory cache in sync. While this technically works, when there are N service PODs operating, we'll have N long term TCP connections with the kube-api server that needs to stream events about the watched resources. This contributes to more pressure on the kube-api server on top of the current controllers in the cluster. Typically informers are used by controllers components not so much by services. If we look at alternative #2 above maas-controller already does such reconciliation on AITenant but not (yet) on the Gateway objects. This option can inform the service PODs via REST APIs that something changes in the kube resources state and update the cache. 
+
+
 
 ## Security and Privacy Considerations
 
