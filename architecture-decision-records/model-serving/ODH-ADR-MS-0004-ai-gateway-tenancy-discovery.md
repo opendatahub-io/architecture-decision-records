@@ -68,7 +68,7 @@ Long term, we need a proper discovery HTTP service that exposes the discovery en
 This proposal introduces a new HTTP Kube service managed by maas-controller that binds to the default Gateway (data-science-gateway).
 
 - Authn/z - managed via Authorino policy allowing valid OpenShift tokens.
-- The discovery service provides a REST API to query the available tenants in the cluster. The tenant information is maintained in an in-memory cache that is marked as "dirty" after a configurable TTL. This allows limiting the number of kube-api server hits while making the discovery endpoint extremely responsive.
+- The discovery service provides a REST API to query the available tenants in the cluster. 
 
 ### API
 
@@ -99,6 +99,16 @@ The gateway name and namespace are important for model deployer personas, as thi
 The tenants returned by this endpoint should return only the tenants that the authenticated user has access to. This means that if this API returns Tenant A,
 this user or group is part of at least one MaaSAuthPolicy created for Tenant A.
 
+#### Cache hydration
+
+The API endpoint above serves the information from in-memory cache. When such request arrives we do not hit the kube-api server to fetch the tenants information. Instead the service uses the informer approach where it is asynchronously watching the following CRS:
+  - AITenant - determine what tenants are available
+  - Gateway - watch for URL and port changes
+  - MaaSAuthPolicy - watch for users/group access. This is used to determine what tenants the current user is allowed to see. Note that in case of groups we cannot determine if a user is a member of a group. Thus if the group information is not part of the OIDC JWT token, we may need to call the OIDC userinfo endpoint (from the OIDC discovery document) to determine which groups the current user is a member of in order to match against the current MaaSAuthPolicies. In case of openshift tokens, we need to call `apis/user.openshift.io/v1/users/` endpoint to determine which groups this user is a member of.
+
+Notes:
+- This pattern is commonly see in kube controllers not so much services. However provided that we do not expect large volumes of tenants in a cluster (also no pagination needed) and infrequent changes in the above CRs, this approach is the easiest to implement and ansure the cache consistency at runtime. 
+
 ## Open Questions
 
 TBD
@@ -122,11 +132,6 @@ Once OPD IPs are retrived, the controller can inform each service POD with the c
 ##### 3. Signal cache refresh via a storage (Postgress, Redis, etc)
 
 In this scenario maas-controller can signal that "something changed' in the AITenant or Gateway by making an internal request to the discovery-service. This request may land in any POD replica and this will record that the state changed in a persistent store. Then, each replica can watch this flag and when detected the cache gets refreshed. This can be more efficient that time based cache refresh as changes in tenants may happen rarely and the discovery service does not really need to hit the kube-api server periodically. However this is more complex to implement than time base cach refresh and may be considered in a later phase.
-
-##### 4. Service PODs perform kube api watch
-
-Much like controllers, the deiscovery service PODs can watch the kube resources (AITenant and Gateway) to keep the in memory cache in sync. While this technically works, when there are N service PODs operating, we'll have N long term TCP connections with the kube-api server that needs to stream events about the watched resources. This contributes to more pressure on the kube-api server on top of the current controllers in the cluster. Typically informers are used by controllers components not so much by services. If we look at alternative #2 above maas-controller already does such reconciliation on AITenant but not (yet) on the Gateway objects. This option can inform the service PODs via REST APIs that something changes in the kube resources state and update the cache. 
-
 
 
 ## Security and Privacy Considerations
