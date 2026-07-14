@@ -171,6 +171,14 @@ As per the above CRs definition, it becomes obvious that Subscriptions are the m
 
 This is the access control proposal for production use in OpenDataHub and RHOAI. However, for upstream usage/adoption of the service, this should work e2e without Kuadrant dependencies. Thus for access control flow we propose a sidecar container approach where requests are validated against currently defined `ConnectionSubscription` CRs.
 
+#### Observability
+
+- All actions for CRs management are tracked by the DCH Operator
+- All data access requests from data consumers are tracked by DCH service as OTEL logs and metrics.
+- OTEL Logs are managed by Loki as the logging solution for platform observability.
+ - Similarly to MaaS, the DCH operator can also manage Perses dasboards for user consumption and usage awareness.
+
+
 #### SDK 
 
 DCH team will create SDKs for integrating with the DCH service. Since data analytics are primarily needed in Python ecosystem the first SDK should be a Python SDK. 
