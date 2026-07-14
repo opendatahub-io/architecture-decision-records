@@ -59,6 +59,18 @@ The above assumes that we are describing different types of personas:
 - **Tenant admin persona** - has access to the tenant namespace and manage `DataConnection`, `ConnectionSubscription` and `DataConnectionService` CRs. These CRs are described later on in this document.
 - **Data consumer persona** - this can list available connections that this identity has access to and perform data ingestion via provided APIs, SDK or CLI.
 
+##### Tenants isolation
+
+Tenants isolation happens at multiple levels:
+  - CRs isolated by namespace
+  - Traffic isolated by gateway
+  - Metadata store (Postgres) instance is shared for cluster resources optimization as well as administration reasons. Segregating tenants metadata can happein in multiple ways:
+    - per tenant-id column - this is the soft tenancy model also adopted my mlflow, evalhub, maas.
+    - separate Postgres Schema per tenant - stronger isolation only if customer chooses to.
+    - separate Postgress DB instance - can be easily supported in the future if required.
+
+    Initially adopting soft tenancy for meta-data is the low hanging fruit and also adopted by other existend solutions.
+
 #### High level overview
 ![Fig 1](./images/ADR-0001-img1.png)
 
@@ -132,7 +144,7 @@ spec:
       type: string
       
   admin:
-    url: s3.amazonaws.com
+    url: https://s3.amazonaws.com/test-data/prompts.jsonl
     region: us-east-1
     secret_ref: aws_ai_trust_credentials
     bucket: test-data
@@ -203,6 +215,8 @@ A CLI tool can be handy for integrating into workflows that involve bash scripts
 - DCH Operator deployable standalone, not integrated as an ODH component
 - DCH Service management as described in this doc
 - REST APIs for end-users connections listing.
+- Arrow-Flight APIs for tabural data reading.
+- REST APIs for unstructure data reading.
 - Access control implemented in a sidecar container - no Kuadrant dependencies yet. This does not have to be throwaway code because this can be very useful for upstream adoption when Kuadrant is not available. 
 - A few tabular data sources, tabular data formats (parquet, csv, json) and object store data sources support (to be agreed with PM)
 
