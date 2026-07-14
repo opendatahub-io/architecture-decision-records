@@ -132,7 +132,7 @@ spec:
       type: string
       
   admin:
-    url: s3://my-prod-bucket/models/iris-v1/
+    url: s3.amazonaws.com
     region: us-east-1
     secret_ref: aws_ai_trust_credentials
     bucket: test-data
@@ -204,7 +204,7 @@ A CLI tool can be handy for integrating into workflows that involve bash scripts
 - DCH Service management as described in this doc
 - REST APIs for end-users connections listing.
 - Access control implemented in a sidecar container - no Kuadrant dependencies yet. This does not have to be throwaway code because this can be very useful for upstream adoption when Kuadrant is not available. 
-- A few tabular data sources and object store data sources support (to be agreed with PM)
+- A few tabular data sources, tabular data formats (parquet, csv, json) and object store data sources support (to be agreed with PM)
 
 ## Open Questions
 
