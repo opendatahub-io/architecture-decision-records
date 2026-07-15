@@ -157,6 +157,7 @@ spec:
 - The admin section contains properties that are never exposed via the public REST API to the end users.
 - The properties field contains arbitrary key-value pairs that can be discovered by other processes, e.g. size of the data, missing fields information, etc.
 
+
 ```yaml
 apiVersion: dataconnect.opendatahub.io/v1alpha1
 kind: ConnectionSubscription
@@ -181,6 +182,7 @@ spec:
 
 **Notes**
 - If a DataConnection is not attached to a ConnectionSubscription, it is not usable for data reading.
+- If the subjects contains a user with name `*` this is an explicit statement that the connection referenced by this subscription is **PUBLIC** and any user can access it. Thus any tenant can define public connections.
 - Upon creating a DataConnection, the DCH system automatically performs sanity checks and reflects this in the CR status object. Example:
 
 ```yaml
