@@ -56,7 +56,7 @@ We propose to build the DCH solution with multi-tenancy in mind right from its i
 
 The above assumes that we are describing different types of personas:
 
-- **Tenant admin persona** - has access to the tenant namespace and manage `DataConnection`, `ConnectionSubscription` and `DataConnectionService` CRs. These CRs are described later on in this document.
+- **Tenant admin persona** - has access to the tenant namespace and manages `DataConnection`, `ConnectionSubscription` and `DataConnectionService` CRs. These CRs are described later on in this document.
 - **Data consumer persona** - this can list available connections that this identity has access to and perform data ingestion via provided APIs, SDK or CLI.
 
 ##### Tenants isolation
@@ -64,12 +64,12 @@ The above assumes that we are describing different types of personas:
 Tenants isolation happens at multiple levels:
   - CRs isolated by namespace
   - Traffic isolated by gateway
-  - Metadata store (Postgres) instance is shared for cluster resources optimization as well as administration reasons. Segregating tenants metadata can happein in multiple ways:
-    - per tenant-id column - this is the soft tenancy model also adopted my mlflow, evalhub, maas.
-    - separate Postgres Schema per tenant - stronger isolation only if customer chooses to.
-    - separate Postgress DB instance - can be easily supported in the future if required.
+  - Metadata store (Postgres) instance is shared for cluster resources optimization as well as administration reasons. Segregating tenants metadata can happen in multiple ways:
+    - per tenant-id column - this is the soft tenancy model also adopted by MLFlow, EvalHub, MaaS.
+    - separate Postgres schema per tenant - stronger isolation only if the customer chooses to.
+    - separate Postgres DB instance - can be easily supported in the future if required.
 
-    Initially adopting soft tenancy for meta-data is the low hanging fruit and also adopted by other existend solutions.
+    Initially adopting soft tenancy for metadata is the low-hanging fruit and also adopted by other existing solutions.
 
 #### High level overview
 ![Fig 1](./images/ADR-0001-img1.png)
@@ -121,7 +121,7 @@ The DCH service instance exposes the following API types:
     - limits
 
 - Therefore a connection C1 is only visible to a user U1 if and only if U1 and C1 are defined in a subscription. 
-- limits are initially defined as request limits however we expect that in time we can support more metrics such as data volume limits etc.
+- Limits are initially defined as request limits; however, we expect that in time we can support more metrics such as data volume limits etc.
 
 
 ### CR examples
@@ -154,8 +154,8 @@ spec:
 ```
 
 **Notes**
-- The admin section contain properties that are never exposed via the public REST API to the end users.
-- properties field contains arbitrary key-value pairs that can be discovered by other processes. I.e. size of the data, missing fields information, etc.
+- The admin section contains properties that are never exposed via the public REST API to the end users.
+- The properties field contains arbitrary key-value pairs that can be discovered by other processes, e.g. size of the data, missing fields information, etc.
 
 ```yaml
 apiVersion: dataconnect.opendatahub.io/v1alpha1
@@ -180,7 +180,7 @@ spec:
 ```
 
 **Notes**
-- If a DataConnection is not attached to a ConnectionSubscription it is not usable for data reading object.
+- If a DataConnection is not attached to a ConnectionSubscription, it is not usable for data reading.
 - Upon creating a DataConnection, the DCH system automatically performs sanity checks and reflects this in the CR status object. Example:
 
 ```yaml
@@ -237,7 +237,7 @@ This is the access control proposal for production use in OpenDataHub and RHOAI.
 - All actions for CRs management are tracked by the DCH Operator
 - All data access requests from data consumers are tracked by DCH service as OTEL logs and metrics.
 - OTEL Logs are managed by Loki as the logging solution for platform observability.
- - Similarly to MaaS, the DCH operator can also manage Perses dasboards for user consumption and usage awareness.
+- Similarly to MaaS, the DCH operator can also manage Perses dashboards for user consumption and usage awareness.
 
 
 #### SDK 
@@ -264,8 +264,8 @@ A CLI tool can be handy for integrating into workflows that involve bash scripts
 - DCH Operator deployable standalone, not integrated as an ODH component
 - DCH Service management as described in this doc
 - REST APIs for end-users connections listing.
-- Arrow-Flight APIs for tabural data reading.
-- REST APIs for unstructure data reading.
+- Arrow-Flight APIs for tabular data reading.
+- REST APIs for unstructured data reading.
 - Access control implemented in a sidecar container - no Kuadrant dependencies yet. This does not have to be throwaway code because this can be very useful for upstream adoption when Kuadrant is not available. 
 - A few tabular data sources, tabular data formats (parquet, csv, json) and object store data sources support (to be agreed with PM)
 
