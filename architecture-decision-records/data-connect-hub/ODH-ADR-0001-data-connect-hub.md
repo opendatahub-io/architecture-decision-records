@@ -36,6 +36,7 @@ Although in RHOAI today we do see that certain connection types are available (S
 * OTLP
 * ETL
 * Document processing
+* Higher level governance aspects (lineage, catalog, etc)
 * MCP server. Not in scope initially but we envision a similar approach with EvalHub, where DCH Operator can also manage a DCH MCP server along with the DCH service instance. 
 
 
