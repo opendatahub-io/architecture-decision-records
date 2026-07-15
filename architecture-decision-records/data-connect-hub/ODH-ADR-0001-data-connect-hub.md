@@ -216,10 +216,21 @@ spec:
     endpoint: https://dch.myorg.com/v1/data/connections/my_eval
     conditions:
     - type: Ready
-      status: "True"
+      status: True
+      lastTransitionTime: "2026-07-15T10:05:00Z"
+      reason: "bound"
+      message: "This connection is bound to a subscription."
+    - type: Pending
+      status: True
+      lastTransitionTime: "2026-07-15T10:02:00Z"
+      reason: "not_bound"
+      message: "This connection is not yet bound to a subscription."
+    - type: Connected
+      status: True
       lastTransitionTime: "2026-07-15T10:00:00Z"
       reason: "Connected"
       message: "Successfully connected to the target storage."
+
 ```
 
 
