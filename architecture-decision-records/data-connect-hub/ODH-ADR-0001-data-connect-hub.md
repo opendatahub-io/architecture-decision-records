@@ -167,6 +167,7 @@ metadata:
 spec:
   description: Subscription for evals
   subjects:
+    # Users, groups or service-accounts can be specified here. 
   - kind: user
     name: jim
   - kind: user
@@ -176,7 +177,7 @@ spec:
   ## Optional
   requests_limits:
     - limit: 30
-      window: 1mxw
+      window: 1m
 
 ```
 
