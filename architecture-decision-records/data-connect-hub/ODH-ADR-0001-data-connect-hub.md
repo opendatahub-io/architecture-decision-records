@@ -26,14 +26,16 @@ Although in RHOAI today we do see that certain connection types are available (S
 ## Goals
 
 * Define the data ingestion flow for tabular and unstructured data.
-* Define Connections management and access controls
+* Define Connections management
+* Define the tenancy model
 * Define access management
+
 
 ## Non-Goals
 
 * OTLP
 * ETL
-* Documents processing
+* Document processing
 * MCP server. Not in scope initially but we envision a similar approach with EvalHub, where DCH Operator can also manage a DCH MCP server along with the DCH service instance. 
 
 
