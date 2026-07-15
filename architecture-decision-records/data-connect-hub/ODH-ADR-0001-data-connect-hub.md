@@ -136,6 +136,8 @@ spec:
   description: Connection to the test data S3 bucket
   type: s3
   format: jsonl
+  properties:
+    size: 200MB
   schema:
     fields:
     - name: prompt
@@ -150,6 +152,10 @@ spec:
     bucket: test-data
     path: prompts.jsonl
 ```
+
+**Notes**
+- The admin section contain properties that are never exposed via the public REST API to the end users.
+- properties field contains arbitrary key-value pairs that can be discovered by other processes. I.e. size of the data, missing fields information, etc.
 
 ```yaml
 apiVersion: dataconnect.opendatahub.io/v1alpha1
@@ -172,6 +178,49 @@ spec:
       window: 1mxw
 
 ```
+
+**Notes**
+- If a DataConnection is not attached to a ConnectionSubscription it is not usable for data reading object.
+- Upon creating a DataConnection, the DCH system automatically performs sanity checks and reflects this in the CR status object. Example:
+
+```yaml
+apiVersion: dataconnect.opendatahub.io/v1alpha1
+kind: DataConnection
+metadata:
+  name: my_eval
+  namespace: ai_trust
+spec:
+  description: Connection to the test data S3 bucket
+  type: s3
+  format: jsonl
+  properties:
+    size: 200MB
+  schema:
+    fields:
+    - name: prompt
+      type: string
+    - name: category
+      type: string
+      
+  admin:
+    url: https://s3.amazonaws.com/test-data/prompts.jsonl
+    region: us-east-1
+    secret_ref: aws_ai_trust_credentials
+    bucket: test-data
+    path: prompts.jsonl
+  
+  status:
+    phase: ready
+    endpoint: https://dch.myorg.com/v1/data/connections/my_eval
+    conditions:
+    - type: Ready
+      status: "True"
+      lastTransitionTime: "2026-07-15T10:00:00Z"
+      reason: "Connected"
+      message: "Successfully connected to the target storage."
+```
+
+
 
 #### Access control 
 
