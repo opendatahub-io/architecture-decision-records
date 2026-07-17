@@ -13,7 +13,7 @@ The operator is an upstream Kubernetes SIG Apps project ([kubernetes-sigs/mcp-li
   - Maintained under [Kubernetes SIG Apps](https://github.com/kubernetes/community/blob/main/sig-apps/README.md). Licensed under Apache 2.0.
 
 - **[MCP Lifecycle Module Operator](https://github.com/opendatahub-io/mcp-lifecycle-module-operator)** (ODH integration)
-  - An ODH module operator that manages the deployment and lifecycle of the MCP Lifecycle Operator as a component within the ODH platform. It follows the [ODH modular architecture](https://docs.google.com/document/d/1FgN_U-6XH8M-Mu6XNeldUlTPsnw7UyPCWg5NVJJdYnw) pattern, reconciling a `MCPLifecycleOperator` CR created by the ODH platform operator.
+  - An ODH module operator that manages the deployment and lifecycle of the MCP Lifecycle Operator as a component within the ODH platform. It follows the [ODH modular architecture](../../../architecture-decision-records/operator/design/module-onboarding-guide.md) pattern, reconciling a `MCPLifecycleOperator` CR created by the ODH platform operator.
 
 - **[MCP Lifecycle Operator](https://github.com/opendatahub-io/mcp-lifecycle-operator)** (midstream fork)
   - The opendatahub-io fork of the upstream operator, used as the operand image source for RHOAI deployments. The module operator vendors manifests from this fork.
@@ -122,5 +122,5 @@ spec:
 - [MCP Lifecycle Operator upstream repository](https://github.com/kubernetes-sigs/mcp-lifecycle-operator)
 - [MCP Lifecycle Module Operator repository](https://github.com/opendatahub-io/mcp-lifecycle-module-operator)
 - [MCP Lifecycle Operator midstream fork](https://github.com/opendatahub-io/mcp-lifecycle-operator)
-- [ODH Modular Architecture Onboarding Guide](https://docs.google.com/document/d/1FgN_U-6XH8M-Mu6XNeldUlTPsnw7UyPCWg5NVJJdYnw)
+- [ODH Modular Architecture Onboarding Guide](../../../architecture-decision-records/operator/design/module-onboarding-guide.md)
 - [Model Context Protocol specification](https://modelcontextprotocol.io/)
