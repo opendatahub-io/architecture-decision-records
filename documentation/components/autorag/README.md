@@ -6,15 +6,6 @@ Document RAG optimization on **Data Science Pipelines**, implemented in [pipelin
 
 **Feature docs:** [experiment settings](./features/experiment_settings.md) · [pattern inference](./features/rag_pattern_inference.md) · [pattern evaluation](./features/rag_pattern_evaluation.md)
 
-## pipelines-components layout
-
-| Area | Path |
-|------|------|
-| Optimization pipeline | [`pipelines/training/autorag/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag) |
-| Indexing pipeline | [`pipelines/data_processing/autorag/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/data_processing/autorag) |
-| Training components | [`components/training/autorag/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/components/training/autorag) |
-| Data processing components | [`components/data_processing/autorag/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/components/data_processing/autorag) |
-
 ## Pipelines
 
 | Pipeline | Repository entry |

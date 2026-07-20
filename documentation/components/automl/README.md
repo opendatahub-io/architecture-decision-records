@@ -6,13 +6,6 @@ Tabular ML training on **Data Science Pipelines**, implemented in [pipelines-com
 
 **Feature docs:** [experiment settings](./features/experiment_settings.md) · [model insights](./features/model_insights.md) · [MLflow integration](./features/mlflow_integration.md)
 
-## pipelines-components layout
-
-| Area | Path |
-|------|------|
-| Training pipelines | [`pipelines/training/automl/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/automl) |
-| Training components | [`components/training/automl/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/components/training/automl) |
-| Data processing components | [`components/data_processing/automl/`](https://github.com/red-hat-data-services/pipelines-components/tree/main/components/data_processing/automl) |
 
 ## Pipelines
 
