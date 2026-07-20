@@ -120,8 +120,8 @@ Data is split into train/test sets using appropriate techniques:
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
 4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Models are persisted as Model Artifacts.
 5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models. Leaderboard, metrics, confusion matrix and feature importance is persisted as Artifact.
-6. **Model Registry** (post-pipeline): Users register a leaderboard predictor in **RHOAI Model Registry** (Dashboard or API) with metadata for versioning and deployment.
-7. **Model Deployment** (post-pipeline): From Model Registry, deploy the registered model on **KServe** using the **AutoGluon ServingRuntime** (cluster runtime enabled by an admin; Red Hat-provided image).
+6. **Model Registry** (post-pipeline): Users select and register a refitted predictor artifact (for example, `{model_name}_FULL/predictor/` — the `clone_for_deployment` export) in **RHOAI Model Registry** with metadata for versioning and deployment. Do not register the leaderboard HTML or other run-summary artifacts.
+7. **Model Deployment** (post-pipeline): Deploy that registered predictor artifact on **KServe** using the **AutoGluon ServingRuntime** (cluster runtime enabled by an admin; Red Hat-provided image).
 
 **MLflow Logging**: Done automatically via KFP native integration with MLflow.
 
@@ -195,7 +195,7 @@ Status: Tech Preview
 - **Model Types**: Neural networks, tree-based models (XGBoost, LightGBM, CatBoost), linear models, and more
 - **Ensembling**: Stacking and bagging approaches
 - **Experiment Tracking**: MLflow — experiment tracking, metrics logging, and artifact management for training runs
-- **Model Registry**: RHOAI Model Registry — register leaderboard predictors for versioning and deployment
+- **Model Registry**: RHOAI Model Registry — register a selected refitted predictor artifact (e.g. `{model_name}_FULL/predictor/`) for versioning and deployment
 - **Model Serving**: KServe with the **AutoGluon ServingRuntime** (Red Hat-provided image; admin enables the runtime). Users deploy registered models from Model Registry / Dashboard after training.
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
 

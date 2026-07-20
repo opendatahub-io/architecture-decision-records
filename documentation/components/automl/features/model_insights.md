@@ -125,7 +125,7 @@ Under each **`{model_name}_FULL/`** directory next to existing `metrics/` files:
 
 **Visualization:**
 
-```
+```text
 ROC Curve - WeightedEnsemble_L3 (Binary Classification)
 AUC = 0.9821
 
@@ -239,7 +239,7 @@ Best Operating Point: TPR=0.89, FPR=0.09 (threshold=0.65)
 
 **Visualization - ROC Curves (Multiclass):**
 
-```
+```text
 ROC Curves - CatBoost_BAG_L2 (Multiclass, One-vs-Rest)
 Macro AUC = 0.9456 | Weighted AUC = 0.9512
 
@@ -270,7 +270,7 @@ TPR │
 
 **Visualization - Precision-Recall Curve (Binary):**
 
-```
+```text
 Precision-Recall Curve - WeightedEnsemble_L3 (Binary Classification)
 Average Precision = 0.9567
 
@@ -302,7 +302,7 @@ High precision at low recall: threshold is very strict
 
 **Visualization - Precision-Recall Curves (Multiclass):**
 
-```
+```text
 Precision-Recall Curves - CatBoost_BAG_L2 (Multiclass, One-vs-Rest)
 Macro AP = 0.9234 | Weighted AP = 0.9312
 
@@ -553,7 +553,7 @@ Leaderboard steps may later be extended to **surface links or summaries** from t
 
 **Visualization 1: Per-Window Metric Trends**
 
-```
+```text
 Back-testing Performance - DeepAR_FULL (3 validation windows)
 
 WQL  │
@@ -579,7 +579,7 @@ WQL  │
 
 **Visualization 2: Forecast Timeline (Best Performer - series_042)**
 
-```
+```text
 ═══════════════════════════════════════════════════════════════════════════════
 series_042 - Best Performer (Avg MAPE = 2.45%)
 Actual vs Predicted across 3 backtest windows
@@ -607,7 +607,7 @@ Window 2 (12/22): actual=[522.5], predicted=[521.8], MAPE=2.34%
 
 **Visualization 3: Forecast Timeline (Worst Performer - series_104)**
 
-```
+```text
 ═══════════════════════════════════════════════════════════════════════════════
 series_104 - Worst Performer (Avg MAPE = 42.58%)
 Actual vs Predicted across 3 backtest windows (systematic overprediction)
@@ -645,7 +645,7 @@ Window 2 (12/22): actual=[85.3], predicted=[201.4], MAPE=41.65%
 
 **Visualization 4: Per-Series Performance Summary**
 
-```
+```text
 ┌──────────────┬──────────┬──────────┬────────────────────┐
 │ Item ID      │ Avg WQL  │ Avg MAPE │ Performance        │
 ├──────────────┼──────────┼──────────┼────────────────────┤
@@ -689,7 +689,7 @@ See mocked visualizations above for each artifact type. These examples demonstra
 
 **Integration with Jupyter Notebooks:**
 
-The `predictor_notaligebook.ipynb` template (per model) can automatically load these JSON artifacts and render interactive visualizations.
+The `automl_predictor_notebook.ipynb` template (per model) can automatically load these JSON artifacts and render interactive visualizations.
 
 ---
 

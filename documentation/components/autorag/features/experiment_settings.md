@@ -64,7 +64,7 @@ Chunking splits documents into embeddable segments. **`chunking`** fields contro
 
 ### Extraction and optimization flow
 
-```
+```text
 text_extraction → DoclingDocument (JSON/YAML + artifacts) → manifest
 rag_templates_optimization → load DoclingDocument per trial → branch on chunking.method
   hybrid: HybridChunker → embed contextualize(chunk) when include_metadata
