@@ -4,7 +4,7 @@ Tabular ML training on **Data Science Pipelines**, implemented in [pipelines-com
 
 **Architecture:** [ODH-ADR-0001-automl](../../../architecture-decision-records/automl/ODH-ADR-0001-automl.md) — goals, workflow, Model Registry registration, KServe / AutoGluon ServingRuntime deploy, scope.
 
-**Feature docs:** [experiment settings](./features/experiment_settings.md) · [model insights](./features/model_insights.md) · [MLflow integration](./features/mlflow_integration.md)
+**Feature docs:** [experiment settings](./features/experiment_settings.md) · [model insights](./features/model_insights.md)
 
 
 ## Pipelines

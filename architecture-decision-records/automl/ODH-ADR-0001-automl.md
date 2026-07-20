@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-07-20 |
 | Scope          | AutoML Component |
-| Status         | Proposed |
+| Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
