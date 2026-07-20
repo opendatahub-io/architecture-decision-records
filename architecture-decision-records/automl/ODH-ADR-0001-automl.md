@@ -8,7 +8,7 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | TBD |
+| Tickets        | [RHAISTRAT-1066](https://redhat.atlassian.net/browse/RHAISTRAT-1066) |
 | Other docs:    | [AutoML feature documentation](../../documentation/components/automl/) |
 
 ## What

@@ -8,7 +8,7 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | TBD |
+| Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) |
 | Other docs:    | [AutoRAG feature documentation](../../documentation/components/autorag/features/) — pipeline parameters, pattern schema, evaluation, MLflow, inference |
 
 ## What
