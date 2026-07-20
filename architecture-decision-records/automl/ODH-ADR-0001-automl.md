@@ -2,18 +2,18 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-01-21 |
+| Date           | 2026-07-20 |
 | Scope          | AutoML Component |
 | Status         | Proposed |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | N/A |
+| Other docs:    | [AutoML feature documentation](../../documentation/components/automl/) |
 
 ## What
 
-This ADR documents the architecture decision for AutoML, an automated system for building and optimizing machine learning models for tabular data within Red Hat OpenShift AI. AutoML leverages Kubeflow Pipelines to orchestrate the model training workflow, using the AutoGluon library to automatically build, evaluate, and select optimal models. The system integrates with Model Registry for model versioning and KServe for model deployment, producing trained predictors that can be deployed for production machine learning applications.
+This ADR documents the architecture decision for AutoML, an automated system for building and optimizing machine learning models for tabular data within Red Hat OpenShift AI. AutoML leverages Kubeflow Pipelines to orchestrate the model training workflow, using the AutoGluon library to automatically build, evaluate, and select optimal models. Trained predictors can be registered in **RHOAI Model Registry** and deployed for inference on **KServe** using the **AutoGluon ServingRuntime**.
 
 AutoML provides **two separate pipelines** optimized for different use cases:
 
@@ -39,14 +39,14 @@ AutoML automates this process, enabling users to:
 - Leverage AutoGluon's ensembling approach for high-performance models
 - Generate production-ready predictors with comprehensive evaluation metrics
 - Compare multiple models side-by-side with standardized metrics
-- Deploy models seamlessly through Model Registry and KServe integration
+- Register predictors in Model Registry and deploy them on KServe with the AutoGluon ServingRuntime
 
 ## Goals
 
 * Provide automated ML model building and optimization for tabular data within RHOAI
-* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, Model Registry, KServe)
+* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, Model Registry, KServe / AutoGluon ServingRuntime)
 * Support multiple ML task types (classification, regression, time-series forecasting)
-* Generate production-ready AutoGluon Predictor models as deployable artifacts
+* Generate production-ready AutoGluon Predictor models as registerable / deployable artifacts
 * Enable evaluation using standardized metrics (accuracy, ROC-AUC, R², RMSE, MAPE, etc.)
 * Support multiple data sources and formats (S3, local filesystem; CSV, Parquet, XLSX)
 * Maintain compatibility with RHOAI Connections for secure data access
@@ -58,6 +58,8 @@ AutoML automates this process, enabling users to:
 * Support for non-tabular data (images, text, audio)
 * Traditional hyperparameter optimization (AutoGluon uses ensembling approach)
 * Unsupervised learning support (e.g. clustering)
+* Automatic Model Registry registration or KServe deployment as pipeline steps — those are post-training Dashboard / platform actions
+* Requiring users or admins to build a custom AutoGluon serving image for the supported path (RHOAI provides the AutoGluon ServingRuntime image)
 
 ## How
 
@@ -66,11 +68,11 @@ AutoML is implemented as Kubeflow Pipelines that orchestrate the following workf
 ### Architecture Components
 
 1. **Kubeflow Pipelines**: Orchestrates the model training workflow as a pipeline of containerized components
-2. **KFP Reusable components**: for the end to end pipeline: https://github.com/kubeflow/pipelines-components
+2. **Managed pipelines / reusable components**: Training pipelines are catalog-managed and composed from reusable components in [pipelines-components](https://github.com/red-hat-data-services/pipelines-components)
 3. **AutoGluon Library**: Core ML optimization engine (open-source) that automatically builds, evaluates, and selects optimal models
-4. **MLFlow**: Provides experiment tracking, metrics logging, and artifact management for training runs
-5. **RHOAI Model Registry**: Manages model versioning and metadata
-6. **KServe**: Provides model serving capabilities with custom AutoGluon runtime
+4. **MLflow**: Provides experiment tracking, metrics logging, and artifact management for training runs
+5. **RHOAI Model Registry**: Manages model versioning and metadata; entry point for post-training deploy
+6. **KServe + AutoGluon ServingRuntime**: Serves registered AutoGluon predictors (Red Hat-provided runtime image; admin enables the runtime on the cluster)
 7. **RHOAI Connections**: Manages secure access to data sources (S3, etc.) via Kubernetes Secrets
 
 ### Pipeline Workflow
@@ -90,20 +92,22 @@ flowchart TB
             ModelRefit["Model Refit<br/>Refit on full dataset"]
         end
         RefitLoop --> Leaderboard["Leaderboard Evaluation<br/>Aggregate metrics, HTML leaderboard"]
-        Leaderboard -->|"if auto_register=True"| ModelRegistry["Model Registry<br/>Register best predictor"]
-        ModelRegistry -.->|if auto_deploy=True| ModelServing
-        Leaderboard -->|"if auto_deploy=True"| ModelServing["Model Serving<br/>Deploy with KServe"]
-        ModelRegistry --> End([Pipeline Complete])
-        ModelServing --> End([Pipeline Complete])
+        Leaderboard --> End([Pipeline Complete])
     end
+
+    subgraph post["Post-pipeline (Dashboard / platform)"]
+        Register["Model Registry<br/>Register predictor"] --> Deploy["KServe deploy<br/>AutoGluon ServingRuntime"]
+    end
+
+    Leaderboard -.-> Register
 
     style Start fill:#2d8659,color:#fff,stroke-width:3px
     style End fill:#2d8659,color:#fff,stroke-width:3px
     style ModelSelect fill:#d97706,color:#fff,stroke-width:3px
     style ModelRefit fill:#d97706,color:#fff,stroke-width:3px
     style Leaderboard fill:#1e40af,color:#fff,stroke-width:3px
-    style ModelRegistry fill:#7c3aed,color:#fff,stroke-width:2px
-    style ModelServing fill:#7c3aed,color:#fff,stroke-width:2px
+    style Register fill:#7c3aed,color:#fff,stroke-width:2px
+    style Deploy fill:#7c3aed,color:#fff,stroke-width:2px
 ```
 
 **Workflow Steps:**
@@ -116,13 +120,13 @@ Data is split into train/test sets using appropriate techniques:
 3. **Model Building & Selection**: Multiple models are built using sampled data and AutoGluon library. Models are evaluated and the best performers (top N) are promoted to the refit stage. Uses AutoGluon's ensembling approach (stacking/bagging) rather than traditional hyperparameter optimization.
 4. **Model Refit**: Best candidate models are refit on the full training dataset using AutoGluon. This stage produces fully trained models ready for evaluation. Models are persisted as Model Artifacts.
 5. **Leaderboard Evaluation**: Fully trained models and intermediate models are evaluated. A leaderboard is generated ranked by the specified evaluation metric. Provides comprehensive performance metrics for all models. Leaderboard, metrics, confusion matrix and feature importance is persisted as Artifact.
-6. **Model Registry** (optional): If `auto_register=True`, the best AutoGluon Predictor is registered with Model Registry with metadata.
-7. **Model Deployment** (optional): If `auto_deploy=True`, the model is deployed using KServe with AutoGluon runtime (custom). When both `auto_register` and `auto_deploy` are enabled, deployment can use the registered model from Model Registry.
+6. **Model Registry** (post-pipeline): Users select and register a refitted predictor artifact (for example, `{model_name}_FULL/predictor/` — the `clone_for_deployment` export) in **RHOAI Model Registry** with metadata for versioning and deployment. Do not register the leaderboard HTML or other run-summary artifacts.
+7. **Model Deployment** (post-pipeline): Deploy that registered predictor artifact on **KServe** using the **AutoGluon ServingRuntime** (cluster runtime enabled by an admin; Red Hat-provided image).
 
-**MLFlow Logging**: Done automaticaly via KFP native integration with MLFlow.
+**MLflow Logging**: Done automatically via KFP native integration with MLflow.
 
 ### KFP components
-The KFP components planned to be delivered for the KFP pipeline implmentation.
+The KFP components planned to be delivered for the KFP pipeline implementation.
 
    - Data Loading
    - Data Sampling and Splitting
@@ -130,9 +134,8 @@ The KFP components planned to be delivered for the KFP pipeline implmentation.
    - Model Refitting
    - Leaderboard Evaluation
    - Notebook Generation
-   - Model Registry
-   - Model Serving
 
+Model Registry registration and KServe deployment are platform / Dashboard flows outside the training pipeline.
 
 
 ### Input Parameters
@@ -154,7 +157,6 @@ The pipelines accept parameters organized into logical groups:
 - Data preparation (sampling_config, split_config)
 - Model configuration (selection_config with time_limit, preset, eval_metric, top_n)
 - Time-series specific (prediction_length, time_series_config with covariates, static features, etc.)
-- Deployment options (auto_register, auto_deploy)
 
 When optional parameters are omitted, AutoML uses AutoGluon default values.
 
@@ -192,13 +194,9 @@ Status: Tech Preview
 - **Model Training**: AutoGluon library
 - **Model Types**: Neural networks, tree-based models (XGBoost, LightGBM, CatBoost), linear models, and more
 - **Ensembling**: Stacking and bagging approaches
-- **Experiment Tracking**: MLflow - For experiment tracking, metrics logging, and artifact management
-- **Model Registry**: MLflow Model Registry
-- **Model Serving**: KServe with custom runtime image or out-of-the-box support for AutoGluon
-  (contribution with yet another runtime / extension of existing one if we got a buy-in from community).
-  - Note: 
-       - (DP) - the script to build the image (custom serving runtime) + documented steps to bring it to RHOAI
-       - (GA) - to be discussed based on the TP feedback, requirements and recommendations.
+- **Experiment Tracking**: MLflow — experiment tracking, metrics logging, and artifact management for training runs
+- **Model Registry**: RHOAI Model Registry — register a selected refitted predictor artifact (e.g. `{model_name}_FULL/predictor/`) for versioning and deployment
+- **Model Serving**: KServe with the **AutoGluon ServingRuntime** (Red Hat-provided image; admin enables the runtime). Users deploy registered models from Model Registry / Dashboard after training.
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
 
 ### Future Enhancements
@@ -256,7 +254,7 @@ Status: Tech Preview
 * **Namespace Isolation**: Connections are namespace-scoped, preventing cross-namespace data access
 * **Model Storage**: Trained models are stored in user-configured locations with appropriate access controls
 * **Model Registry Access**: Model Registry credentials are managed through RHOAI, maintaining security boundaries
-* **Model Serving**: KServe deployment maintains existing security policies and access controls
+* **Model Serving**: KServe deployments using the AutoGluon ServingRuntime follow existing RHOAI serving security policies and access controls
 * **Data Privacy**: Training data is processed within the pipeline execution environment and not persisted beyond configured storage locations
 
 ## Risks
@@ -268,7 +266,7 @@ Status: Tech Preview
 ## References
 
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
-* [Kubeflow Pipelines Components](https://github.com/kubeflow/pipelines-components)
+* [Kubeflow Pipelines Components](https://github.com/red-hat-data-services/pipelines-components)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
 
 ## Reviews
