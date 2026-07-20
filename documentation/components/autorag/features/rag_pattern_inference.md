@@ -247,7 +247,7 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./experiment_settings
 
 ## Retrieve and generation
 
-Optimization and production inference both use **Llama Stack `POST /v1/responses`**. The request body is in **`inference.responses_template`** — production calls the same API surface the benchmark used. See [Llama Stack Responses flow](https://llamastack.github.io/docs/api-openai/responses-flow).
+Optimization and production inference both use **OGX `POST /v1/responses`**. The request body is in **`inference.responses_template`** — production calls the same API surface the benchmark used.
 
 Substitute **`<user_query_placeholder>`** in `input`, then POST. Key fields: `model`, `input`, `tools` (`file_search` + `vector_store_ids`), `instructions`, `metadata`, `tool_choice`, `include`. Parse **`output`** (or SDK **`output_text`**) in consumers.
 
@@ -265,10 +265,11 @@ def query_pattern(pattern_path: Path, user_query: str) -> dict:
         for part in block.get("content", []):
             if part.get("text") == "<user_query_placeholder>":
                 part["text"] = user_query
+    base = os.environ["OGX_CLIENT_BASE_URL"].rstrip("/")
     r = requests.post(
-        os.environ["LLAMA_STACK_RESPONSES_URL"],
+        f"{base}/v1/responses",
         json=body,
-        headers={"Authorization": f"Bearer {os.environ['LLAMA_STACK_API_KEY']}"},
+        headers={"Authorization": f"Bearer {os.environ['OGX_CLIENT_API_KEY']}"},
         timeout=120,
     )
     r.raise_for_status()

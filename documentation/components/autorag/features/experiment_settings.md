@@ -24,7 +24,7 @@ Public surface of [`pipeline.py`](https://github.com/red-hat-data-services/pipel
 | `input_data_secret_name` | `str` | (required) | Secret for document corpus access (same key convention) |
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
 | `input_data_key` | `str` | `""` | Object key or prefix for input documents |
-| `ogx_secret_name` | `str` | (required) | OGX / Llama Stack secret (`OGX_CLIENT_API_KEY`, `OGX_CLIENT_BASE_URL`) |
+| `ogx_secret_name` | `str` | (required) | OGX secret (`OGX_CLIENT_API_KEY`, `OGX_CLIENT_BASE_URL`) |
 | `vector_io_provider_id` | `str` | (required) | Registered vector I/O provider id (e.g. Milvus) |
 | `embedding_models` | `Optional[List[str]]` | `None` | Optional embedding model allow-list for the search space |
 | `generation_models` | `Optional[List[str]]` | `None` | Optional generation model allow-list for the search space |

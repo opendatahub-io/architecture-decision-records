@@ -59,7 +59,7 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | **Kubeflow Pipelines** | Orchestrates the optimization workflow as containerized components |
 | **ai4rag** | Search-space exploration, GAM-based configuration selection, pattern assembly, benchmark evaluation |
 | **Document extraction** | Structured extraction from source documents (Docling) |
-| **Platform inference abstraction** | LLM inference, embeddings, and vector I/O (today: llama-stack / OGX) |
+| **Platform inference abstraction** | LLM inference, embeddings, and vector I/O (today: OGX) |
 | **Vector store** | Persistent document embeddings via pluggable adapters; supported backends are documented in [experiment settings](../../documentation/components/autorag/features/experiment_settings.md) and evolve without ADR changes |
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
