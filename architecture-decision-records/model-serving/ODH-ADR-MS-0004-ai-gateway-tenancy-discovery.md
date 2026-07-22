@@ -79,7 +79,6 @@ GET /v1/tenants
   "tenants": [
     {
       "name": "models-as-a-service",
-      "namespace": "models-as-a-service" 
       
       "gateway": {
          "name": "maas-default-gateway",
