@@ -95,8 +95,7 @@ The gateway name and namespace are important for model deployer personas, as thi
 
 #### API Scope
 
-The tenants returned by this endpoint should return only the tenants that the authenticated user has access to. This means that if this API returns Tenant A,
-this user or group is part of at least one MaaSAuthPolicy created for Tenant A.
+As this endpoint exposes the read only list of available tenants in the system we don't require authentication. This is similar with how OIDC .well-known configuration API is exposed. Also, this allows users that exist in external OIDC systems but not in Openshift to use the discovery API.
 
 #### Cache hydration
 
