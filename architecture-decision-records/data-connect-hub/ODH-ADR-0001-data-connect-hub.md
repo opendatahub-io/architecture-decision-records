@@ -151,12 +151,6 @@ spec:
   format: jsonl
   properties:
     size: 200MB
-  schema:
-    fields:
-    - name: prompt
-      type: string
-    - name: category
-      type: string
       
   admin:
     url: https://s3.amazonaws.com/test-data/prompts.jsonl
@@ -252,6 +246,15 @@ As per the above CRs definition, it becomes obvious that Subscriptions are the m
 3. Rate limiting - Similarly to authorization, the DCH operator creates Limitador RateLimitPolicy CR defining the rate limits for API access for the current authenticated identity.
 
 This is the access control proposal for production use in OpenDataHub and RHOAI. However, for upstream usage/adoption of the service, this should work e2e without Kuadrant dependencies. Thus, for the access control flow we propose a sidecar container approach where requests are validated against currently defined `ConnectionSubscription` CRs.
+
+
+##### What happens under the hood
+
+1. Tenant admin creates the DataConnection CR
+2. Tenant admin creates the ConnectionSubscription CR
+2. DCHO (DataConnectHubOperator) creates the Authorino AuthPolicy and Limitador RateLimit policy. This is needed for REST and ArrwoFlight API access. 
+3. DCHO creates the Role and RoleBinding for accessing the specific DataConnection CR by the subjects mentioned in the ConnectionSubscription.
+
 
 #### Data Ingestion
 
