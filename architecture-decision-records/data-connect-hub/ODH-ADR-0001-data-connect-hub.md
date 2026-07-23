@@ -319,7 +319,7 @@ A CLI tool can be handy for integrating into workflows that involve bash scripts
 - REST APIs for end-users connections listing.
 - Arrow-Flight APIs for tabular data reading.
 - REST APIs for unstructured data reading.
-- Access control implemented in a sidecar container - no Kuadrant dependencies yet. This does not have to be throwaway code because this can be very useful for upstream adoption when Kuadrant is not available. 
+- Access control implemented in a sidecar container - no Kuadrant dependencies yet. This does not have to be throwaway code because this can be very useful for upstream adoption when Kuadrant is not available. We can explore the kube RBAC proxy already used by EvalHub to facilitate access control for this phase.
 - A few tabular data sources, tabular data formats (parquet, csv, json) and object store data sources support (to be agreed with PM)
 
 ## Open Questions
