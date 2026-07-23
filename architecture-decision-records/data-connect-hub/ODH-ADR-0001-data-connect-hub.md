@@ -38,6 +38,7 @@ Although in RHOAI today we do see that certain connection types are available (S
 * Document processing
 * Higher level governance aspects (lineage, catalog, etc)
 * MCP server. Not in scope initially but we envision a similar approach with EvalHub, where DCH Operator can also manage a DCH MCP server along with the DCH service instance. 
+* Schema discovery and management pertains to the Catalog component. Note that this does not meaan that DCH is unaware of schemas because arrow sq flight protocol requires the schema for a query to be present. So in DCH we will provide this. But higher level operations for schmema management pertains to Catalog. 
 
 
 ## How
