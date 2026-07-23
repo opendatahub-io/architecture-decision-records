@@ -91,6 +91,7 @@ We propose to build the DCH solution with multi-tenancy in mind right from its i
   - Tenants can no longer be distinguished by the hostname. Instead we will require the presence of the `x-tenant-id` header. This is similar to EvalHub and MLFlow approaches for multi-tenancy.
   - Tenant namespaces need to be labeled with `dch.opendatahub.io/tenant` so that DCH Operator knows which namespaces to monitor. These are the namespaces where the `DataConnection`, `ConnectionSubscription` CRs are managed.
   - Tenants are segregated by a tenant-id field in the metadata store (Postgres)
+  - If the caller subject is not part of any ConnectionSubscription in the namespace designeted by the x-tenant-id header, the request will be rejected with 403 status most likely.
 
 
 - **Tenant admin persona** - has access to the tenant namespace and manages `DataConnection`, `ConnectionSubscription` and `DataConnectService` (for hard tenancy case) CRs. These CRs are described later on in this document.
