@@ -1,4 +1,4 @@
-# ODH-ADR-0001: Data Catalog and Data Registry for RHOAI
+# ODH-ADR-DR-0001: Data Catalog and Data Registry for RHOAI
 
 |                |            |
 | -------------- | ---------- |
@@ -149,7 +149,7 @@ See [Alternatives — UI Design](#ui-design) for the bundled library alternative
 
 ### Backend: Iceberg REST Catalog in Feast Server
 
-The Iceberg REST Catalog API is a metadata interface: it serves table definitions, schemas, and data file locations — engines then read data directly from storage. It is the de facto standard catalog protocol, with native client support in every major query engine (Spark, Trino, Flink, DuckDB) and data platform (Snowflake, Databricks, watsonx.data, AWS Glue). Adopting it gives RHOAI two advantages: (1) **backend swappability** — the `/v1/*` API is the stable contract; backends can evolve without any consumer impact, and (2) **multi-engine connectivity** — any engine or platform that speaks Iceberg REST can discover and query RHOAI-managed tables with no custom connectors. See the [Interoperability Analysis](../iceberg-rest-catalog/interoperability-analysis.md) for the full engine/platform matrix.
+The Iceberg REST Catalog API is a metadata interface: it serves table definitions, schemas, and data file locations — engines then read data directly from storage. It is the de facto standard catalog protocol, with native client support in every major query engine (Spark, Trino, Flink, DuckDB) and data platform (Snowflake, Databricks, watsonx.data, AWS Glue). Adopting it gives RHOAI two advantages: (1) **backend swappability** — the `/v1/*` API is the stable contract; backends can evolve without any consumer impact, and (2) **multi-engine connectivity** — any engine or platform that speaks Iceberg REST can discover RHOAI-managed table metadata with no custom connectors. See the [Interoperability Analysis](../iceberg-rest-catalog/interoperability-analysis.md) for the full engine/platform matrix.
 
 Implement Iceberg REST Catalog endpoints (`/v1/*`) in the Feast server codebase, alongside the existing Feast Registry REST API (`/api/v1/*`). The Iceberg REST endpoints translate to Feast registry internals in Phase 1. Search is available via the Feast registry's built-in `/api/v1/search` endpoint through the translation layer.
 
@@ -193,8 +193,8 @@ The Iceberg REST Catalog spec defines 13 endpoint groups. The Phase 1 translatio
 | **Namespace level 2** (RHAI namespace) | ✅ | Maps to SavedDataset `namespace` field — one registry per RHAI namespace |
 | **Namespace level 3** (collection) | ✅ | Maps to SavedDataset `collection` field |
 | **Table CRUD** (`/v1/namespaces/{ns}/tables`) | ✅ | Maps to SavedDataset CRUD |
-| **Table metadata** (get/update schema, properties) | ✅ | Schema via inference; properties via tags |
-| **List tables** | ✅ | Filtered by SSAR per-item |
+| **Table metadata** (get/update schema, properties) | ✅ | Schema via user-provided data dictionary; properties via tags |
+| **List tables** | ✅ | Filtered by SSAR at namespace level |
 | **Table exists** (HEAD) | ✅ | Lightweight registry lookup |
 | **Table rename** | ✅ | SavedDataset rename |
 | **Load table** (full metadata response) | ⚠️ Partial | Returns schema and properties; does not return snapshot, sort order, or partition spec (no Feast equivalent) |
@@ -209,7 +209,7 @@ The Iceberg REST Catalog spec defines 13 endpoint groups. The Phase 1 translatio
 
 **What this means for consumers:** Phase 1 supports the browse/search/register/manage workflow — the operations needed by the Data Hub UI, notebooks, and pipeline orchestrators that register and discover data assets. It does **not** support the engine query workflow — where Spark or Trino loads table metadata to plan a scan. Engine interop via Iceberg REST requires a native Iceberg backend (Phase 2+).
 
-This is an intentional scope constraint, not a gap. The Non-Goals section explicitly states: "Full Iceberg REST compliance in Phase 1" is out of scope. The 6-of-13 endpoint groups that are fully supported cover the catalog use case; the 5 that are excluded are either engine-level operations that only make sense with a native Iceberg backend or have no customer need in Phase 1 (Views). The remaining 2 have partial support sufficient for Phase 1.
+This is an intentional scope constraint, not a gap. The Non-Goals section explicitly states: "Full Iceberg REST compliance in Phase 1" is out of scope. The 6-of-13 endpoint groups that are fully supported cover the catalog use case; the 6 that are excluded are either engine-level operations that only make sense with a native Iceberg backend or have no customer need in Phase 1 (Views). The remaining 1 has partial support sufficient for Phase 1.
 
 #### Extensions Beyond the Iceberg REST Spec
 
@@ -236,7 +236,7 @@ Every Data Catalog API request is authorized via Kubernetes-native RBAC before r
 
 Users with existing namespace access automatically get Data Catalog access. No additional configuration. Permissions are managed via standard `oc create rolebinding` or the OCP Console UI.
 
-**Catalog-only sharing:** For cross-team data sharing with reduced blast radius, admins can bind `datacatalog-viewer` or `datacatalog-editor` directly instead of the aggregated `view`/`edit` roles. This grants catalog access (browse collections, tables, volumes) without K8s infrastructure visibility (pods, Secrets, ConfigMaps). The catalog server reads credentials via its own ServiceAccount, so data connections flow through the server, not through the shared user's RBAC.
+**Catalog-only sharing:** For cross-team data sharing with reduced blast radius, admins can bind `datacatalog-view` or `datacatalog-edit` directly instead of the aggregated `view`/`edit` roles. This grants catalog access (browse collections, tables, volumes) without K8s infrastructure visibility (pods, Secrets, ConfigMaps). The catalog server returns registry metadata only — it does not proxy data connections or storage access.
 
 **Caching:** SSAR results are cached with a ~60-second TTL at the application level, reusing the same caching implementation from MLflow's SSAR middleware to take advantage of its proven production maturity. Security trade-off: if a user's namespace access is revoked, they retain catalog access until their cached SSAR result expires (~60s worst case). This matches the MLflow model registry's accepted risk profile for the same trade-off.
 
@@ -282,8 +282,8 @@ Individual Data Registries are **not** provisioned via CRs or GitOps. A registry
 
 If a native Iceberg backend is adopted in a future release, catalog metadata must be migrated from the Feast registry to the new backend. The migration path is:
 
-1. **Export:** Read all catalog metadata from the Feast registry via the existing Iceberg REST Catalog endpoints. Since the Data Hub UI and all consumers use Iceberg REST, the export format is the Iceberg REST API response model (namespaces, tables, schemas, partitions).
-2. **Transform:** Map Feast registry objects to native Iceberg catalog entries. The Phase 1 scope is already constrained to the subset that translates cleanly (see Non-Goals: "Full Iceberg REST compliance"), so this mapping should be lossless for Phase 1 data.
+1. **Export:** Read all catalog metadata from the Feast registry via the existing Iceberg REST Catalog endpoints. Since the Data Hub UI and all consumers use Iceberg REST, the export format is the Iceberg REST API response model (namespaces, tables, schemas, properties). Table properties carry all extension metadata (format, maturity stage, license, owner, tags, connection references) as key-value pairs, so the export captures the full Phase 1 metadata set.
+2. **Transform:** Map Feast registry objects to native Iceberg catalog entries. The Phase 1 scope is already constrained to the subset that translates cleanly (see Non-Goals: "Full Iceberg REST compliance"), so this mapping is lossless for Phase 1 data — every field stored in SavedDataset tags is round-tripped through Iceberg REST properties.
 3. **Load:** Import into the new backend via its Iceberg REST Catalog endpoints. Any compliant implementation (UC, Polaris, or other) supports the same spec the Data Hub UI already consumes.
 4. **Cutover:** Update the configuration to route Iceberg REST requests to the new backend instead of the translation layer. The Data Hub UI, SSAR auth, and all API consumers require zero changes.
 
@@ -375,7 +375,7 @@ Add Iceberg REST Catalog endpoints to the MLflow server instead of Feast, reusin
 | Operational complexity | 🟢 Low | Existing MLflow deployment |
 | New infrastructure | 🟢 None | Same MLflow process |
 
-**Rejected.** MLflow is a model lifecycle platform (experiments, runs, models), not a data asset registry (tables, schemas, data sources). MLflow is expanding its registry concept to cover Models (already shipped), MCPs, Skills, and Agents, but these registries are shallow — name, version, and tags — without the metadata depth, schema management, or multi-level namespace hierarchy required for a Data Registry. Unlike Feast, where DataSource/SavedDataset map (with translation) to Iceberg Tables, MLflow has no source objects to translate from. Building Iceberg REST endpoints on MLflow would require a greenfield catalog data model hosted inside the MLflow process — effectively Option 1 (Greenfield) deployed differently, without any of the reuse benefits. The MLflow UI also has no data catalog components (~30 Feast UI files for data sources, search, and entity views have no MLflow equivalent). MLflow is valuable in the RHOAI data strategy as a **peer service** — Model Registry, model lineage, LLM tracing — not as the catalog backend.
+**Rejected.** MLflow is evolving into a governed AI asset registry platform — purpose-built registries for Models (shipped), Prompts (shipped), MCP Servers ([RFC approved](https://github.com/mlflow/rfcs/tree/main/rfcs/0004-mcp-registry)), Skills ([proposed](https://github.com/mlflow/mlflow/issues/22833)), and Agents ([in progress](https://github.com/mlflow/mlflow/issues/22553)). Some of these registries are genuinely deep (the MCP Server Registry stores tool schemas, lifecycle states, and access bindings), but they are all AI/ML-scoped — none handle data assets (tables, schemas, partitions, volumes). MLflow has no unified namespace model, no cross-registry search, and no path toward Iceberg REST or data catalog standards. Unlike Feast, where DataSource/SavedDataset map (with translation) to Iceberg Tables, MLflow has no data asset primitives to translate from. Building Iceberg REST endpoints on MLflow would require a greenfield catalog data model hosted inside the MLflow process — effectively Option 1 (Greenfield) deployed differently, without any of the reuse benefits. The MLflow UI also has no data catalog components (~30 Feast UI files for data sources, search, and entity views have no MLflow equivalent). MLflow is valuable in the RHOAI data strategy as a **peer service** — AI asset registries, model lineage, LLM tracing — not as the catalog backend.
 
 See [MLflow as Catalog Backend Assessment](../mlflow-as-catalog-backend-assessment.md).
 
@@ -428,7 +428,7 @@ Kubernetes audit logging captures every SSAR call with user identity, resource, 
 
 ### Encryption
 
-Encryption in transit (TLS) and at rest (etcd encryption) are provided by the OpenShift platform and apply to all Data Catalog traffic and stored metadata. No additional encryption infrastructure is introduced.
+The catalog server reuses the Feast server's existing database connection and its encryption configuration, which is already GA in RHOAI. Encryption in transit (TLS) and at rest are provided by the OpenShift platform and apply to all Data Catalog traffic and stored metadata. No additional encryption infrastructure is introduced.
 
 ### Secrets and Credentials
 
@@ -462,8 +462,8 @@ The Data Catalog must be observable from day one. The following instrumentation 
 
 | Signal | Implementation | Details |
 |--------|---------------|---------|
-| **Metrics** | Prometheus `/metrics` endpoint (already exposed by Feast) | Add `datacatalog_request_total`, `datacatalog_request_duration_seconds`, and `datacatalog_ssar_latency_seconds` counters/histograms, labeled by endpoint, verb, namespace, and HTTP status |
-| **Logging** | Structured JSON logs (existing Feast logging) | Log every SSAR decision (user, resource, verb, allowed/denied) at INFO level. Log catalog CRUD operations at INFO. Log errors at ERROR with request context |
+| **Metrics** | Prometheus `/metrics` endpoint (reuses Feast metrics infrastructure) | Add `datacatalog_request_total`, `datacatalog_request_duration_seconds`, and `datacatalog_ssar_latency_seconds` counters/histograms. Labels use route templates (e.g., `/v1/namespaces/{ns}/tables/{table}`), verb, and HTTP status — bounded cardinality, consistent with Feast's existing label strategy |
+| **Logging** | Structured JSON logs (existing Feast logging infrastructure) | Follows Feast's existing logging and optional audit logging patterns. SSAR decisions and catalog CRUD operations available via the audit logging category in metrics config (disabled by default). Log management delegated to the OpenShift platform |
 | **Alerts** | PrometheusRule CRD | `DataCatalogErrorRate > 5%` over 5 minutes, `SSARLatencyP99 > 500ms`, `DataCatalogDown` (no successful requests in 2 minutes) |
 | **Dashboard** | Grafana dashboard shipped with RHOAI | Catalog request rate, error rate, SSAR latency, top namespaces by request volume |
 
@@ -471,8 +471,8 @@ The Data Catalog must be observable from day one. The following instrumentation 
 
 The catalog capability must be independently disableable without redeploying or downgrading the Feast server.
 
-- **Feature flag:** A `DATACATALOG_ENABLED` environment variable (default: `true`) controls whether the Iceberg REST Catalog endpoints are registered at startup. When `false`, the Feast server behaves identically to pre-Data Catalog releases. The SSAR middleware is also disabled.
-- **Rollback path:** Setting `DATACATALOG_ENABLED=false` in the Feast server Deployment immediately disables all catalog functionality. No data migration is needed — the Feast registry continues to operate as before. Catalog metadata stored via the translation layer is Feast registry data and remains intact.
+- **Feature flag:** The `spec.catalog.enabled` field on the FeatureStore CRD is the authoritative gate for catalog functionality (default: `false`). The operator reconciles this into the catalog server Deployment. When disabled, no catalog endpoints are registered and the SSAR middleware is inactive. The catalog is opt-in — existing and upgraded deployments do not expose catalog endpoints unless explicitly enabled.
+- **Rollback path:** Setting `spec.catalog.enabled: false` triggers an operator reconciliation that removes the catalog server Deployment. No data migration is needed — the Feast registry continues to operate as before. Catalog metadata stored via the translation layer is Feast registry data and remains intact. Rollback requires a Deployment rollout, not a live toggle.
 - **ClusterRole rollback:** The 3 datacatalog ClusterRoles are additive. Removing them revokes catalog permissions but does not affect other RBAC. Because the FeatureStore CR is namespace-scoped and ClusterRoles are cluster-scoped, standard Kubernetes OwnerReferences do not apply — the operator must include explicit cleanup logic for these cluster-scoped resources.
 
 ### Resource Footprint and Capacity Planning
@@ -492,7 +492,7 @@ The catalog capability must be independently disableable without redeploying or 
 | Operation | Target (P95) | Notes |
 |-----------|-------------|-------|
 | Namespace list | < 100ms | Translates to Feast project list |
-| Table list (per namespace) | < 200ms | Translates to Feast entity/feature view list |
+| Table list (per namespace) | < 200ms | Translates to SavedDataset list + namespace-level SSAR check |
 | Table get (single) | < 100ms | Single Feast registry lookup |
 | Table create/update | < 500ms | Registry write + SSAR check |
 | Search | < 500ms | Feast `/api/v1/search` |
@@ -515,7 +515,7 @@ No dedicated Feast runbook exists today. Feast provides [production deployment g
 | ODH Dashboard | TBD | TBD | Yes |
 | Feast / Feature Store | TBD | TBD | Yes |
 | MLflow / Model Registry | TBD | TBD | No |
-| RHOAI Operator | TBD | TBD | No |
+| RHOAI Operator | TBD | TBD | Yes |
 | Data Science Pipelines (KFP) | TBD | TBD | No |
 | Distributed Workloads (Ray) | TBD | TBD | No |
 | Model Serving | TBD | TBD | No |
