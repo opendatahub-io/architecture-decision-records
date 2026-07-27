@@ -33,7 +33,7 @@ Several factors make cert-manager a poor fit for controller-managed installation
 * Establish a clear boundary: the deployment mechanism installs cert-manager, the CCM manages PKI resources (ClusterIssuers, root CA)
 * Support environments where cert-manager is already installed
 * Define a migration path for existing deployments where the CCM currently owns cert-manager
-* Remove the `certManager.managementPolicy` field entirely from the CCM CR API
+* Deprecate the `certManager.managementPolicy` field from the CCM CR API
 
 ## Non-Goals
 
@@ -78,20 +78,20 @@ The responsibility split between installation mechanism and controller after dec
 
 After decoupling, cert-manager installation is no longer controlled by the CCM.
 
-The `certManager.managementPolicy` field is removed entirely from the CCM CR API. The `certManager` field itself is retained for PKI-related configuration (e.g., certificate names, issuer references). Designing the PKI configuration surface is out of scope for this ADR.
+The `certManager.managementPolicy` field is deprecated. During the transition release, the field is still accepted but enforced as `Unmanaged` at runtime (any value other than `Unmanaged` is rejected with a validation error). The `certManager` field itself is retained for PKI-related configuration (e.g., certificate names, issuer references). Designing the PKI configuration surface is out of scope for this ADR.
 
 On upgrade, the deployment mechanism should validate that the old CCM CR on the cluster has been migrated (cleanup completed) before deploying the new version.
 
 ### Helm chart integration
 
-The Helm chart is the primary deployment mechanism for generic Kubernetes environments and takes ownership of cert-manager installation. The chart provides a flag to enable or disable cert-manager installation for clusters that already have it and pins a specific cert-manager version to ensure compatibility with the CCM's PKI expectations.
+The Helm chart is the primary deployment mechanism for generic Kubernetes environments and takes ownership of cert-manager installation. The chart deploys the **cert-manager-operator**, which in turn deploys cert-manager itself (controller, webhook, cainjector). Users who already have cert-manager installed — either directly or through their own cert-manager-operator — can disable this with a chart flag. The chart pins a specific cert-manager version to ensure compatibility with the CCM's PKI expectations.
 
 ### CCM changes
 
 The CCM will:
 
 * **Remove** the cert-manager installation code entirely. The deployment mechanism should block upgrades until the migration is completed, and GC handles any remaining stale resources via generation mismatch
-* **Remove** the `managementPolicy` field from the `AzureKubernetesEngine`, `CoreWeaveKubernetesEngine` and `AWSKubernetesEngine` CR API types. The `certManager` field is retained for PKI configuration
+* **Deprecate** the `managementPolicy` field in the `AzureKubernetesEngine`, `CoreWeaveKubernetesEngine` and `AWSKubernetesEngine` CR API types. During the transition release the field is accepted but enforced as `Unmanaged`. The `certManager` field is retained for PKI configuration
 * Retain all PKI resource management (ClusterIssuers, root CA Certificate, webhook Certificate, Secrets)
 * Retain GC protection of bootstrap PKI resources (ClusterIssuers, root CA Certificate)
 * Retain CRD monitoring and status conditions (including the existing degraded condition when cert-manager CRDs are not present)
