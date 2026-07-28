@@ -178,11 +178,11 @@ This is a non-exhaustive list of endpoints as the set of capabilities is expecte
 - `PATCH /api/v1/data/connection_types/{id}` - Update a connection type 
 - `GET /api/v1/data/connection_types/{id}` - Get the details of a specific connection type
 
-Currently Connection Types in RHOAI are represented as configmaps and they are very UI driven. We aim here for:
-1. Have a type safe API for managing connection types
-2. On the fly promotion of current configmaps to actual connection types resources.
+  Currently Connection Types in RHOAI are represented as configmaps and they are very UI driven. We aim here for:
+  1. Have a type safe API for managing connection types
+  2. On the fly promotion of current configmaps to actual connection types resources.
 
-**Note** - the actual API specification is not addressed in this ADR.
+  **Note** - the actual API specification is not addressed in this ADR.
 
 ##### Unstructured data ingestion
 - `GET /api/v1/data/ingestion/{id}` - Ingest unstructured data via HTTP
