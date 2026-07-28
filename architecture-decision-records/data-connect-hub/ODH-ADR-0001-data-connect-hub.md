@@ -330,6 +330,7 @@ Data:
 
 In this case, the client application uses the DCHS SDK or directly calls the DCHS data ingestion APIs. For instance, a Python or Go ADBC client can be used directly. In this scenario the ExportedSecret is not necessary as the client does not need the actual data store credentials. The client only needs to send the:
 - `x-tenant-id` header (note that for gRPC all headers must be lower-case)
+- `x-dch-connection-id` header denotes the targeted connection id where to read from.
 - `Authorization` header
 
 These apply for both REST and gRPC Flight APIs.
