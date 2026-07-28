@@ -166,11 +166,28 @@ Annotations:  opendatahub.io/connection-type: s3
 
 This is a non-exhaustive list of endpoints as the set of capabilities is expected to grow.
 
+##### Connections management
 - `GET /api/v1/data/connections` - List connections without sensitive information
-- `POST /api/v1/data/connections` - List connections without sensitive information
-- `PATCH /api/v1/data/connections/{id}` - List connections without sensitive information
+- `POST /api/v1/data/connections` - Create a new connection that points to a pore existent secret.
+- `PATCH /api/v1/data/connections/{id}` - Update connections (not secret data)
 - `GET /api/v1/data/connections/{id}` - Get the details of a specific connection
+
+##### Connection types management
+- `GET /api/v1/data/connection_types` - List connection types 
+- `POST /api/v1/data/connections_types` - Create a new connection type.
+- `PATCH /api/v1/data/connection_types/{id}` - Update a connection type 
+- `GET /api/v1/data/connection_types/{id}` - Get the details of a specific connection type
+
+Currently Connection Types in RHOAI are represented as configmaps and they are very UI driven. We aim here for:
+1. Have a type safe API for managing connection types
+2. On the fly promotion of current configmaps to actual connection types resources.
+
+**Note** - the actual API specification is not addressed in this ADR.
+
+##### Unstructured data ingestion
 - `GET /api/v1/data/ingestion/{id}` - Ingest unstructured data via HTTP
+
+
 
 #### DataConnection REST resource
 
