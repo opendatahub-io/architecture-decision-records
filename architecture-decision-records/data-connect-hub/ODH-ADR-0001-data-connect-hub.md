@@ -21,7 +21,7 @@ This proposal focuses on a specific part of the overall data strategy, specifica
 
 ## Why
 
-Although in RHOAI today we do see that certain connection types are available (S3, OCI etc.) and these connections are materialized as Kube secrets that other services can mount and use, in reality there are services that need to support a variety of data stores to ingest data. One example is EvalHub where test data can live in various storages (S3, HDFS, NFS, relational databases etc.). To support such an ecosystem the EvalHub service would need to integrate and maintain the entire stack of client libraries with their dependencies. This can be very time consuming to replicate in every service that needs to read analytic data from various sources. Thus the Data Connect Hub proposes to be a middleware service that other services can use (a single dependency) that facilitates data ingestion from multiple data stores.
+Although in RHOAI today we do see that certain connection types are available (S3, OCI etc.) and these connections are materialized as Kube secrets that other services can mount and use, in reality there are services that need to support a variety of data stores to ingest data. One example is EvalHub where test data can live in various storages (S3, HDFS, NFS, relational databases etc.). To support such an ecosystem the EvalHub service would need to integrate and maintain the entire stack of client libraries with their dependencies. This can be very time-consuming to replicate in every service that needs to read analytic data from various sources. Thus, the Data Connect Hub proposes to be a middleware service that other services can use (a single dependency) that facilitates data ingestion from multiple data stores.
 
 ## Goals
 
@@ -38,7 +38,7 @@ Although in RHOAI today we do see that certain connection types are available (S
 * Document processing
 * Higher level governance aspects (lineage, catalog, etc)
 * MCP server. Not in scope initially but we envision a similar approach with EvalHub, where DCH Operator can also manage a DCH MCP server along with the DCH service instance. 
-* Schema discovery and management pertains to the Catalog component. Note that this does not mean that DCH is unaware of schemas because Arrow Flight SQL protocol requires the schema for a query to be present. So in DCH we will provide this. But higher level operations for schema management pertain to Catalog. 
+* Schema discovery and management pertain to the Catalog component. Note that this does not mean that DCH is unaware of schemas because Arrow Flight SQL protocol requires the schema for a query to be present. So in DCH we will provide this. But higher level operations for schema management pertain to Catalog. 
 
 
 ## How
@@ -48,19 +48,23 @@ Although in RHOAI today we do see that certain connection types are available (S
 #### Abbreviations
 
 - DCH = Data Connect Hub
+- DCHO = Data Connect Hub Operator
+- DCHS = Data Connect Service
 
 #### High level overview
 ![Fig 1](./images/ADR-0001-img1.png)
 
 
-- `DCH Operator` 
+- `DCHO` 
     - Managed by OpenDataHub operator as a new DSC component. 
-    - When a new `DataConnectService` CR is created, the operator creates the DCH Service instance in a dedicated `infra` namespace. This operator watches all DCH CRs from the tenant namespace; however, some aspects of the `DataConnection` CR need to be exposed to the end users prior to data reading, as the clients need to specify which connection to use for reading. Here we are proposing the CQRS (Command Query Responsibility Segregation) pattern where the operator watches the `DataConnection` CRs and syncs only the properties that are visible to the end users to the DCH service instance via an internal REST API. This information is stored in the internal Postgres DB. Therefore, when the end users perform listing for the available connections via the public REST API, we are not hitting the Kube API server. The end-user queries are segregated from the admin management of the CRs. Another reason for this proposal is to avoid re-implementing Kube informers in the service layer, as this is already done in the operator. So as a summary:
-    - End-users can only read DataConnection information (only properties that are meant for end-users) via REST APIs.
-    - Tenant admins manage the DataConnection CRs via the Kube APIs.
+    - When a new `DataConnectService` CR is created, the operator creates the DCH Service instance in a dedicated `infra` namespace. 
+    - Watches existing RHOAI Connection secrets and transforms them into DataConnection REST resources pointing to those secrets. This can be seen as auto-migration. Since the structure of the current RHOAI Connection secrets content is expected to remain the same, this step does not affect the current applications.
 
+- `DCHS instance` 
+    - Provides REST APIs for listing the available DataConnections
+    - Provides REST APIs for unstructured data ingestion from different connections
+    - Provides Arrow SQL Flight API for data ingestion of tabular data.
 
-- `DCH Service instance` - the tenant admins do not have direct access to the actual service instance. The reason is to separate the infrastructure components from the tenant management ones. Another reason is that all DCH service instances live in the same namespace in order to share the same internal Postgres metadata store instance. The Postgres secret will also live in the `infra` namespace so this cannot be shared with the tenant admins. (A similar approach is adopted by MaaS). 
 
 #### Multi tenancy
 
@@ -75,28 +79,24 @@ We propose to build the DCH solution with multi-tenancy in mind right from its i
 
 ![Fig 3](./images/ADR-0001-img4.png)
 
-- **Hard-tenancy** - Each tenant has its own DCH service instance that points to a dedicated gateway. This means that the Praxis proxy is also dedicated. This means:
+- **Hard-tenancy** - Each tenant has its own DCHS instance that points to a dedicated gateway. This means that the Praxis proxy is also dedicated. This means:
   - Each tenant gets its own hostname / url
-  - DCH service instance is dedicated to that tenant
+  - DCHS instance is dedicated to that tenant
   - Traffic is isolated per tenant (no neighbour noise)
   - Different TLS certificates managed via cert-manager can be used per tenant.
-  - DataConnectService CR is created by the tenant in the tenant namespace. This triggers the creation of the DCH service instance in the DCH infra namespace
+  - DataConnectService CR is created by the tenant in the tenant namespace. This triggers the creation of the DCHS instance in the DCH infra namespace
   - Implies the existence of a tenants discovery service since each tenant implies a different host name
   - Can support separate metadata store per tenant.
 
-- **Soft tenancy** - There is a single DataConnectService CR in the opendatahub namespace and this is managed by the cluster admin not by the tenant admins. This implies:
-  - There is a single DCH service instance (that scales horizontally of course)
+- **Soft tenancy** - There is a single DataConnectService CR in the opendatahub namespace and this is managed by the cluster admin, not by the tenant admins. This implies:
+  - There is a single DCHS instance (that scales horizontally of course)
   - There is a single HttpRoute and a single Gateway. 
   - There is a single Praxis instance for all tenants.
   - All tenants use the same hostname / URL
   - Tenants can no longer be distinguished by the hostname. Instead we will require the presence of the `x-tenant-id` header. This is similar to EvalHub and MLFlow approaches for multi-tenancy.
-  - Tenant namespaces need to be labeled with `dch.opendatahub.io/tenant` so that DCH Operator knows which namespaces to monitor. These are the namespaces where the `DataConnection`, `ConnectionSubscription` CRs are managed.
+  - Tenant namespaces need to be labeled with `dataconnecthub.opendatahub.io/tenant` so that DCHO knows which namespaces to monitor. 
   - Tenants are segregated by a tenant-id field in the metadata store (Postgres)
-  - If the caller subject is not part of any ConnectionSubscription in the namespace designated by the x-tenant-id header, the request will be rejected with 403 status most likely.
 
-
-- **Tenant admin persona** - has access to the tenant namespace and manages `DataConnection`, `ConnectionSubscription` and `DataConnectService` (for hard tenancy case) CRs. These CRs are described later on in this document.
-- **Data consumer persona** - this can list available connections that this identity has access to and perform data ingestion via provided APIs, SDK or CLI.
 
 ##### Note
 For the initial release we will adopt the soft tenancy approach as this implies less development and does not require a separate tenants discovery service.
@@ -105,243 +105,98 @@ For the initial release we will adopt the soft tenancy approach as this implies 
 #### Service overview
 ![Fig 4](./images/ADR-0001-img2.png)
 
-This diagram is a zoom-in from the above one. It describes the main internal components of the DCH service and how multiple data source types can be supported.
+This diagram is a zoom-in from the above one. It describes the main internal components of the DCHS and how multiple data source types can be supported.
+
+### Metadata storage
+
+Exposing kube CRs via application REST APIs is challenging from multiple perspectives:
+- Pressure on the kube API server. This is a critical system as it can affect the functionality of the entire cluster.
+- Kube CRs listing APIs limitations (filtering, pagination etc)
+- It is problematic for building modern UIs.
+
+To address these challenges, we adopt the approach where the DataConnection records are REST resources, not Kube CR resources. The credentials secrets still remain entirely as Kube secrets, never stored in the DCH database. The DataConnection record contains extra metadata that doesn't qualify as credentials, and this record points to the actual kube credential secret.
+
 
 ### APIs
 
-The DCH service instance exposes the following API types:
+#### CRD APIs
 
-- `REST` API for:
-    - reading/listing Connections information
-    - chunked or full data reading for unstructured datasets.
-    - small sample data reading mainly for UI rendering and connection test purposes.
-- `Arrow-Flight` - a gRPC protocol for efficient tabular data reading in columnar format. This is suitable for SQL datastores but also for vector databases. 
-- `CR` APIs - for tenant admin management.
-
-### CR Admin APIs
-
-- `DataConnectService` - describes the DCH service instance and configurations for this tenant. OIDC, hardware resources etc.
-- `DataConnection` - defines the connections metadata to a particular store:
-    - admin properties (never shared with end users)
-        - url + port
-        - credentials secret_ref
-    - user visible properties
-        - name
-        - description
-        - data source name
-        - ...
-- `ConnectionSubscription` - defines which users/groups can access what Connections with what limits.
-    - subjects list
-    - connection_refs list
-    - limits
-
-- Therefore a connection C1 is only visible to a user U1 if and only if U1 and C1 are defined in a subscription. 
-- Limits are initially defined as request limits; however, we expect that in time we can support more metrics such as data volume limits etc.
+- `DataConnectService` - describes the DCHS instance and configurations for this tenant. OIDC, hardware resources etc.
 
 
-### CR examples
+##### CR examples
 
 ```yaml
-apiVersion: dataconnect.opendatahub.io/v1alpha1
-kind: DataConnection
+apiVersion: dataconnecthub.opendatahub.io/v1alpha1
+kind: DataConnectService
 metadata:
-  name: my_eval
-  namespace: ai_trust
+  name: data-connect-hub
+  namespace: opendatahub
 spec:
   description: Connection to the test data S3 bucket
-  type: s3
-  format: jsonl
+  restApiReplicas: 3 # defaults to 2
+  flightApiReplicas: 3 # defaults to 3
+
+status:
+  phase: Ready
+  externalHostName: example.myorg.com
+```
+       
+
+#### GitOps flows
+
+As DataConnections are not Kube CR resources, creating DataConnections via GitOps flow implies creating Kube secrets with the same labels and annotations used by the current RHOAI connections. Because the DCH operator watches these secrets, the DataConnection REST resources will be created automatically.
+
+##### Future considerations
+
+Because secrets have unstructured content and not all metadata should be stored in a secret, we can support a new Kube CR `InitDataConnection`. This would have the same properties as the DataConnection REST resource. During a GitOps flow, these CRs are automatically watched by the DCH operator and the DataConnection REST resources will automatically be fully created. 
+
+The current RHOAI Connection secrets contain the following labels and annotations:
+
+```yaml
+Labels:       opendatahub.io/dashboard=true
+              opendatahub.io/managed=true
+Annotations:  opendatahub.io/connection-type: s3
+              opendatahub.io/connection-type-protocol: s3
+              opendatahub.io/connection-type-ref: s3
+              openshift.io/description: 
+              openshift.io/display-name: s3-test
+```
+
+#### REST APIs
+
+This is a non-exhaustive list of endpoints as the set of capabilities is expected to grow.
+
+- `GET /api/v1/data/connections` - List connections without sensitive information
+- `POST /api/v1/data/connections` - List connections without sensitive information
+- `PATCH /api/v1/data/connections/{id}` - List connections without sensitive information
+- `GET /api/v1/data/connections/{id}` - Get the details of a specific connection
+- `GET /api/v1/data/ingestion/{id}` - Ingest unstructured data via HTTP
+
+#### DataConnection REST resource
+
+```yaml
+metadata:
+  id: 41212312-1234124-2r112341
+  name: Eval-Prompts
+resource:
+  description: Test prompts
+  provider: Postgres
+  format: arrow
   properties:
-    size: 200MB
-      
+    # Custom KV properties
   admin:
-    url: https://s3.amazonaws.com/test-data/prompts.jsonl
-    region: us-east-1
-    secret_ref: aws_ai_trust_credentials
-    bucket: test-data
-    path: prompts.jsonl
+    secret-ref: postgres-secret
 ```
 
-**Notes**
-- The admin section contains properties that are never exposed via the public REST API to the end users.
-- The properties field contains arbitrary key-value pairs that can be discovered by other processes, e.g. size of the data, missing fields information, etc.
+This is a rough object example as the exact API specification is outside the scope of this ADR.
 
 
-```yaml
-apiVersion: dataconnect.opendatahub.io/v1alpha1
-kind: ConnectionSubscription
-metadata:
-  name: evals
-  namespace: ai_trust
-spec:
-  description: Subscription for evals
-  subjects:
-    # Users, groups or service-accounts can be specified here. 
-  - kind: user
-    name: jim
-  - kind: user
-    name: karen
-  connections:
-    - name: my_eval
-  ## Optional
-  requests_limits:
-    - limit: 30
-      window: 1m
+#### gRPC APIs
 
-```
+For gRPC we have Arrow Flight endpoint for HTTP/2 and the path is constant: 
 
-**Notes**
-- If a DataConnection is not attached to a ConnectionSubscription, it is not usable for data reading.
-- If the subjects contain a user with name `*` this is an explicit statement that the connection referenced by this subscription is **PUBLIC** and any user can access it. Thus any tenant can define public connections.
-- Upon creating a DataConnection, the DCH system automatically performs sanity checks and reflects this in the CR status object. Example:
-
-```yaml
-apiVersion: dataconnect.opendatahub.io/v1alpha1
-kind: DataConnection
-metadata:
-  name: my_eval
-  namespace: ai_trust
-spec:
-  description: Connection to the test data S3 bucket
-  type: s3
-  format: jsonl
-  properties:
-    size: 200MB
-
-  admin:
-    url: https://s3.amazonaws.com/test-data/prompts.jsonl
-    region: us-east-1
-    secret_ref: aws_ai_trust_credentials
-    bucket: test-data
-    path: prompts.jsonl
-  
-  status:
-    phase: ready
-    endpoint: https://dch.myorg.com/v1/data/connections/my_eval
-    conditions:
-    - type: Ready
-      status: True
-      lastTransitionTime: "2026-07-15T10:05:00Z"
-      reason: "bound"
-      message: "This connection is bound to a subscription."
-    - type: Pending
-      status: True
-      lastTransitionTime: "2026-07-15T10:02:00Z"
-      reason: "not_bound"
-      message: "This connection is not yet bound to a subscription."
-    - type: Connected
-      status: True
-      lastTransitionTime: "2026-07-15T10:00:00Z"
-      reason: "Connected"
-      message: "Successfully connected to the target storage."
-
-```
-
-
-
-#### Access control 
-
-As per the above CRs definition, it becomes obvious that Subscriptions are the mechanism for describing authorization aspects. But this is not enough as this is how tenant admins define relationships. Here is what happens under the hood: 
-
-1. **Authentication** - If OIDC is configured in the `DataConnectService` CR, the client is expected to send the JWT token in the request. This gets validated by the Authorino policy.
-2. **Authorization** - As `ConnectionSubscription` CRs are created, the DCH operator manages Kuadrant AuthPolicy with Rego rules for describing the API access to different API endpoints.
-3. **Rate limiting** - Similarly to authorization, the DCH operator creates Limitador RateLimitPolicy CR defining the rate limits for API access for the current authenticated identity.
-
-This is the access control proposal for production use in OpenDataHub and RHOAI. However, for upstream usage/adoption of the service, this should work e2e without Kuadrant dependencies. Thus, for the access control flow we propose a sidecar container (i.e. Kube RBAC proxy) approach where requests are validated against currently defined `ConnectionSubscription` CRs.
-
-
-#### ConnectionSubscription CR
-
-Defines the data access rules when using the DCH ingestion APIs. It does not define how the access to the DataConnection CR is managed. Therefore admins can still define their own RBAC rules for access to the DataConnection CR objects.
-
-**What happens under the hood ?**
-- Tenant admin creates the DataConnection CR
-- Tenant admin creates the ConnectionSubscription CR
-- DCHO (DataConnectHubOperator) creates the Authorino AuthPolicy and Limitador RateLimit policy. This is needed for REST and Arrow Flight API access. (This is for the long term)
-- DCHO creates the Role and RoleBinding for data ingestion pointing to a DataConnection CR by the subjects mentioned in the ConnectionSubscription.
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: {connection subscription name}-role
-  namespace: test
-  labels:
-    dataconnect.opendatahub.io/subscription: evals
-rules:
-  # Specify the custom API group defined by your CRD
-  - apiGroups: ["dataconnect.opendatahub.io"]
-    resources: 
-      - api-data-read
-    resourceNames:
-      - {data connection UID 1}
-      - {data connection UID 2}
-    verbs: ["get", "list"]
-```
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: {ConnectionSubscription name}-binding
-  namespace: test
-  labels:
-    dataconnect.opendatahub.io/subscription: evals
-subjects:
-  # Same subjects as present in the ConnectionSubscription
-  - kind: user
-    name: Klark
-roleRef:
-  kind: Role
-  name: {connection subscription name}-role
-  apiGroup: rbac.authorization.k8s.io
-```
-
-This means that during the data ingestion API flow, we can perform Kube SAR to determine if the request identity is allowed to perform data ingestion. 
-
-**Why is plain SAR limiting long term ?**
-
-Data ingestion API requests can be very frequent and concurrent. Performing SAR for each request can add significant pressure on the Kube API server and this may affect the entire cluster (there are many other components in RHOAI that exercise this type of pressure already). The reason why long term we want to use Authorino is:
-
-- More flexible rules via Rego
-- Ability to switch to Api-Keys that are not managed by kube. (just like MaaS did). This allows for zero pressure on the kube api server when data ingestion requests need to be authorized. However it is recommended to have the notion of ApiKeys at platform level not just MaaS. This is why for now SAR should work for DCH.
-- ApiKeys can be minted to subscriptions.
-
-
-#### Data Ingestion Mode
-
-DCH service proposes data ingestion APIs via Arrow Flight or HTTP API. This ensures that the client using this API (or SDK) does not need to install and maintain various DB drivers or 3rd party libraries and this also implies that the actual database credentials are never exposed to these clients. However, while there are use cases where such API abstraction is very useful, in other contexts using the 3rd party libraries is preferable. DCH is not opinionated on the approach that clients want to adopt. However, there are implications that require mentioning here. If a client needs to use 3rd party libraries to connect directly to various data stores, it means that these clients require the actual backend credentials to connect. DCH service APIs are not used. However, the DCH Operator that watches DataConnection CRs will automatically create a new kube secret (if the DataConnection CR is configured as such) with the name `{dataconnection CR name}-secret` and this secret entails the DataConnection CR metadata + the actual credentials secret information that the DataConnection CR is pointing to. Visually this looks like:
-
-```
-  DataConnection CR + credentials secret = New secret
-```
-
-DCH Operator will ensure that the new secret will only be accessible by the subjects specified in the ConnectionSubscription CR. In other words, it will create and maintain the Role and RoleBinding for this new secret. In other words, if an application (e.g. a notebook) wants to mount this new secret, it needs to use a user or a ServiceAccount that is specified in the ConnectionSubscription CR. Without these, the Role and RoleBindings will not exist. 
-
-It is of course possible for a user that has access to create Role and RoleBindings in this namespace to manually create these resources even if the ServiceAccount is not in the ConnectionSubscription CR. However, this is an explicit manual action that an admin can do, and this circumvents DCH.
-
-As per the above notes, the DataConnection CR needs to be configured in order to allow the auto creation of the new secret. Thus, the CR would need to contain the `autoCreateSecret` flag:
-
-```yaml 
-apiVersion: dataconnect.opendatahub.io/v1alpha1
-kind: DataConnection
-metadata:
-  name: my_eval
-  namespace: ai_trust
-spec:
-  autoCreateSecret: true
-
-```
-The reason is that in cases where this is not needed, the system won't create and maintain stale secrets.
-
-
-#### Observability
-
-- All actions for CRs management are tracked by the DCH Operator
-- All data access requests from data consumers are tracked by DCH service as OTEL logs and metrics.
-- OTEL Logs are managed by Loki as the logging solution for platform observability.
-- Similarly to MaaS, the DCH operator can also manage Perses dashboards for user consumption and usage awareness.
-
+HTTP/2 endpoint: `/arrow.flight.protocol.FlightService`
 
 #### SDK 
 
@@ -351,56 +206,167 @@ DCH team will create SDKs for integrating with the DCH service. Since data analy
 
 A CLI tool can be handy for integrating into workflows that involve bash scripts. It could also be used in init-containers for downloading datasets prior to the process startup (e.g. training, evals etc.). It can be used as a SKILL for agentic workflows such as Claude.
 
+### Access control 
+
+#### Roles
+
+#### DCH kube resources for data plane APIs
+
+All resources below share the same api group: `dataconnecthub.opendatahub.io`
+
+|  Resource Type | Verbs | REST Endpoint | Description |
+| ---------------|---------------|---------------|---------------|
+|  `data-connections-read` | `get` |  `/v1/data/connections` | Can read and list DataConnection resources |
+|  `data-connections-manage` | `post, patch, delete` | `/v1/data/connections` | Can manage any DataConnection for this tenant. |
+|  `data-read` | `Arrow Flight API`, `get` | `/v1/data/ingestion/{connection-id}` | Can use DCH ingestion REST API or the gRPC Flight API|
+
+##### Examples
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dch-ingest
+  namespace: test
+rules:
+  - apiGroups: ["dataconnecthub.opendatahub.io"]
+    resources: 
+      - data-connections-read
+      - data-read
+    verbs: ["get"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dch-ingest-binding
+  namespace: test
+subjects:
+  - kind: user
+    name: Clark
+roleRef:
+  kind: Role
+  name: dch-ingest
+  apiGroup: rbac.authorization.k8s.io
+```
+
+
+
+#### Authentication
+
+At this point in time (as Praxis is not yet available) authentication is done via TokenReview API for Openshift/JWT tokens. 
+
+#### Authorization
+
+SAR (Subject Access Review) is the foundation of authorization support. 
+
+- Arrow Flight gRPC - we cannot use Kube RBAC proxy for Flight API because it is gRPC-based and Kube RBAC proxy is very limited in this area. Thus, for the time being, the SAR checks need to happen from within the DCHS when attempting to ingest data. 
+
+- REST APIs - for REST endpoints like connection listing or unstructured data ingestion, we can use the Kube RBAC proxy (https://github.com/opendatahub-io/kube-auth-proxy). This is also what EvalHub uses today.
+
+#### Rate limiting 
+
+For MVP we don't apply any specific rate-limiting logic. 
+
+
+### Data Consumption
+
+DCHS proposes data ingestion APIs via Arrow Flight or HTTP API. This ensures that the client using this API (or SDK) does not need to install and maintain various DB drivers or 3rd party libraries and this also implies that the actual database credentials are never exposed to these clients. Thus, we have two patterns for data ingestion:
+
+
+#### Consumption via 3rd party libraries
+
+While there are use cases where a data ingestion API is very useful, in other contexts using the 3rd party libraries is preferable. DCH is not opinionated on the approach that clients want to adopt. However, there are implications worth mentioning. If a client needs to use 3rd party libraries to connect directly to various data stores, it means that these clients require the actual backend credentials to connect. In this case, DCHS ingestion APIs are not used. However, the DCHO will automatically create a new kube secret (if the DataConnection resource is configured as such). This secret contains the DataConnection resource metadata plus the actual credentials from the secret that the DataConnection object points to. This looks like:
+
+```
+  DataConnection + credentials secret = Exported Secret
+```
+
+The admin can control the RBAC rules that are applied for the new secret and who can use it. At this point, DCHO will not automatically create and manage RBAC for this secret. It is up to the admin to manage RBAC for an Exported-Secret. The DataConnection resource needs to be configured in order to allow the auto creation of the new secret. Thus, the resource would need to contain the `exportAsSecret` flag:
+
+```yaml 
+metadata:
+  name: my_eval
+resource:
+  exportAsSecret: {secret name}
+  ...
+```
+The reason is that in cases where this is not needed, the system won't create and maintain stale secrets. Once the ExportedSecret is created, it can be mounted in other pods as well. 
+
+As per the above example, the exported secret will be:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my_eval
+  namespace: test
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: dataconnections-controller
+      uid: a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d 
+      blockOwnerDeletion: true
+  labels:
+    dataconnecthub.opendatahub.io/connection_id=1fac3d4-e5f6-7a8b-9cff-1e2f3a4b5caa
+    dataconnecthub.opendatahub.io/connection_name=my_eval
+
+type: Opaque
+Data:
+  {KV properties here}
+```
+
+
+##### Exported Secret vs Credentials Secret
+
+- The CredentialsSecret is the secret that the DataConnection resource points to. This is the initial secret created by an admin that holds the credentials.
+- The ExportedSecret is constructed from the DataConnection resource metadata + the CredentialsSecret content.
+- Applications can choose to mount the ExportedSecret in their pods if they need to access richer or even custom metadata, not only the pure credentials that were originally set by an admin.
+
+
+
+#### Consumption via DCHS ingestion APIs
+
+In this case, the client application uses the DCHS SDK or directly calls the DCHS data ingestion APIs. For instance, a Python or Go ADBC client can be used directly. In this scenario the ExportedSecret is not necessary as the client does not need the actual data store credentials. The client only needs to send the:
+- `x-tenant-id` header (note that for gRPC all headers must be lower-case)
+- `Authorization` header
+
+These apply for both REST and gRPC Flight APIs.
+
+### Observability
+
+- All actions for CRs management are tracked by the DCHO
+- All data access requests from data consumers are tracked by DCHS as OTEL logs and metrics.
+- OTEL Logs are managed by Loki as the logging solution for platform observability.
+- Similarly to MaaS, the DCHO can also manage Perses dashboards for user consumption and usage awareness.
+
+
 
 ### Software stack
 
-- DCH Operator - written in GoLang
-- DCH Service - written in Rust
-    - Actix-Web as the http layer.
-    - OpenDAL for unstructured data fetching from various sources.
-    - arrow-rs - for Arrow, arrow-flight integration
+- DataConnectOperator - written in GoLang
+- DataConnectService - written in Rust
+ 
 
-
-### MVP proposal
-
-- All above CRs supported
-- DCH Operator deployable standalone, not integrated as an ODH component
-- DCH Service management as described in this doc
-- REST APIs for end-users connections listing.
-- Arrow-Flight APIs for tabular data reading.
-- REST APIs for unstructured data reading.
-- Authorization is performed at gRPC layer for Arrow Flight APIs. The reason is that the Kube RBAC proxy does not support gRPC. Once we have the Authorino and Limitador support implemented, we will delegate the authentication and authorization at that level.
-- A few tabular data sources, tabular data formats (parquet, csv, json) and object store data sources support (to be agreed with PM)
-
-
-
-#### From RHOAI Connections to DCH DataConnections
+### From RHOAI Connections to DCH DataConnections
 
 All Connection objects in RHOAI today are stored as opaque secrets (S3, OCI, URI). For instance, an S3 connection secret contains this:
 
 ```
-  - AWS_ACCESS_KEY_ID: base64
-  - AWS_SECRET_ACCESS_KEY: base64
-  - AWS_DEFAULT_REGION: base64
-  - AWS_S3_BUCKET: base64
-  - AWS_S3_ENDPOINT: base64
+  - AWS_ACCESS_KEY_ID: {base64}
+  - AWS_SECRET_ACCESS_KEY: {base64}
+  - AWS_DEFAULT_REGION: {base64}
+  - AWS_S3_BUCKET: {base64}
+  - AWS_S3_ENDPOINT: {base64}
 ```
 
-DCH also aims to replace these Connections with actual DataConnection CR objects for several reasons:
+- Once DCH is installed it starts to watch these secrets (using label filtering)
+- DCH Operator calls the DCH Service REST API to create the actual DataConnection resource. The DataConnection resource points to this secret by `secret_ref` property. The secret itself is never stored in DB.
 
-- We can have more structured metadata that describes the Connection and this can evolve in time. Kube secrets do not impose a specific structure. This can help higher level governance actions managed by the Catalog. 
-- CRs provide more structure and more type safety. Kube Secrets are meant to hold sensitive information, not general metadata.
-- CRs provide status and lifecycle management. Hence we can express that a DataConnection CR is ready for use after it was tested. We cannot do this with Secrets only.
-
-As described in this doc DCH still uses secrets for sensitive information such as credentials. A DataConnection CR points to the secret that holds the credentials. The DCH secrets content for the current Connection type S3, OCI, URI are expected to remain the same. This means that applications that are already consuming these secrets are not impacted.
-
-##### Phased approach for moving to DCH connections
-
-1. For MVP we do not touch the existing RHOAI Connections
-2. Evolve DCH up to the point where DataConnections are well tested and proven.
-3. Migrate existing RHOAI Connections to DataConnection.
-
-
+**Outcome** 
+- the existing RHOAI Connections are now visible as DCH DataConnections. From here users with proper RBAC permissions can enrich the DataConnections with other metadata if needed.
+- the existing RHOAI Connection Secrets remain untouched as for DCH they are credential-secrets that DataConnection resources point to.
 
 
 ## Open Questions
@@ -409,14 +375,28 @@ TBD
 
 ## Alternatives
 
-We did look for Go-based open source solutions and while they exist, we observe a significant growth of Rust open source libraries and frameworks (OpenDAL, arrow-rs, DataFusion etc.). Combined with Rust benefits (zero-cost abstractions, no GC hence no GC spikes, and many others) these frameworks do offer low-level memory and IO optimizations and are difficult to ignore, especially when data transfer on the wire is very sensitive.
+We did look for Go-based open source solutions and while they exist, we observe a significant growth of Rust open source libraries and frameworks (OpenDAL, arrow-rs, DataFusion etc.). Combined with Rust's benefits (zero-cost abstractions, no GC hence no GC spikes, and many others), these frameworks offer low-level memory and IO optimizations and are difficult to ignore, especially when data transfer on the wire is very sensitive.
  
 
 ## Security and Privacy Considerations
 
-By design we do separate credentials management and DataConnection CR. While the secrets themselves can be managed directly by admins for production use we do recommend the use of Vault so that the actual credentials secrets are managed by VSO.
 
-Authentication and Authorization aspects are described above and together with tenants isolation by separate Gateways we offer a strong security foundation for both connections management and data access.
+The [Access Control](#access-control) section describes the RBAC details for protecting REST resources. 
+
+### TLS Certificates Management
+
+DCHO when creating the Kube services automatically annotates the service with:
+
+```yaml
+annotations:
+  service.beta.openshift.io/serving-cert-secret-name: {DCHS instance name}-tls
+```
+
+This tells the OpenShift service-serving-cert controller to create the TLS secret with that specific name and this will be mounted by the DCHO in:
+  - Kube RBAC proxy container for the REST API kube service
+  - gRPC container for the Flight service.
+
+When these services start up, they will find the cert files in the `/etc/tls/private` path.
 
 ## Risks
 
