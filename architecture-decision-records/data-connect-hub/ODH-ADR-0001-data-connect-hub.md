@@ -148,7 +148,12 @@ As DataConnections are not Kube CR resources, creating DataConnections via GitOp
 
 ##### Future considerations
 
-Because secrets have unstructured content and not all metadata should be stored in a secret, we can support a new Kube CR `InitDataConnection`. This would have the same properties as the DataConnection REST resource. During a GitOps flow, these CRs are automatically watched by the DCH operator and the DataConnection REST resources will automatically be fully created. 
+**InitDataConnection CR**
+Because secrets have unstructured content and not all metadata should be stored in a secret, such CR would make GitOps flow create/reconstruct data connections in a cluster. This would have the same properties as the DataConnection REST resource. During a GitOps flow, these CRs are automatically watched by the DCH operator and the DataConnection REST resources will automatically be fully created. 
+
+**InitDataConnectionType CR**
+Such CR can used to automatically create/restore connection types in the cluster. The DCH Operator will reconcile these CRs and create the connection types as REST resources hence manageable in UI, SDK, CLI etc.
+
 
 The current RHOAI Connection secrets contain the following labels and annotations:
 
@@ -171,16 +176,25 @@ This is a non-exhaustive list of endpoints as the set of capabilities is expecte
 - `POST /api/v1/data/connections` - Create a new connection that points to a pore existent secret.
 - `PATCH /api/v1/data/connections/{id}` - Update connections (not secret data)
 - `GET /api/v1/data/connections/{id}` - Get the details of a specific connection
+- `DELETE /api/v1/data/connections/{id}` - Delete a specific connection
 
 ##### Connection types management
+
 - `GET /api/v1/data/connection_types` - List connection types 
 - `POST /api/v1/data/connections_types` - Create a new connection type.
 - `PATCH /api/v1/data/connection_types/{id}` - Update a connection type 
 - `GET /api/v1/data/connection_types/{id}` - Get the details of a specific connection type
+- `DELETE /api/v1/data/connection_types/{id}` - Delete a connection type
 
   Currently Connection Types in RHOAI are represented as configmaps and they are very UI driven. We aim here for:
-  1. Have a type safe API for managing connection types
-  2. On the fly promotion of current configmaps to actual connection types resources.
+  1. Have a type safe API for managing connection types REST resources
+  2. On the fly promotion of current configmaps to actual connection types resources. Once synced, these connections types are visible to all tenants (cluster scoped).
+  
+  Other connection types API consideration (non exhaustive):
+  - A connection type can be scoped per cluster (visible to all tenants) or per tenant.
+  - By default the current connection types (S3, OCI, URI) are going to be exposed as cluster scoped.
+  - When creating a custom connection type the author can mark it as per cluster or per tenant. If it is per cluster all other tenants can see this new connetion type.
+  
 
   **Note** - the actual API specification is not addressed in this ADR.
 
@@ -234,7 +248,10 @@ All resources below share the same api group: `dataconnecthub.opendatahub.io`
 | ---------------|---------------|---------------|---------------|
 |  `data-connections-read` | `get` |  `/v1/data/connections` | Can read and list DataConnection resources |
 |  `data-connections-manage` | `post, patch, delete` | `/v1/data/connections` | Can manage any DataConnection for this tenant. |
+|  `data-connection-types-manage` | `post, patch, delete` | `/v1/data/connection_types` | Can manage DataConnectionTypes |
 |  `data-read` | `Arrow Flight API`, `get` | `/v1/data/ingestion/{connection-id}` | Can use DCH ingestion REST API or the gRPC Flight API|
+
+**Note** - Other types of permissions can emerge as the service evolves
 
 ##### Examples
 
