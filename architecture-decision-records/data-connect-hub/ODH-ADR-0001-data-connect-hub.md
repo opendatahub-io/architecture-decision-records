@@ -94,7 +94,6 @@ We propose to build the DCH solution with multi-tenancy in mind right from its i
   - There is a single Praxis instance for all tenants.
   - All tenants use the same hostname / URL
   - Tenants can no longer be distinguished by the hostname. Instead we will require the presence of the `x-tenant-id` header. This is similar to EvalHub and MLFlow approaches for multi-tenancy.
-  - Tenant namespaces need to be labeled with `dataconnecthub.opendatahub.io/tenant` so that DCHO knows which namespaces to monitor. 
   - Tenants are segregated by a tenant-id field in the metadata store (Postgres)
 
 
@@ -317,6 +316,7 @@ Data:
   {KV properties here}
 ```
 
+**Note** - The exported secret will always live in the same namespace with the credential secret. Thus the secret information never crosses the namespace boundaries. 
 
 ##### Exported Secret vs Credentials Secret
 
