@@ -442,7 +442,8 @@ Rust vs Go can be more challenging for developers that need to ramp up with Rust
 | Group                         | Key Contacts     | Date       | Impacted? |
 | ----------------------------- | ---------------- | ---------- | --------- |
 | Data Connect Hub  | Monica Romila, Oronde Tucker, Marius Danciu, Lukasz Cmielowski   | date       | ? |
-
+| Dashboard  | Andy Stoneberg  | date       | ? |
+| ODH Platform  | Lindani Phiri  | date       | ? |
 
 ## References
 
