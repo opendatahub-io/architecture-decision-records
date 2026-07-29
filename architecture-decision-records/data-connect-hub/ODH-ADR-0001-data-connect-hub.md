@@ -244,12 +244,20 @@ A CLI tool can be handy for integrating into workflows that involve bash scripts
 
 All resources below share the same api group: `dataconnecthub.opendatahub.io`
 
-|  Resource Type | Verbs | REST Endpoint | Description |
-| ---------------|---------------|---------------|---------------|
-|  `data-connections-read` | `get` |  `/v1/data/connections` | Can read and list DataConnection resources |
-|  `data-connections-manage` | `post, patch, delete` | `/v1/data/connections` | Can manage any DataConnection for this tenant. |
-|  `data-connection-types-manage` | `post, patch, delete` | `/v1/data/connection_types` | Can manage DataConnectionTypes |
-|  `data-read` | `Arrow Flight API`, `get` | `/v1/data/ingestion/{connection-id}` | Can use DCH ingestion REST API or the gRPC Flight API|
+| Endpoint | Resource | Verbs |
+|----------|----------|-------|
+| POST /data/connections | data-connection | create |
+| GET /data/connections | data-connection | read |
+| GET /data/connections/{id} | data-connection | read |
+| PATCH /data/connections/{id} | data-connection | patch |
+| DELETE /data/connections/{id} | data-connection | delete |
+| POST /data/connection_types | data-connection-types | create |
+| GET /data/connection_types | data-connection-types | read |
+| GET /data/connection_types/{id} | data-connection-types | read |
+| PATCH /data/connection_types/{id} | data-connection-types | patch |
+| DELETE /data/connection_types/{id} | data-connection-types | delete |
+| GET /data/ingestion/{id} | data-store | get |
+| (gRPC) /arrow.flight.protocol.FlightService | data-store | get |
 
 **Note** - Other types of permissions can emerge as the service evolves
 
@@ -264,8 +272,8 @@ metadata:
 rules:
   - apiGroups: ["dataconnecthub.opendatahub.io"]
     resources: 
-      - data-connections-read
-      - data-read
+      - data-connections
+      - data-store
     verbs: ["get"]
 
 ---
