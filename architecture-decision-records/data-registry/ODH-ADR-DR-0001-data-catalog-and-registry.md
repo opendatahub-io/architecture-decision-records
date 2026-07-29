@@ -93,7 +93,9 @@ Ground the strategy in real requirements from BU, field teams, and clients — n
 
 ### Architecture Overview
 
-The Data Registry uses the **Reuse & Extend** approach: create a new Data Hub UI module (using existing Feast UI components as reference) with a **Data Registry API** implemented in a dedicated FeastStore instance. The Data Registry API includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them with additional endpoints for volumes, search, and non-Iceberg table types. The catalog server runs as a separate pod from the feature store server, sharing the same PostgreSQL database. The existing FeatureStore CRD is extended with a `spec.catalog.enabled` field to provision the catalog server.
+The Data Registry uses the **Reuse & Extend** approach: create a new Data Hub UI module (using existing Feast UI components as reference) with a **Data Registry API** implemented in a dedicated FeastStore instance. The Data Registry API includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them with additional endpoints for volumes, search, and non-Iceberg table types.
+
+The Data Registry server runs as a **separate pod** — a dedicated FeastStore instance distinct from the feature engineering Feast instance. This follows the same model as MLflow registries: one Data Registry instance per RHOAI installation serving all namespaces, with namespace-scoped SSAR authorization controlling access to individual registry objects. There is no per-namespace Data Registry instance. When both Feature Engineering and Data Registry are enabled, the cluster runs two Feast Server deployments — one for feature engineering, one for the Data Registry — each supporting multiple namespaces. They share the same PostgreSQL database but are separate pods. The FeatureStore CRD uses an annotation to designate the Data Registry instance.
 
 ```mermaid
 flowchart TD
@@ -145,7 +147,7 @@ The Data Hub UI talks exclusively to the Data Registry API. It does not call Fea
 
 The RHOAI dashboard uses **Module Federation** to load feature plugins at runtime, and the **BFF sidecar pattern** for modules that need server-side logic. The BFF sidecar is the recommended architecture for all new dashboard UI modules, established by model-registry and gen-ai.
 
-The Data Hub UI follows this pattern: a new `@odh-dashboard/data-hub` package with a BFF sidecar that proxies Data Registry API requests to the catalog server, forwarding the user's OAuth bearer token. The BFF does not hold a privileged service account — authorization is evaluated by the SSAR middleware against the caller's identity. Runs on a dedicated port within the dashboard pod.
+The Data Hub UI follows this pattern: a new `@odh-dashboard/data-hub` package with a BFF sidecar that proxies Data Registry API requests to the Data Registry server, forwarding the user's OAuth bearer token. The BFF does not hold a privileged service account — authorization is evaluated by the SSAR middleware against the caller's identity. Runs on a dedicated port within the dashboard pod.
 
 **Source:** [opendatahub-io/architecture-context](https://github.com/opendatahub-io/architecture-context), [opendatahub-io/odh-dashboard](https://github.com/opendatahub-io/odh-dashboard) packages directory.
 
@@ -153,7 +155,7 @@ See [Alternatives — UI Design](#ui-design) for the bundled library alternative
 
 ### Backend: Data Registry API in Feast Server
 
-The catalog server exposes a **Data Registry API**, implemented in the Feast server codebase alongside the existing Feast Registry REST API. The Data Registry API builds on the Iceberg REST Catalog Spec as its foundation and extends it:
+The Data Registry server exposes a **Data Registry API**, implemented in the Feast server codebase alongside the existing Feast Registry REST API. The Data Registry API builds on the Iceberg REST Catalog Spec as its foundation and extends it:
 
 - **Iceberg REST Catalog endpoints** — spec-compliant endpoints for engine interoperability. Serve only Iceberg tables with genuine metadata, enabling native engine queries (Spark, Trino, Flink, DuckDB, PyIceberg). Non-Iceberg assets are not visible through these endpoints.
 - **Extension endpoints** — endpoints beyond the Iceberg REST Catalog Spec that serve the complete set of data assets. We already identified search and volumes as necessary extensions (neither is part of the Iceberg REST spec). Supporting additional table types (Parquet, CSV, PostgreSQL, and others) is a natural extension of the same approach — the Data Registry API covers all registered asset types, not just Iceberg tables.
@@ -227,9 +229,9 @@ Every Data Registry API request is authorized via Kubernetes-native RBAC before 
 - `dataregistry-edit` aggregates into OCP `edit` (read + write)
 - `dataregistry-admin` aggregates into OCP `admin` (full access)
 
-Users with existing namespace access automatically get Data Registry access. No additional configuration. Permissions are managed via standard `oc create rolebinding` or the OCP Console UI.
+Users with existing namespace roles automatically receive the corresponding Data Registry access level — `view` grants read-only catalog access, `edit` grants read-write, `admin` grants full access. No additional RBAC configuration is needed. Permissions are managed via standard `oc create rolebinding` or the OCP Console UI.
 
-**Catalog-only sharing:** For cross-team data sharing with reduced blast radius, admins can bind `dataregistry-view` or `dataregistry-edit` directly instead of the aggregated `view`/`edit` roles. This grants catalog access (browse collections, tables, volumes) without K8s infrastructure visibility (pods, Secrets, ConfigMaps). The catalog server returns registry metadata only — it does not proxy data connections or storage access.
+**Catalog-only sharing:** For cross-team data sharing with reduced blast radius, admins can bind `dataregistry-view` or `dataregistry-edit` directly to users who do not have a namespace role. This grants catalog access (browse collections, tables, volumes) without K8s infrastructure visibility (pods, Secrets, ConfigMaps). Note: because role aggregation is a one-way, cluster-wide property of the ClusterRole definition, users who *do* have namespace roles (`view`, `edit`, `admin`) will always receive the corresponding Data Registry permissions — this cannot be selectively disabled per user. The Data Registry server returns registry metadata only — it does not proxy data connections or storage access.
 
 **Caching:** SSAR results are cached with a ~60-second TTL at the application level, reusing the same caching implementation from MLflow's SSAR middleware to take advantage of its proven production maturity. Security trade-off: if a user's namespace access is revoked, they retain catalog access until their cached SSAR result expires (~60s worst case). This matches the MLflow model registry's accepted risk profile for the same trade-off.
 
@@ -251,7 +253,7 @@ See [ADR 0002: Data Catalog API RBAC](internal-0002-catalog-api-rbac.md) for the
 
 **Phase 1 (MVP):**
 - Data Hub UI (new module, rebranded) in the RHOAI dashboard
-- Dedicated catalog server pod (`spec.catalog.enabled` field added to FeatureStore CRD), sharing PostgreSQL with the feature store server
+- Dedicated Data Registry server pod (FeatureStore CRD with Data Registry annotation), sharing PostgreSQL with the feature store server
 - Data Registry API (including Iceberg REST Catalog endpoints and extension endpoints), backed by Feast registry translation layer
 - SSAR middleware for platform-native RBAC
 - Full CRUD for datasets and document collections
@@ -265,9 +267,9 @@ See [ADR 0002: Data Catalog API RBAC](internal-0002-catalog-api-rbac.md) for the
 - Marquez secured via the same SSAR pattern (lineage pseudo-resources added to existing ClusterRoles)
 - Incorporate customer feedback from Phase 1 deployments to guide prioritization and scope
 
-### Catalog Server Provisioning
+### Data Registry Server Provisioning
 
-The catalog server is provisioned via the existing FeatureStore CRD, extended with a `spec.catalog.enabled` field. When enabled, the Feast operator deploys a separate catalog server pod alongside the feature store server, both pointing to the same PostgreSQL database. No new CRs are introduced.
+The Data Registry server is provisioned via the existing FeatureStore CRD, with an annotation designating the instance as a Data Registry. When present, the Feast operator deploys a separate Data Registry server pod alongside the feature store server, both pointing to the same PostgreSQL database. No new CRs are introduced.
 
 Individual Data Registries are **not** provisioned via CRs or GitOps. A registry for a given RHAI namespace is created implicitly when users register their first dataset with that namespace — the same pattern used by MLflow registries. Registries are dynamically managed data objects, not cluster-level configurations.
 
@@ -278,7 +280,7 @@ If a native Iceberg backend is adopted in a future release, catalog metadata mus
 1. **Export:** Read all catalog metadata from the Feast registry via the Data Registry API. The export format captures namespaces, tables, schemas, and properties. Table properties carry all extension metadata (format, maturity stage, license, owner, tags, connection references) as key-value pairs, so the export captures the full Phase 1 metadata set.
 2. **Transform:** Map Feast registry objects to native Iceberg catalog entries. The Phase 1 scope is already constrained to the subset that translates cleanly (see Non-Goals: "Full Iceberg REST compliance"), so this mapping is lossless for Phase 1 data — every field stored in SavedDataset tags is round-tripped through Iceberg REST properties.
 3. **Load:** Import into the new backend via its catalog API. Any compliant implementation (UC, Polaris, or other) supports standard catalog operations.
-4. **Cutover:** Update the configuration to route requests to the new backend instead of the Feast translation layer. The Data Hub UI, SSAR auth, and all API consumers require zero changes.
+4. **Cutover:** Update the configuration to route requests to the new backend instead of the Feast translation layer. The Data Hub UI, SSAR auth, and all API consumers require zero changes — the Data Registry API contract (endpoints, request/response shapes) remains stable regardless of the backend. For extension assets (volumes, non-Iceberg table types), the Phase 2 backend must support equivalent storage for the extension metadata currently held in Feast SavedDataset tags; the migration plan for these assets will be defined as part of the Phase 2 backend selection.
 
 **What does not migrate automatically:** Any Feast-specific metadata that was not exposed via the Data Registry API translation layer (e.g., Feast feature view definitions, online store configurations). These remain in the Feast registry and continue to serve the Feast UI and feature engineering workflows. The Feast use case is not affected by the migration.
 
@@ -290,7 +292,7 @@ If a native Iceberg backend is adopted in a future release, catalog metadata mus
 
 1. **Both predictive AI and knowledge retrieval are supported through the platform.** Scenario A (credit scoring, fraud detection) uses Feast for feature engineering with <100ms online serving. Scenario B (knowledge retrieval) uses Milvus + AIGW/OGX.
 2. **Iceberg REST Catalog Spec is the long-term engine interoperability standard.** All architecture paths converge on the Iceberg REST Catalog Spec for engine access to Iceberg tables. This ADR adopts it from day one.
-3. **K8s namespace = UC catalog = Marquez namespace is the target alignment.** Data Registries are created implicitly per RHAI namespace when datasets are registered (see [Catalog Server Provisioning](#catalog-server-provisioning)), enabling a single auth proxy for both catalog and lineage.
+3. **K8s namespace = UC catalog = Marquez namespace is the target alignment.** Data Registries are created implicitly per RHAI namespace when datasets are registered (see [Data Registry Server Provisioning](#data-registry-server-provisioning)), enabling a single auth proxy for both catalog and lineage.
 4. **Phases are cumulative. No throwaway work.** The Data Registry API and SSAR auth added in Phase 1 remain the stable contracts regardless of which backend is used.
 
 ## Alternatives
@@ -301,7 +303,7 @@ The alternatives below are organized by decision area. The chosen approach (Reus
 
 #### Alternative 1: Greenfield on Unity Catalog OSS
 
-Build a new catalog server on UC OSS with a new operator, new image builds, and the existing RHOAI Catalogs & Registries UI components as a frontend foundation.
+Build a new Data Registry server on UC OSS with a new operator, new image builds, and the existing RHOAI Catalogs & Registries UI components as a frontend foundation.
 
 | Dimension | Rating | Notes |
 |-----------|--------|-------|
@@ -406,7 +408,7 @@ Fork `@odh-dashboard/feature-store` into a new `@odh-dashboard/data-hub` package
 
 ### Authentication
 
-Users authenticate via OpenShift OAuth. The catalog server process receives requests through the same auth proxy pattern used by MLflow (kube-rbac-proxy sidecar or odh-kube-auth-proxy). The caller's OCP bearer token is forwarded to the SSAR middleware for authorization.
+Users authenticate via OpenShift OAuth. The Data Registry server process receives requests through the same auth proxy pattern used by MLflow (kube-rbac-proxy sidecar or odh-kube-auth-proxy). The caller's OCP bearer token is forwarded to the SSAR middleware for authorization.
 
 ### Authorization
 
@@ -420,7 +422,7 @@ Kubernetes audit logging captures every SSAR call with user identity, resource, 
 
 ### Encryption
 
-The catalog server reuses the Feast server's existing database connection and its encryption configuration, which is already GA in RHOAI. Encryption in transit (TLS) and at rest are provided by the OpenShift platform and apply to all Data Registry traffic and stored metadata. No additional encryption infrastructure is introduced.
+The Data Registry server reuses the Feast server's existing database connection and its encryption configuration, which is already GA in RHOAI. Encryption in transit (TLS) and at rest are provided by the OpenShift platform and apply to all Data Registry traffic and stored metadata. No additional encryption infrastructure is introduced.
 
 ### Secrets and Credentials
 
@@ -436,15 +438,15 @@ The Data Registry does not store or manage credentials. When registering a table
 
 ### Failure Modes and Blast Radius
 
-The catalog server runs as a separate pod from the feature store server, providing process-level isolation. A catalog crash does not affect feature serving, and vice versa. Both servers share the same PostgreSQL database — a database outage affects both, but this is the same shared-fate model as any multi-service database deployment.
+The Data Registry server runs as a separate pod from the feature store server, providing process-level isolation. A catalog crash does not affect feature serving, and vice versa. Both servers share the same PostgreSQL database — a database outage affects both, but this is the same shared-fate model as any multi-service database deployment.
 
 **Isolation measures:**
 - **Process isolation:** Separate pods ensure catalog and feature store failures are independent.
 - **Request timeouts:** Catalog endpoints enforce a request timeout (default: 30s) at the router level.
 - **Memory guardrails:** List endpoints enforce pagination (default page size: 100, max: 1000) to prevent unbounded response construction.
-- **Restart coverage:** The catalog server runs as a Kubernetes Deployment with replica scaling and liveness/readiness probes.
+- **Restart coverage:** The Data Registry server runs as a Kubernetes Deployment with replica scaling and liveness/readiness probes.
 
-**NetworkPolicy:** The catalog server runs in `redhat-ods-applications`. Notebooks, Spark jobs, and PyIceberg clients in user namespaces require a NetworkPolicy allowing ingress on the catalog server port from Data Science Project namespaces.
+**NetworkPolicy:** The Data Registry server runs in `redhat-ods-applications`. Notebooks, Spark jobs, and PyIceberg clients in user namespaces require a NetworkPolicy allowing ingress on the Data Registry server port from Data Science Project namespaces.
 
 **Monitoring:** The `DataRegistryErrorRate` alert (see Observability) fires if catalog error rate exceeds 5% over 5 minutes.
 
@@ -455,7 +457,7 @@ The Data Registry must be observable from day one. The following instrumentation
 | Signal | Implementation | Details |
 |--------|---------------|---------|
 | **Metrics** | Prometheus `/metrics` endpoint (reuses Feast metrics infrastructure) | Add `dataregistry_request_total`, `dataregistry_request_duration_seconds`, and `dataregistry_ssar_latency_seconds` counters/histograms. Labels use route templates, verb, and HTTP status — bounded cardinality, consistent with Feast's existing label strategy |
-| **Logging** | Structured JSON logs (existing Feast logging infrastructure) | Follows Feast's existing logging and optional audit logging patterns. SSAR decisions and catalog CRUD operations available via the audit logging category in metrics config (disabled by default). Log management delegated to the OpenShift platform |
+| **Logging** | Structured JSON logs (existing Feast logging infrastructure) | Follows Feast's existing logging patterns. Phase 1 audit coverage: SSAR authorization decisions are recorded in Kubernetes audit logs; HTTP request logs capture caller identity, method, path, and status for all Data Registry API requests. Application-level CRUD audit events (dedicated audit sink with retention and redaction) are deferred to Phase 2. Log management delegated to the OpenShift platform |
 | **Alerts** | PrometheusRule CRD | `DataRegistryErrorRate > 5%` over 5 minutes, `SSARLatencyP99 > 500ms`, `DataRegistryDown` (no successful requests in 2 minutes) |
 | **Dashboard** | Grafana dashboard shipped with RHOAI | Catalog request rate, error rate, SSAR latency, top namespaces by request volume |
 
@@ -463,8 +465,8 @@ The Data Registry must be observable from day one. The following instrumentation
 
 The catalog capability must be independently disableable without redeploying or downgrading the Feast server.
 
-- **Feature flag:** The `spec.catalog.enabled` field on the FeatureStore CRD is the authoritative gate for catalog functionality (default: `false`). The operator reconciles this into the catalog server Deployment. When disabled, no catalog endpoints are registered and the SSAR middleware is inactive. The catalog is opt-in — existing and upgraded deployments do not expose catalog endpoints unless explicitly enabled.
-- **Rollback path:** Setting `spec.catalog.enabled: false` triggers an operator reconciliation that removes the catalog server Deployment. No data migration is needed — the Feast registry continues to operate as before. Catalog metadata stored via the translation layer is Feast registry data and remains intact. Rollback requires a Deployment rollout, not a live toggle.
+- **Feature flag:** A Data Registry annotation on the FeatureStore CRD is the authoritative gate for catalog functionality. The operator reconciles this into the Data Registry server Deployment. Without the annotation, no catalog endpoints are registered and the SSAR middleware is inactive. The Data Registry is opt-in — existing and upgraded deployments do not expose catalog endpoints unless explicitly enabled.
+- **Rollback path:** Removing the Data Registry annotation triggers an operator reconciliation that removes the Data Registry server Deployment. No data migration is needed — the Feast registry continues to operate as before. Catalog metadata stored via the translation layer is Feast registry data and remains intact. Rollback requires a Deployment rollout, not a live toggle.
 - **ClusterRole rollback:** The 3 dataregistry ClusterRoles are additive. Removing them revokes catalog permissions but does not affect other RBAC. Because the FeatureStore CR is namespace-scoped and ClusterRoles are cluster-scoped, standard Kubernetes OwnerReferences do not apply — the operator must include explicit cleanup logic for these cluster-scoped resources.
 
 ### Resource Footprint and Capacity Planning
@@ -516,9 +518,9 @@ No dedicated Feast runbook exists today. Feast provides [production deployment g
 **Notes:**
 
 - **ODH Dashboard:** Data Hub UI is a new module using `@odh-dashboard/feature-store` as reference. Dashboard team owns the reference source. New UI section added to the RHOAI dashboard.
-- **Feast / Feature Store:** The FeatureStore CRD is extended with a `spec.catalog.enabled` field to provision a separate catalog server pod. Data Registry API (including Iceberg REST Catalog endpoints) and SSAR middleware are additive code in the catalog server. Existing Feast APIs and UI are unchanged.
+- **Feast / Feature Store:** The FeatureStore CRD uses a Data Registry annotation to provision a separate Data Registry server pod. Data Registry API (including Iceberg REST Catalog endpoints) and SSAR middleware are additive code in the Data Registry server. Existing Feast APIs and UI are unchanged.
 - **MLflow / Model Registry:** No impact. MLflow's SSAR implementation is the reference pattern for the Data Registry SSAR middleware, but MLflow itself is not modified. Model Registry is a peer service, not a dependency.
-- **RHOAI Operator:** Feast operator extended to handle `spec.catalog.enabled` field on the FeatureStore CRD, deploying a separate catalog server pod. ClusterRole deployment uses the standard aggregated role pattern already in place for MLflow. No new CRDs.
+- **RHOAI Operator:** Feast operator extended to handle the Data Registry annotation on the FeatureStore CRD, deploying a separate Data Registry server pod. ClusterRole deployment uses the standard aggregated role pattern already in place for MLflow. No new CRDs.
 - **Data Science Pipelines (KFP):** No impact. In future phases, KFP pipelines may emit OpenLineage events that surface in the Data Registry's lineage view, but Phase 1 has no KFP dependency.
 - **Platform / Auth:** No impact. Uses existing Kubernetes RBAC, existing OCP OAuth, existing SSAR API. No new auth infrastructure is introduced.
 
