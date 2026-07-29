@@ -147,7 +147,7 @@ The Data Hub UI talks exclusively to the Data Registry API. It does not call Fea
 
 The RHOAI dashboard uses **Module Federation** to load feature plugins at runtime, and the **BFF sidecar pattern** for modules that need server-side logic. The BFF sidecar is the recommended architecture for all new dashboard UI modules, established by model-registry and gen-ai.
 
-The Data Hub UI follows this pattern: a new `@odh-dashboard/data-hub` package with a BFF sidecar that proxies Data Registry API requests to the Data Registry server, forwarding the user's OAuth bearer token. The BFF does not hold a privileged service account — authorization is evaluated by the SSAR middleware against the caller's identity. Runs on a dedicated port within the dashboard pod.
+The Data Hub UI follows this pattern: a new `@odh-dashboard/data-hub` package with a BFF sidecar that proxies Data Registry API requests to the Data Registry server, forwarding the user's OAuth bearer token. The BFF does not hold a privileged service account — authorization is evaluated by kube-rbac-proxy on the Data Registry server against the caller's identity. Runs on a dedicated port within the dashboard pod.
 
 **Source:** [opendatahub-io/architecture-context](https://github.com/opendatahub-io/architecture-context), [opendatahub-io/odh-dashboard](https://github.com/opendatahub-io/odh-dashboard) packages directory.
 
@@ -233,7 +233,7 @@ Users with existing namespace roles automatically receive the corresponding Data
 
 **Catalog-only sharing:** For cross-team data sharing with reduced blast radius, admins can bind `dataregistry-view` or `dataregistry-edit` directly to users who do not have a namespace role. This grants catalog access (browse collections, tables, volumes) without K8s infrastructure visibility (pods, Secrets, ConfigMaps). Note: because role aggregation is a one-way, cluster-wide property of the ClusterRole definition, users who *do* have namespace roles (`view`, `edit`, `admin`) will always receive the corresponding Data Registry permissions — this cannot be selectively disabled per user. The Data Registry server returns registry metadata only — it does not proxy data connections or storage access.
 
-**Caching:** SSAR results are cached with a ~60-second TTL at the application level, reusing the same caching implementation from MLflow's SSAR middleware to take advantage of its proven production maturity. Security trade-off: if a user's namespace access is revoked, they retain catalog access until their cached SSAR result expires (~60s worst case). This matches the MLflow model registry's accepted risk profile for the same trade-off.
+**Caching:** SSAR result caching will be handled by kube-rbac-proxy's standard caching capabilities.
 
 **Granularity:** The initial product requirement scopes SSAR authorization at the **project/namespace level**, not per-table or per-volume. A user with access to a namespace can browse all catalog assets within it. Per-resource granularity (table-level, volume-level) is architecturally supported via K8s `resourceNames` but is not required for Phase 1. This keeps SSAR call volume low — one check per namespace, not per item — and matches the MLflow SSAR implementation, which operates at the same granularity with no reported performance issues in production.
 
@@ -255,7 +255,7 @@ See [ADR 0002: Data Catalog API RBAC](internal-0002-catalog-api-rbac.md) for the
 - Data Hub UI (new module, rebranded) in the RHOAI dashboard
 - Dedicated Data Registry server pod (FeatureStore CRD with Data Registry annotation), sharing PostgreSQL with the feature store server
 - Data Registry API (including Iceberg REST Catalog endpoints and extension endpoints), backed by Feast registry translation layer
-- SSAR middleware for platform-native RBAC
+- SSAR authorization via kube-rbac-proxy for platform-native RBAC
 - Full CRUD for datasets and document collections
 - Search and volume extensions
 - PostgreSQL-backed registries only in Phase 1
@@ -408,7 +408,7 @@ Fork `@odh-dashboard/feature-store` into a new `@odh-dashboard/data-hub` package
 
 ### Authentication
 
-Users authenticate via OpenShift OAuth. The Data Registry server process receives requests through the same auth proxy pattern used by MLflow (kube-rbac-proxy sidecar or odh-kube-auth-proxy). The caller's OCP bearer token is forwarded to the SSAR middleware for authorization.
+Users authenticate via OpenShift OAuth. The Data Registry server process receives requests through kube-rbac-proxy (ODH fork), which handles both authentication and authorization. Since RHOAI 3.5 EA1, kube-rbac-proxy performs per-request SubjectAccessReview checks — validating the caller's identity and evaluating SSAR authorization against the Data Registry's pseudo-resources in a single sidecar, consistent with the platform pattern.
 
 ### Authorization
 
@@ -465,7 +465,7 @@ The Data Registry must be observable from day one. The following instrumentation
 
 The catalog capability must be independently disableable without redeploying or downgrading the Feast server.
 
-- **Feature flag:** A Data Registry annotation on the FeatureStore CRD is the authoritative gate for catalog functionality. The operator reconciles this into the Data Registry server Deployment. Without the annotation, no catalog endpoints are registered and the SSAR middleware is inactive. The Data Registry is opt-in — existing and upgraded deployments do not expose catalog endpoints unless explicitly enabled.
+- **Feature flag:** A Data Registry annotation on the FeatureStore CRD is the authoritative gate for catalog functionality. The operator reconciles this into the Data Registry server Deployment. Without the annotation, no catalog endpoints are registered and the SSAR authorization sidecar is inactive. The Data Registry is opt-in — existing and upgraded deployments do not expose catalog endpoints unless explicitly enabled.
 - **Rollback path:** Removing the Data Registry annotation triggers an operator reconciliation that removes the Data Registry server Deployment. No data migration is needed — the Feast registry continues to operate as before. Catalog metadata stored via the translation layer is Feast registry data and remains intact. Rollback requires a Deployment rollout, not a live toggle.
 - **ClusterRole rollback:** The 3 dataregistry ClusterRoles are additive. Removing them revokes catalog permissions but does not affect other RBAC. Because the FeatureStore CR is namespace-scoped and ClusterRoles are cluster-scoped, standard Kubernetes OwnerReferences do not apply — the operator must include explicit cleanup logic for these cluster-scoped resources.
 
@@ -518,8 +518,8 @@ No dedicated Feast runbook exists today. Feast provides [production deployment g
 **Notes:**
 
 - **ODH Dashboard:** Data Hub UI is a new module using `@odh-dashboard/feature-store` as reference. Dashboard team owns the reference source. New UI section added to the RHOAI dashboard.
-- **Feast / Feature Store:** The FeatureStore CRD uses a Data Registry annotation to provision a separate Data Registry server pod. Data Registry API (including Iceberg REST Catalog endpoints) and SSAR middleware are additive code in the Data Registry server. Existing Feast APIs and UI are unchanged.
-- **MLflow / Model Registry:** No impact. MLflow's SSAR implementation is the reference pattern for the Data Registry SSAR middleware, but MLflow itself is not modified. Model Registry is a peer service, not a dependency.
+- **Feast / Feature Store:** The FeatureStore CRD uses a Data Registry annotation to provision a separate Data Registry server pod. Data Registry API (including Iceberg REST Catalog endpoints) is additive code in the Data Registry server; SSAR authorization is handled by the kube-rbac-proxy sidecar. Existing Feast APIs and UI are unchanged.
+- **MLflow / Model Registry:** No impact. MLflow's SSAR implementation is the reference pattern for the Data Registry's SSAR authorization, but MLflow itself is not modified. Model Registry is a peer service, not a dependency.
 - **RHOAI Operator:** Feast operator extended to handle the Data Registry annotation on the FeatureStore CRD, deploying a separate Data Registry server pod. ClusterRole deployment uses the standard aggregated role pattern already in place for MLflow. No new CRDs.
 - **Data Science Pipelines (KFP):** No impact. In future phases, KFP pipelines may emit OpenLineage events that surface in the Data Registry's lineage view, but Phase 1 has no KFP dependency.
 - **Platform / Auth:** No impact. Uses existing Kubernetes RBAC, existing OCP OAuth, existing SSAR API. No new auth infrastructure is introduced.
