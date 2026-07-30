@@ -304,7 +304,7 @@ SAR (Subject Access Review) is the foundation of authorization support.
 
 - Arrow Flight gRPC - we cannot use Kube RBAC proxy for Flight API because it is gRPC-based and Kube RBAC proxy is very limited in this area. Thus, for the time being, the SAR checks need to happen from within the DCHS when attempting to ingest data. 
 
-- REST APIs - for REST endpoints like connection listing or unstructured data ingestion, we can use the Kube RBAC proxy (https://github.com/opendatahub-io/kube-auth-proxy). This is also what EvalHub uses today.
+- REST APIs - for REST endpoints like connection listing or unstructured data ingestion, we can use the Kube RBAC proxy (https://github.com/opendatahub-io/kube-rbac-proxy). This is also what EvalHub uses today.
 
 #### Rate limiting 
 
