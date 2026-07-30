@@ -96,7 +96,7 @@ The gateway name and namespace are important for model deployer personas, as thi
 #### API Scope
 
 As this endpoint exposes the read only list of available tenants in the system we don't require authentication. This is similar with how OIDC .well-known configuration API is exposed. Also, this allows users that exist in external OIDC systems but not in Openshift to use the discovery API.
-
+It is assumed the API consumer already possesses the target tenant name and is querying for additional metadata.
 #### Cache hydration
 
 The API endpoint above serves the information from in-memory cache. When such request arrives we do not hit the kube-api server to fetch the tenants information. Instead the service uses the informer approach where it is asynchronously watching the following CRS:
