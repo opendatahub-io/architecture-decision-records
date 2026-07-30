@@ -150,7 +150,7 @@ N/A
 ## References
 
 #### REF-1 
-[AI-Gateway multi tenancy ADR](https://github.com/mariusdanciu/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0003-ai-gateway-tenancy.md)
+[AI-Gateway multi tenancy ADR](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0003-ai-gateway-tenancy.md)
 
 
 
