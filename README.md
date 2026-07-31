@@ -1,6 +1,6 @@
 # Open Data Hub Architecture Documents
 
-This repository contains all the Architecture Decision Records as well as the Architecture Documentation for Open Data Hub and OpenShift AI
+This repository contains all the Architecture Decision Records
 
 ## Architecture Decision Records (ADR)
 [Architecture Decision Records](architecture-decision-records)
