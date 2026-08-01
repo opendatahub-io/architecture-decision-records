@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-07-27 |
 | Scope          | ODH |
-| Status         | Under Review |
+| Status         | Approved |
 | Authors        | [Ana Biazetti](@abiazetti) |
 | Supersedes     | N/A |
 | Superseded by  | N/A |
