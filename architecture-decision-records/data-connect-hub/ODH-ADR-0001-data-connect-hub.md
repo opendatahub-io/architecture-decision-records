@@ -49,7 +49,7 @@ Although in RHOAI today we do see that certain connection types are available (S
 
 - DCH = Data Connect Hub
 - DCHO = Data Connect Hub Operator
-- DCHS = Data Connect Service
+- DCHS = Data Connect Hub Service
 
 #### High level overview
 ![Fig 1](./images/ADR-0001-img1.png)
