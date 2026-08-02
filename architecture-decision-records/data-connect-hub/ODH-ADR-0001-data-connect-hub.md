@@ -173,7 +173,7 @@ This is a non-exhaustive list of endpoints as the set of capabilities is expecte
 
 ##### Connections management
 - `GET /api/v1/data/connections` - List connections without sensitive information
-- `POST /api/v1/data/connections` - Create a new connection that points to a pore existent secret.
+- `POST /api/v1/data/connections` - Create a new connection that points to a prior existing secret.
 - `PATCH /api/v1/data/connections/{id}` - Update connections (not secret data)
 - `GET /api/v1/data/connections/{id}` - Get the details of a specific connection
 - `DELETE /api/v1/data/connections/{id}` - Delete a specific connection
