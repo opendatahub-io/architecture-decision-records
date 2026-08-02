@@ -19,7 +19,7 @@ RHOAI will ship a **Data Registry** as part of its Data capabilities. The Phase 
 
 RHOAI has no unified way for users to discover, browse, or manage data assets across AI workloads. The [RHAI Data Strategy](https://gitlab.cee.redhat.com/data-strategy/data-strategy-proposal/-/blob/main/RHAI-data-strategy-proposal.md) identifies six customer challenges that this ADR addresses:
 
-- **No discoverability.** Datasets are ad-hoc S3 paths or PVC references passed between notebooks and pipelines. There is no catalog, no search, no schema visibility.
+- **No discoverability.** The existing Connection concept handles only the access information to S3/PVC/URL but it doesn't track the actual content so it is not easily possible to discover without directly accessing it.
 - **No shareability.** Sharing a dataset means exporting outside of RHOAI. No namespace-level access control, no metadata, no provenance.
 - **No reusability across workflows.** Every workflow (pipeline, spark, ray-data, evals, SDG, red-teaming) requires users to manually wire data paths. The same dataset used in three tools means three manual configurations.
 - **No agent-readiness.** Agentic workflows cannot discover or consume data artifacts at runtime — there is no registry, no API, no schema advertisement.
