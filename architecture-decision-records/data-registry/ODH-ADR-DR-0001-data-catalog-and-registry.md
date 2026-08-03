@@ -40,6 +40,8 @@ This ADR scopes an MVP. Lineage and governance are addressed by the broader RHAI
 * Support volume extensions for unstructured document management in S3/MinIO (Scenario B requirement)
 * Link/integrate with [Data Connect Hub](https://github.com/opendatahub-io/architecture-decision-records/pull/149) for management of external data source connections, authentication, and ingestion
 
+This ADR scopes the initial delivery using Feast as the registry backend with PostgreSQL storage, deployed as a dedicated server pod via the FeatureStore CRD with a Data Registry annotation.
+
 ## Non-Goals
 
 * **Model registry.** RHOAI uses MLflow for model registry. The Data Registry does not replace or duplicate MLflow model management.
@@ -49,6 +51,7 @@ This ADR scopes an MVP. Lineage and governance are addressed by the broader RHAI
 * **Replacing Feast for feature engineering.** Feast remains the feature store for predictive AI. The Data Registry adds a separate experience for broader data management use cases. Existing Feast APIs and UI are unchanged.
 * **General-purpose data governance.** The Phase 1 scope covers registry CRUD, search, and RBAC. Policy management and compliance workflows are out of scope.
 * **Moderated registration workflows.** Phase 1 uses open registration — any user with write access can register assets that are immediately visible. Approval queues (draft → review → publish) are a future consideration as a common platform capability across all RHOAI registries (data, models, pipelines), not a Data Registry–specific feature.
+* **Cross-platform lineage.** Lineage tracking via Marquez/OpenLineage is out of scope for this ADR, but planned to be addressed separately by follow on phases of the Data Registry.
 
 ## How
 
@@ -160,26 +163,6 @@ Users with existing namespace roles automatically receive the corresponding Data
 - **Namespace-scoped** — SSAR evaluates per namespace. Phase 1 checks authorization at the project/namespace level only (per PM requirement prioritization), keeping SSAR call volume low — one check per namespace, not per asset. Cross-namespace search is handled server-side with batch SSAR checking. This follows the same SSAR approach as MLflow with similar scalability considerations.
 - **No purpose-built RBAC UI** — Admins manage registry permissions via `oc create rolebinding` or the generic OCP Console RBAC views, which are not tailored for registry-specific permission management.
 - **No metadata sensitivity classification** — The registry does not classify assets by sensitivity level (e.g., PII, confidential, internal). No existing RHAI registry (MLflow model registry, Feast feature store) implements data classification today. This is deferred to Phase 2 alongside lineage and governance work.
-
-### Phased Delivery
-
-**Phase 1 (MVP):**
-- Data Hub UI (new module) in the RHOAI dashboard
-- Dedicated Data Registry server pod (FeatureStore CRD with Data Registry annotation), sharing PostgreSQL with the feature store server
-- Data Registry API (including Iceberg REST Catalog endpoints and extension endpoints), backed by Feast registry translation layer
-- SSAR authorization via kube-rbac-proxy for platform-native RBAC
-- Full CRUD for datasets and document collections
-- Search and volume extensions
-- PostgreSQL-backed registries only in Phase 1
-
-**Phase 2+:**
-- Evaluate mature OSS Iceberg REST Catalog Spec implementations (Unity Catalog OSS, Apache Polaris) as potential registry backends
-- Full Iceberg REST compliance: Spark, Trino, DuckDB query the registry directly via standard Iceberg REST connectors
-- Cross-platform lineage via Marquez/OpenLineage as a complementary standard alongside the registry API
-- Marquez secured via the same SSAR pattern (lineage pseudo-resources added to existing ClusterRoles)
-- Incorporate customer feedback from Phase 1 deployments to guide prioritization and scope
-
-The abstraction layer is designed to enable potential future backend replacement.
 
 ### Data Registry Server Provisioning
 
