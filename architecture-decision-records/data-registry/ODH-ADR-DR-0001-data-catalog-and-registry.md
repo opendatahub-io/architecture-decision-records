@@ -13,15 +13,15 @@
 
 ## What
 
-RHOAI will ship a **Data Registry** as part of its Data capabilities. The Phase 1 implementation reuses the existing Feast server process and operator, exposes a **Data Registry API** that includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them with additional endpoints for all asset types (volumes, search, non-Iceberg table types), and provides a rebranded **Data Hub UI** as a new module drawing on the existing `@odh-dashboard/feature-store` package for domain context and UX patterns. The Iceberg REST Catalog Spec is the foundation: we adopted it as the catalog standard, already identified search and volumes as necessary extensions beyond the spec, and now extend further to support additional table types — while keeping the Iceberg REST Catalog endpoints intact for engine consumers (Spark, Trino, DuckDB, PyIceberg). Access control uses the MLflow SSAR pattern: Kubernetes-native RBAC via SelfSubjectAccessReview against pseudo-resources in a `dataregistry.opendatahub.io` API group. No new operators or CRDs are introduced in Phase 1.
+RHOAI will ship a **Data Registry** as part of its Data capabilities. The Phase 1 implementation reuses the existing Feast server process and operator, exposes a **Data Registry API** that includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them with additional endpoints for all asset types (volumes, non-Iceberg table types, search), and provides a **Data Hub UI** as a new module drawing on the existing Feast and MLflow Registries UX patterns. Access control uses the MLflow SSAR pattern: Kubernetes-native RBAC via SelfSubjectAccessReview against pseudo-resources in a `dataregistry.opendatahub.io` API group. No new operators or CRDs are introduced in Phase 1.
 
 ## Why
 
-RHOAI has no unified way for users to discover, browse, or manage data assets across AI workloads:
+RHOAI currently has no unified way for users to discover, browse, or manage data assets and their metadata across AI workloads:
 
-- **No discoverability.** The existing Connection concept handles only the access information to S3/PVC/URL but it doesn't track the actual content, so it is not easily possible to discover without directly accessing it.
-- **No agent-readiness.** Agentic workflows cannot discover or consume data artifacts at runtime — there is no registry, no API, no schema advertisement.
-- **No lineage for auditability.** No audit trail for which data was used in which workflow or how the data was transformed/versioned. It only covers features tracking with Feast.
+- **No discoverability.** The existing Connection concept handles only the access information to S3/PVC/URL but it doesn't track the actual data asset metadata or content, so the data asset is not easily discoverable.
+- **No agent-readiness.** Agentic workflows cannot discover or easily consume data artifacts at runtime — there is no registry, no API, no schema advertisement.
+- **No lineage for auditability.** No audit trail for which data was used in which workflow or how the data was transformed/versioned. There is a level of lineage available in Feast, but only for Feature Engineering.
 - **Competitive gap.** SageMaker and Vertex have integrated dataset registries. RHOAI users absorb friction that competitors have eliminated.
 
 Feast provides a feature store UI focused on feature engineering (Scenario A: credit scoring / fraud detection using Feast for real-time feature serving), but users working on knowledge retrieval (Scenario B: P&C underwriting knowledge assistant using document collections, Milvus, and AIGW/OGX for RAG), agentic AI, or multi-modal workflows have no catalog experience.
@@ -54,9 +54,11 @@ This ADR scopes an MVP. Lineage and governance are addressed by the broader RHAI
 
 ### Architecture Overview
 
-The Data Registry uses the **Reuse & Extend** approach: create a new Data Hub UI module (using existing Feast UI components as reference) with a **Data Registry API** implemented in a dedicated FeastStore instance. The Data Registry API includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them with additional endpoints for volumes, search, and non-Iceberg table types.
+The Data Registry uses the **Reuse & Extend** approach: create a new Data Hub UI module with a **Data Registry API** implemented in a dedicated FeastStore instance. The Data Registry API includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them with additional endpoints for volumes, search, and non-Iceberg table types.
 
-The Data Registry server runs as a **separate pod** — a dedicated FeastStore instance distinct from the feature engineering Feast instance. This follows the same model as MLflow registries: one Data Registry instance per RHOAI installation serving all namespaces, with namespace-scoped SSAR authorization controlling access to individual registry objects. There is no per-namespace Data Registry instance. When both Feature Engineering and Data Registry are enabled, the cluster runs two Feast Server deployments — one for feature engineering, one for the Data Registry — each supporting multiple namespaces. They share the same PostgreSQL database but are separate pods. The FeatureStore CRD uses an annotation to designate the Data Registry instance.
+The Iceberg REST Catalog Spec is the foundation: we adopted it as the catalog standard, already identified search and volumes as necessary extensions beyond the spec, and now extend further to support additional table types — while keeping the Iceberg REST Catalog endpoints intact for engine consumers (Spark, Trino, DuckDB, PyIceberg).
+
+The Data Registry server runs as a **separate pod** — a dedicated FeastStore instance distinct from the feature engineering Feast instance. This Data Registry follows the same multitenant model as MLflow registries: one Data Registry instance per RHOAI installation serving all namespaces, with namespace-scoped SSAR authorization controlling access to individual registry objects. There is no per-namespace Data Registry instance. When both Feature Engineering and Data Registry are enabled, the cluster runs two Feast Server deployments — one for feature engineering, one for the Data Registry. They share the same PostgreSQL database but are separate pods. The FeatureStore CRD uses an annotation to designate the Data Registry instance.
 
 ```mermaid
 flowchart TD
@@ -98,21 +100,19 @@ flowchart TD
     end
 ```
 
-Engines query the Data Registry for table metadata and storage credentials, then access the underlying storage (S3/MinIO) using RHAI connections or DCH.
+Engines query the Data Registry for table metadata, then access the underlying storage (S3/MinIO) using RHAI connections or DCH.
 
 ### Frontend: Data Hub UI
 
-Create a new `@odh-dashboard/data-hub` module drawing on the existing `@odh-dashboard/feature-store` package for domain context and UX patterns. This is a new module following the dashboard's BFF and modular federation patterns, not a long-lived fork. Completely rebranded with no feature engineering terminology. Shows Collections, Tables, and Volumes.
+The Data Hub UI is a new module drawing on existent Feast and MLflow Registry UX patterns. This is a new module following the dashboard's BFF and modular federation patterns, not a long-lived fork. Completely rebranded with no feature engineering terminology. Shows Collections, Tables, and Volumes.
 
-The Data Hub UI talks exclusively to the Data Registry API. It does not call Feast APIs directly. This makes the UI backend-agnostic: if a different registry backend is adopted in the future, the UI requires zero changes.
+The Data Hub UI talks exclusively to the Data Registry API. It does not call Feast APIs directly. This makes the UI backend-agnostic: if a different registry backend is adopted in the future, the UI does not require changes.
 
 #### Dashboard Integration
 
 The RHOAI dashboard uses **Module Federation** to load feature plugins at runtime, and the **BFF sidecar pattern** for modules that need server-side logic. The BFF sidecar is the recommended architecture for all new dashboard UI modules, established by model-registry and gen-ai.
 
 The Data Hub UI follows this pattern: a new `@odh-dashboard/data-hub` package with a BFF sidecar that proxies Data Registry API requests to the Data Registry server, forwarding the user's OAuth bearer token. The BFF does not hold a privileged service account — authorization is evaluated by kube-rbac-proxy on the Data Registry server against the caller's identity. Runs on a dedicated port within the dashboard pod.
-
-**Source:** [opendatahub-io/architecture-context](https://github.com/opendatahub-io/architecture-context), [opendatahub-io/odh-dashboard](https://github.com/opendatahub-io/odh-dashboard) packages directory.
 
 ### Backend: Data Registry API in Feast Server
 
@@ -125,7 +125,7 @@ The Iceberg REST Catalog Spec is the de facto standard catalog protocol, with na
 
 The Data Registry API translates to Feast registry internals in Phase 1. Feast SavedDataset backs both tables and volumes. Three-level namespaces are used from Phase 1 (`{project}/{rhai-namespace}/{collection}/{asset}`) so that asset paths are stable if a different registry backend is adopted in the future.
 
-When a user registers an external table, they provide schema metadata (column names, types, descriptions) as part of the registration form. Automatic schema inference is deferred to Phase 2. Phase 1 relies on user-provided schema definitions.
+When a user registers an external dataset, they provide schema metadata (column names, types, descriptions) as part of the registration form. Automatic schema inference is deferred to Phase 2. Phase 1 relies on user-provided schema definitions.
 
 ### Access Control: Platform-Native RBAC via SSAR
 
@@ -135,7 +135,8 @@ Every Data Registry API request is authorized via Kubernetes-native RBAC before 
 
 | Pseudo-resource | Maps to | Used for |
 |---|---|---|
-| `namespaces` | Iceberg Namespace / UC Schema | Schema-level browse and management |
+| `namespaces` | Iceberg Namespace | RHAI multi-tenancy |
+| `collections` | Iceberg Namespace / UC Schema | Grouping of datasets |
 | `tables` | Iceberg Table / UC Table | Table read, write, manage |
 | `volumes` | UC Volume (unstructured data) | Volume browse and file access |
 
@@ -160,12 +161,10 @@ Users with existing namespace roles automatically receive the corresponding Data
 - **No purpose-built RBAC UI** — Admins manage registry permissions via `oc create rolebinding` or the generic OCP Console RBAC views, which are not tailored for registry-specific permission management.
 - **No metadata sensitivity classification** — The registry does not classify assets by sensitivity level (e.g., PII, confidential, internal). No existing RHAI registry (MLflow model registry, Feast feature store) implements data classification today. This is deferred to Phase 2 alongside lineage and governance work.
 
-**POC validation:** The pattern was validated on a ROSA cluster (2026-06-24). Three ClusterRoles with aggregation labels, standard RoleBindings, SubjectAccessReview calls — all confirmed working. Setup time: 5 minutes. No operators or CRDs required.
-
 ### Phased Delivery
 
 **Phase 1 (MVP):**
-- Data Hub UI (new module, rebranded) in the RHOAI dashboard
+- Data Hub UI (new module) in the RHOAI dashboard
 - Dedicated Data Registry server pod (FeatureStore CRD with Data Registry annotation), sharing PostgreSQL with the feature store server
 - Data Registry API (including Iceberg REST Catalog endpoints and extension endpoints), backed by Feast registry translation layer
 - SSAR authorization via kube-rbac-proxy for platform-native RBAC
@@ -200,7 +199,7 @@ Individual Data Registries are **not** provisioned via CRs or GitOps. A registry
 
 Build a new Data Registry server on Unity Catalog OSS with a new operator, new image builds, and new CRDs.
 
-**Why not:** Evaluation revealed UC integration requires a new operator (server deployment, PostgreSQL lifecycle, `UnityRegistry` CRD, SCIM sync controller, OAuthClient lifecycle, registry auto-provisioning), an auth bridge (UC has no auth plugin architecture — requires a code fork), and a search API build. The architecture offers the highest long-term flexibility, but front-loads ~16-24 weeks of infrastructure work that can be deferred until UC matures.
+**Why not:** Evaluation revealed UC integration requires filling in multiple OSS gaps, as well as a new operator (server deployment, PostgreSQL lifecycle, `UnityRegistry` CRD, SCIM sync controller, OAuthClient lifecycle, registry auto-provisioning), an auth bridge (UC has no auth plugin architecture — requires a code fork), and a search API build. The architecture offers the highest long-term flexibility, but front-loads ~16-24 weeks of infrastructure work that can be deferred until UC matures.
 
 #### Alternative 2: Extend Feast into a General Registry
 
@@ -212,7 +211,7 @@ Widen Feast itself into a broader data registry by extending the UI and adding n
 
 Build a purpose-built server implementing the Iceberg REST Catalog API using PyIceberg's `SqlCatalog` backend. Fully decoupled from Feast.
 
-**Why not:** Requires a new RHAI service to productize (Konflux images, operator or sub-operator, security review). The higher build cost (~14-21 weeks vs ~8-12 weeks for the chosen approach) is the primary trade-off. Shared library story with MLflow (PyIceberg) is attractive but does not offset the productization overhead for Phase 1.
+**Why not:** Requires a new RHAI service to productize (Konflux images, operator or sub-operator, security review). The higher build cost (~14-21 weeks vs ~8-12 weeks for the chosen approach) is the primary trade-off. The productization overhead does not justify a standalone server for Phase 1.
 
 #### Alternative 4: MLflow Server as Registry Backend
 
