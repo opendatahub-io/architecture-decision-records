@@ -1,13 +1,13 @@
 <mxfile host="Electron" pages="5">
   <diagram id="gDweF5NzPNWK_yuZlWTg" name="Cluster">
-    <mxGraphModel dx="2287" dy="941" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="2398" dy="1014" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="c5ll-w2fBzAtoEW1Apa6-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=4;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=2;" value="Tenant DCH&amp;nbsp;&lt;div&gt;infra namespace&amp;nbsp;&lt;/div&gt;" vertex="1">
           <mxGeometry height="270" width="580" x="40" y="300" as="geometry" />
         </mxCell>
-        <mxCell id="47YZ8lvg1R-38DWuYF_v-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=3;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=2;" value="Tenant DCH admin namespace.&amp;nbsp; &amp;nbsp;&amp;nbsp;" vertex="1">
+        <mxCell id="47YZ8lvg1R-38DWuYF_v-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=3;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=2;" value="&amp;nbsp;tenant namespace.&amp;nbsp; &amp;nbsp;&amp;nbsp;" vertex="1">
           <mxGeometry height="460" width="390" x="640" y="300" as="geometry" />
         </mxCell>
         <mxCell id="c5ll-w2fBzAtoEW1Apa6-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=4;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=2;" value="opendatahub.&amp;nbsp; namespace&amp;nbsp;&amp;nbsp;" vertex="1">
@@ -138,7 +138,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="HLQZ5CsdeAaCHyIe-GjR-2" connectable="0" parent="HLQZ5CsdeAaCHyIe-GjR-1" style="edgeLabel;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" value="Internal&amp;nbsp;&lt;div&gt;CQRS sync&lt;/div&gt;" vertex="1">
+        <mxCell id="HLQZ5CsdeAaCHyIe-GjR-2" connectable="0" parent="HLQZ5CsdeAaCHyIe-GjR-1" style="edgeLabel;html=1;align=left;verticalAlign=middle;resizable=0;points=[];" value="Update state&amp;nbsp;&lt;div&gt;(hydration, secrets deletion etc)&lt;/div&gt;" vertex="1">
           <mxGeometry relative="1" x="-0.263" y="2" as="geometry">
             <mxPoint x="8" y="-18" as="offset" />
           </mxGeometry>
@@ -173,7 +173,7 @@
     </mxGraphModel>
   </diagram>
   <diagram name="High level" id="SE1Kw9QrRJGeKfihu9Mu">
-    <mxGraphModel dx="2191" dy="1979" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1909" dy="1794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -376,7 +376,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="YCaP9GA6LyfOY9V5phUI" name="hard-tenancy">
-    <mxGraphModel dx="2034" dy="775" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="2191" dy="879" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -498,7 +498,7 @@
         <mxCell id="kfPxBpkpRvg6TOZGirD0-6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="HttpRoute T2" vertex="1">
           <mxGeometry height="40" width="90" x="480" y="230" as="geometry" />
         </mxCell>
-        <mxCell id="Ib8VIRB7GOOfp2jylEAT-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=3;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=1;" value="Tenant DCH admin namespace.&amp;nbsp; &amp;nbsp;&amp;nbsp;" vertex="1">
+        <mxCell id="Ib8VIRB7GOOfp2jylEAT-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=3;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=1;" value="tenant namespace.&amp;nbsp; &amp;nbsp;&amp;nbsp;" vertex="1">
           <mxGeometry height="160" width="260" x="800" y="400" as="geometry" />
         </mxCell>
         <mxCell id="Ib8VIRB7GOOfp2jylEAT-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="DataConnectService CR" vertex="1">
@@ -511,7 +511,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="kI2DuiQNFtqnDPao_IBn" name="soft-tenancy">
-    <mxGraphModel dx="1548" dy="1014" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1437" dy="941" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -597,7 +597,7 @@
         <mxCell id="AzMZEd90SqtOGDBnIb6b-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;glass=0;shadow=1;align=left;spacing=8;arcSize=12;" value="DataConnectiService&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;CR&lt;/span&gt;" vertex="1">
           <mxGeometry height="30" width="180" x="980" y="420" as="geometry" />
         </mxCell>
-        <mxCell id="j4KMG-5JbQ_5gSW17ESy-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=3;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=1;" value="Tenant DCH admin namespace.&amp;nbsp; &amp;nbsp;&amp;nbsp;" vertex="1">
+        <mxCell id="j4KMG-5JbQ_5gSW17ESy-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=3;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=1;" value="tenant namespace.&amp;nbsp; &amp;nbsp;&amp;nbsp;" vertex="1">
           <mxGeometry height="440" width="220" x="1230" y="320" as="geometry" />
         </mxCell>
         <mxCell id="j4KMG-5JbQ_5gSW17ESy-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Credentials Secret" vertex="1">
@@ -625,9 +625,9 @@
         <mxCell id="3aEyLAaJ8VB8awvSwEK6-8" edge="1" parent="1" source="3aEyLAaJ8VB8awvSwEK6-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="3aEyLAaJ8VB8awvSwEK6-3">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="3aEyLAaJ8VB8awvSwEK6-9" connectable="0" parent="3aEyLAaJ8VB8awvSwEK6-8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Sync as DataConnection" vertex="1">
-          <mxGeometry relative="1" x="-0.1125" y="1" as="geometry">
-            <mxPoint x="74" as="offset" />
+        <mxCell id="MgxJKRjxx1AlPN6Gibwm-1" connectable="0" parent="3aEyLAaJ8VB8awvSwEK6-8" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="&lt;span style=&quot;text-align: left;&quot;&gt;Update state&amp;nbsp;&lt;/span&gt;&lt;div style=&quot;text-align: left;&quot;&gt;(hydration)&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="-2" as="geometry">
+            <mxPoint x="47" as="offset" />
           </mxGeometry>
         </mxCell>
         <mxCell id="3aEyLAaJ8VB8awvSwEK6-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;" value="DCH Operator" vertex="1">
