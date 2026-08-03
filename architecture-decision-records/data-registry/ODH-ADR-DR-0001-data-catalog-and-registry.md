@@ -69,7 +69,7 @@ flowchart TD
 
     subgraph dashboard["RHOAI Dashboard"]
         FeastUI["Feast UI<br/>(unchanged)"]
-        DataHubUI["Data Hub UI<br/>(new module, rebranded)<br/>Collections · Tables · Volumes"]
+        DataHubUI["Data Hub UI<br/>(new module)<br/>Collections · Tables · Volumes"]
     end
 
     subgraph registry["Data Registry Server — Feast Server Code, Separate Pod&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]
