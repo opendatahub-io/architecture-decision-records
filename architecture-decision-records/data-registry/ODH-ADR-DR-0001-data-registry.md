@@ -24,7 +24,7 @@ RHOAI currently has no unified way for users to discover, browse, or manage data
 - **No lineage for auditability.** No audit trail for which data was used in which workflow or how the data was transformed/versioned. There is a level of lineage available in Feast, but only for Feature Engineering.
 - **Competitive gap.** SageMaker and Vertex have integrated dataset registries. RHOAI users absorb friction that competitors have eliminated.
 
-Feast provides a feature store UI focused on feature engineering (Scenario A: credit scoring / fraud detection using Feast for real-time feature serving), but users working on knowledge retrieval (Scenario B: P&C underwriting knowledge assistant using document collections, Milvus, and AIGW/OGX for RAG), agentic AI, or multi-modal workflows have no catalog experience.
+Feast provides a feature store UI focused on feature engineering (e.g., credit scoring, fraud detection using Feast for real-time feature serving), but users working on knowledge retrieval (e.g., document collections via Milvus and AIGW/OGX for RAG), agentic AI, or multi-modal workflows have no catalog experience.
 
 Three factors drive the timing: (1) multiple FSI engagements require a data catalog for governed AI assets, (2) the Iceberg REST Catalog Spec has emerged as the de facto catalog interoperability standard with broad engine support, and (3) RHOAI already ships Feast and the MLflow SSAR auth pattern — reusing both lets us deliver a registry MVP without new infrastructure.
 
@@ -34,10 +34,10 @@ This ADR scopes an MVP. Lineage and governance are addressed by the broader RHAI
 
 * Deliver a Data Registry UI and API in RHOAI that lets users browse, search, and manage data assets from the RHOAI dashboard
 * Expose a Data Registry API that includes spec-compliant Iceberg REST Catalog endpoints for engine interoperability and extends them to cover all asset types — from day one, not as a convergence target
-* Support both predictive AI (Scenario A: feature engineering via Feast) and knowledge retrieval (Scenario B: document collections via Milvus + AIGW/OGX)
+* Support both predictive AI (feature engineering via Feast) and knowledge retrieval (document collections via Milvus + AIGW/OGX)
 * Implement platform-native RBAC using the proven MLflow SSAR pattern, with zero new auth infrastructure
 * Ensure the architecture is backend-swappable: the Data Registry API is the stable contract; backends can change without affecting consumers
-* Support volume extensions for unstructured document management in S3/MinIO (Scenario B requirement)
+* Support volume extensions for unstructured document management in S3/MinIO (knowledge retrieval requirement)
 * Link/integrate with [Data Connect Hub](https://github.com/opendatahub-io/architecture-decision-records/pull/149) for management of external data source connections, authentication, and ingestion
 
 This ADR scopes the initial delivery using Feast as the registry backend with PostgreSQL storage, deployed as a dedicated server pod via the FeatureStore CRD with a Data Registry annotation.
@@ -172,7 +172,7 @@ Individual Data Registries are **not** provisioned via CRs or GitOps. A registry
 
 ### Assumptions
 
-1. **Both predictive AI and knowledge retrieval are supported through the platform.** Scenario A (credit scoring, fraud detection) uses Feast for feature engineering with <100ms online serving. Scenario B (knowledge retrieval) uses Milvus + AIGW/OGX.
+1. **Both predictive AI and knowledge retrieval are supported through the platform.** Feature engineering (e.g., credit scoring, fraud detection) uses Feast. Knowledge retrieval (e.g., document collections for RAG) uses Milvus + AIGW/OGX.
 2. **Iceberg REST Catalog Spec is the long-term engine interoperability standard.** All architecture paths converge on the Iceberg REST Catalog Spec for engine access to Iceberg tables. This ADR adopts it from day one.
 3. **Phases are cumulative. No throwaway work.** The Data Registry API and SSAR auth added in Phase 1 remain the stable contracts regardless of which backend is used.
 
