@@ -17,7 +17,7 @@ This ADR defines the integration contract between the **Data Registry** ([ADR-DR
 
 The integration is based on a `connection_ref` field that each Data Registry asset (table or volume) can optionally carry, pointing to a DCH DataConnection or an RHAI Connection. The `connection_ref` includes a type discriminator (`dch` or `rhai`) and the connection identifier (UUID for DCH, secret name for RHAI). In both cases, `connection_ref` references a *connection object* — not raw credentials. The actual secret is resolved through the respective connection API. This ADR defines the connection reference contract and three consumption scenarios for the 6.3 release.
 
-Future integration scenarios (automated schema discovery and cross-component lineage via OpenLineage) are defined in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD).
+Future integration scenarios (automated schema discovery and cross-component lineage via OpenLineage) are defined in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
 
 ## Why
 
@@ -39,8 +39,8 @@ The Data Registry and DCH are being developed in parallel. Defining the integrat
 
 * **Changing the internal architecture of either component.** The Data Registry and DCH internals are defined by their own ADRs. This ADR covers only the integration boundary.
 * **New APIs for 6.3.** No new Data Registry or DCH APIs are introduced for 6.3. The `connection_ref` attribute on tables and volumes is a metadata field, not a new API surface.
-* **Schema synchronization in 6.3.** Automated schema discovery from data sources is a future scenario documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD).
-* **Lineage tracking across the integration boundary in 6.3.** Cross-component lineage via OpenLineage is out of scope for 6.3, documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD).
+* **Schema synchronization in 6.3.** Automated schema discovery from data sources is a future scenario documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
+* **Lineage tracking across the integration boundary in 6.3.** Cross-component lineage via OpenLineage is out of scope for 6.3, documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
 
 ## How
 
@@ -248,7 +248,7 @@ Both components use ClusterRole aggregation labels to auto-inject permissions in
 ## References
 
 * [ADR-DR-0001: Data Registry for RHOAI (PR #150)](https://github.com/opendatahub-io/architecture-decision-records/pull/150)
-* [ADR-DR-0003: Future Integration Scenarios (PR #TBD)](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD)
+* [ADR-DR-0003: Future Integration Scenarios (PR #TBD)](https://github.com/opendatahub-io/architecture-decision-records/pull/154)
 * [Data Connect Hub ADR (PR #149)](https://github.com/opendatahub-io/architecture-decision-records/pull/149)
 * [Iceberg REST Catalog Spec](https://iceberg.apache.org/rest-catalog-spec/#rest-catalog-protocol)
 * [opendatahub-io/kube-rbac-proxy](https://github.com/opendatahub-io/kube-rbac-proxy) — SSAR authorization sidecar
