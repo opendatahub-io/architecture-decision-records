@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by  | N/A |
 | Tickets        | TBD |
-| Other docs     | [ADR-DR-0001: Data Registry](https://github.com/opendatahub-io/architecture-decision-records/pull/150), [ADR-DR-0002: Registry-DCH Integration](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD), [DCH ADR](https://github.com/opendatahub-io/architecture-decision-records/pull/149) |
+| Other docs     | [ADR-DR-0001: Data Registry](https://github.com/opendatahub-io/architecture-decision-records/pull/150), [ADR-DR-0002: Registry-DCH Integration](https://github.com/opendatahub-io/architecture-decision-records/pull/153), [DCH ADR](https://github.com/opendatahub-io/architecture-decision-records/pull/149) |
 
 ## What
 
@@ -18,7 +18,7 @@ This ADR defines two future integration scenarios between the Data Registry ([AD
 1. **Automated Schema Discovery** — DCH discovers the schema of external data sources (e.g., PostgreSQL column names and types) and asynchronously populates the Data Registry, eliminating manual schema entry at table registration time.
 2. **Cross-Component Lineage via OpenLineage** — Both the Data Registry and DCH emit OpenLineage events to a shared lineage server, enabling end-to-end data provenance tracking from external sources through ingestion, transformation, and registration.
 
-These scenarios build on the 6.3 integration contract defined in [ADR-DR-0002](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD), specifically the `connection_ref` model and DCH ingestion flow.
+These scenarios build on the 6.3 integration contract defined in [ADR-DR-0002](https://github.com/opendatahub-io/architecture-decision-records/pull/153), specifically the `connection_ref` model and DCH ingestion flow.
 
 ## Why
 
@@ -247,7 +247,7 @@ A single component collects data lifecycle events from the Registry and DCH, the
 ## References
 
 * [ADR-DR-0001: Data Registry for RHOAI (PR #150)](https://github.com/opendatahub-io/architecture-decision-records/pull/150)
-* [ADR-DR-0002: Data Registry and DCH Integration (PR #TBD)](https://github.com/opendatahub-io/architecture-decision-records/pull/TBD)
+* [ADR-DR-0002: Data Registry and DCH Integration (PR #TBD)](https://github.com/opendatahub-io/architecture-decision-records/pull/153)
 * [Data Connect Hub ADR (PR #149)](https://github.com/opendatahub-io/architecture-decision-records/pull/149)
 * [OpenLineage Spec](https://openlineage.io/docs/spec/object-model)
 * [Marquez — OpenLineage-compatible metadata server](https://marquezproject.ai/)
