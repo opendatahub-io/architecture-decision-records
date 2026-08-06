@@ -85,6 +85,10 @@ By default, the DCH DataConnection response does not include credential values �
 
 
 
+### Client Integration for 3.6
+
+For 3.6, the client (notebook, pipeline, agent) performs the multi-step flow: discover via Data Registry API, resolve connection via DCH API, access data. A platform SDK that orchestrates this flow into a single call is a future enhancement (see [Alternative 2](#alternative-2-credential-vending-via-data-registry-loadtable) and [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154)).
+
 ### Scenario 0: Discovering a Data Asset
 
 A data scientist working in a workbench pod wants to find claims-related data. They search the Data Registry using the Data Registry API, find the asset they need, and retrieve its full metadata — including schema, connection reference, and properties.
@@ -197,6 +201,8 @@ Local storage is managed by OpenShift (PersistentVolume / PersistentVolumeClaim)
 | DCH DataConnection exists but is not ready | UI shows connection status. Asset is browsable in the Data Registry, but accessing data may fail. UI warns about connection state. |
 | Asset registered without `connection_ref` | Valid for local PVC volumes and assets where the user manages access independently. |
 | RHAI Connection after DCH auto-migration | Both `type: rhai` and `type: dch` references remain valid. The underlying Kubernetes secret is preserved by DCH during migration. |
+
+**Connection status visibility:** The Data Registry stores `connection_ref` as metadata — it does not track or validate the connection's runtime status. When an asset has a `connection_ref`, the consuming client (notebook, pipeline, agent, Data Hub UI) must call the DCH API (`GET /api/v1/data/connections/{id}`) to determine whether the connection exists, is ready, or is accessible to the current user. The Data Registry returns the asset regardless of connection state; it is the responsibility of the consuming client to check connection status and surface appropriate guidance — such as "connection not found", "connection not ready", or "insufficient permissions" — before the user attempts to access the data.
 
 ## Alternatives
 
