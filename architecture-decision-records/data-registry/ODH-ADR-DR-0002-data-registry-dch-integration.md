@@ -15,7 +15,7 @@
 
 This ADR defines the integration contract between the **Data Registry** ([ADR-DR-0001](https://github.com/opendatahub-io/architecture-decision-records/pull/150)) and the **Data Connect Hub** (DCH, [PR #149](https://github.com/opendatahub-io/architecture-decision-records/pull/149)). The Data Registry tracks *what* data exists — tables, volumes, metadata, schema. DCH manages *how* to connect to and ingest data from external sources.
 
-The integration is based on a `connection_ref` field that each Data Registry asset (table or volume) can optionally carry, pointing to a DCH DataConnection or an RHAI Connection. The `connection_ref` includes a type discriminator (`dch` or `rhai`) and the connection identifier (UUID for DCH, secret name for RHAI). In both cases, `connection_ref` references a *connection object* — not raw credentials. The actual secret is resolved through the respective connection API. This ADR defines the connection reference contract and three consumption scenarios for the 6.3 release.
+The integration is based on a `connection_ref` field that each Data Registry asset (table or volume) can optionally carry, pointing to a DCH DataConnection or an RHAI Connection. The `connection_ref` includes a type discriminator (`dch` or `rhai`) and the connection identifier (UUID for DCH, secret name for RHAI). In both cases, `connection_ref` references a *connection object* — not raw credentials. The actual secret is resolved through the respective connection API. This ADR defines the connection reference contract and three consumption scenarios for the 3.6 release.
 
 Future integration scenarios (automated schema discovery and cross-component lineage via OpenLineage) are defined in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
 
@@ -25,22 +25,22 @@ The Data Registry and DCH are being developed in parallel. Defining the integrat
 
 - **Unified "find to use" experience.** The product requirement is that discovering an asset and accessing its data should feel like one action, not two disconnected systems.
 - **Connection flexibility.** DCH connections must work like RHAI Connection secrets at the basic level — mountable on pods for direct data access via standard libraries. For clients that need mediated access to data sources (e.g., PostgreSQL via Arrow Flight), DCH provides ingestion APIs that handle driver complexity and credential isolation.
-- **Consistent authorization.** Both the Data Registry and DCH use SelfSubjectAccessReview (SSAR) via kube-rbac-proxy with Kubernetes-native RBAC. The auth model is already aligned, but the integration contract — which permissions are needed for the end-to-end flow — must be explicit.
+- **Consistent authorization.** Both the Data Registry and DCH use SubjectAccessReview (SAR) via kube-rbac-proxy with Kubernetes-native RBAC. The auth model is already aligned, but the integration contract — which permissions are needed for the end-to-end flow — must be explicit.
 - **Local storage independence.** Not all data requires external connections. Volumes backed by PVC storage use OpenShift-managed credentials with no DCH involvement. The Registry must work both with and without DCH.
 
 ## Goals
 
 * Define the `connection_ref` contract: how Data Registry assets reference DCH DataConnections and RHAI Connections, including a type discriminator
-* Define three consumption scenarios for the 6.3 release, each with an end-to-end flow diagram
-* Establish the shared SSAR authorization model across the Data Registry and DCH API groups
+* Define three consumption scenarios for the 3.6 release, each with an end-to-end flow diagram
+* Establish the shared SAR authorization model across the Data Registry and DCH API groups
 * Define edge-case behavior: deleted connections, DCH not enabled, connection status visibility
 
 ## Non-Goals
 
 * **Changing the internal architecture of either component.** The Data Registry and DCH internals are defined by their own ADRs. This ADR covers only the integration boundary.
-* **New APIs for 6.3.** No new Data Registry or DCH APIs are introduced for 6.3. The `connection_ref` attribute on tables and volumes is a metadata field, not a new API surface.
-* **Schema synchronization in 6.3.** Automated schema discovery from data sources is a future scenario documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
-* **Lineage tracking across the integration boundary in 6.3.** Cross-component lineage via OpenLineage is out of scope for 6.3, documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
+* **New APIs for 3.6.** No new Data Registry or DCH APIs are introduced for 3.6. The `connection_ref` attribute on tables and volumes is a metadata field, not a new API surface.
+* **Schema synchronization in 3.6.** Automated schema discovery from data sources is a future scenario documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
+* **Lineage tracking across the integration boundary in 3.6.** Cross-component lineage via OpenLineage is out of scope for 3.6, documented in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
 
 ## How
 
@@ -79,10 +79,10 @@ sequenceDiagram
 
     Note over User: Project is the RHAI namespace<br/>(e.g., insurance-demo)
 
-    User->>DR: GET /catalog/projects/insurance-demo/search?query=auto-claims
-    DR-->>User: search results<br/>[{name: auto-claims, type: table,<br/>collection: claims}]
+    User->>DR: GET /v1/insurance-demo/search?query=auto-claims
+    DR-->>User: search results<br/>[{name: auto-claims, type: table,<br/>namespace: [claims]}]
 
-    User->>DR: GET /catalog/projects/insurance-demo/<br/>collections/claims/tables/auto-claims
+    User->>DR: GET /v1/insurance-demo/namespaces/claims/<br/>generic-tables/auto-claims
     DR-->>User: table metadata<br/>format: iceberg<br/>schema: [claim_id, customer_name,<br/>claim_amount, risk_score]<br/>connection_ref: {type: dch,<br/>id: 550e8400-...}<br/>properties: {maturity: production,<br/>domain: insurance, pii: true}
 ```
 
@@ -100,16 +100,20 @@ sequenceDiagram
     participant DR as Data Registry API
     participant S3 as S3 / MinIO
 
-    User->>DR: GET /catalog/projects/{p}/collections/{c}/tables/auto-claims
+    User->>DR: GET /v1/{p}/namespaces/{c}/generic-tables/auto-claims
     DR-->>User: table metadata<br/>format: iceberg<br/>schema: [claim_id, customer_name,<br/>claim_amount, risk_score]<br/>connection_ref: {type: dch,<br/>id: 550e8400-...}
 
-    Note over User: S3 credentials already mounted<br/>on pod as env vars<br/>(AWS_ACCESS_KEY_ID, etc.)<br/>via RHAI workbench connection
+    Note over User: User retrieves connection_ref<br/>from asset metadata
 
-    User->>S3: PyIceberg / Spark reads Iceberg table<br/>using mounted S3 credentials
+    User->>User: Resolve connection_ref:<br/>- type: rhai → mount Connection secret<br/>  to workbench via Dashboard<br/>- type: dch → mount ExportedSecret<br/>  or read secret via K8s API
+
+    Note over User: S3 credentials now available<br/>as env vars on pod<br/>(AWS_ACCESS_KEY_ID, etc.)
+
+    User->>S3: PyIceberg / Spark reads Iceberg table<br/>using resolved S3 credentials
     S3-->>User: Iceberg table data
 ```
 
-The connection credentials are already on the pod — the user does not call DCH APIs to access the data in this scenario. DCH's role is managing the connection lifecycle (creation, credential rotation, auto-migration from RHAI Connections). The Data Registry's role is providing the table schema and metadata.
+The user is responsible for resolving the `connection_ref` to actual credentials. For workbench users, this means attaching the Connection to their workbench via the RHOAI Dashboard (which mounts the secret as env vars on pod restart). For pipelines, the pipeline SA reads the secret via the K8s API at runtime. DCH's role is managing the connection lifecycle (creation, credential rotation, auto-migration from RHAI Connections). The Data Registry's role is providing the table schema and metadata.
 
 ### Scenario 2: PostgreSQL Table via DCH Ingestion API
 
@@ -122,7 +126,7 @@ sequenceDiagram
     participant DCH as DCH Service<br/>(Arrow Flight)
     participant PG as PostgreSQL
 
-    User->>DR: GET /catalog/projects/{p}/collections/{c}/tables/claims-db
+    User->>DR: GET /v1/{p}/namespaces/{c}/generic-tables/claims-db
     DR-->>User: table metadata<br/>format: postgresql<br/>connection_ref: {type: dch,<br/>id: 550e8400-...}<br/>schema: [claim_id, status, amount]
 
     User->>DCH: dch.ingest(connection_id="550e8400-...",<br/>query="SELECT * FROM claims")
@@ -140,9 +144,45 @@ This pattern is essential for:
 - Environments where credential exposure to user pods must be minimized
 - Clients that do not want to install and maintain database-specific driver libraries
 
+### Scenario 2b: DCH ExportedSecret for Direct Engine Access
+
+An engine (Spark, Trino) or custom application needs raw credentials to connect directly to a data source — it cannot use the DCH streaming API because it has its own connector and query optimizer. The DCH operator creates an ExportedSecret that combines the DataConnection metadata with the actual credentials from the underlying secret.
+
+```mermaid
+sequenceDiagram
+    participant User as Data Engineer<br/>(Spark / Trino)
+    participant DR as Data Registry API
+    participant DCH as DCH API
+    participant DCHO as DCH Operator
+    participant K8s as K8s Secret
+    participant DB as Data Source<br/>(PostgreSQL, S3, etc.)
+
+    User->>DR: GET /v1/{p}/namespaces/{c}/generic-tables/claims-db
+    DR-->>User: table metadata<br/>connection_ref: {type: dch,<br/>id: 550e8400-...}
+
+    User->>DCH: GET /api/v1/data/connections/550e8400-...
+    DCH-->>User: DataConnection metadata<br/>provider: PostgreSQL<br/>secret-ref: postgres-creds<br/>exportAsSecret: postgres-exported
+
+    Note over DCHO,K8s: DCH Operator watches DataConnections<br/>with exportAsSecret configured.<br/>Creates ExportedSecret =<br/>DataConnection metadata +<br/>credentials from secret-ref
+
+    User->>User: Mount ExportedSecret<br/>"postgres-exported" on pod<br/>(via workbench storage config<br/>or pod volume spec)
+
+    Note over User: Credentials now available<br/>as env vars or mounted files
+
+    User->>DB: Spark / Trino connects directly<br/>using mounted credentials
+    DB-->>User: Query results
+```
+
+The ExportedSecret always lives in the same namespace as the credentials secret — secret data never crosses namespace boundaries. The DCH operator manages the ExportedSecret lifecycle: if the underlying credentials are rotated, the ExportedSecret is updated automatically.
+
+This pattern is essential for:
+- Data engines (Spark, Trino, DuckDB) that have their own connectors and need raw credentials
+- Custom applications with specific driver or connection pool requirements
+- CI/CD pipelines that mount secrets as init-container volumes
+
 ### Scenario 3: Local PVC Volume
 
-A data scientist discovers a volume in the Data Registry backed by local PVC storage. Credentials are managed entirely by OpenShift — no DCH connection is involved.
+A data scientist discovers a volume in the Data Registry backed by local PVC storage. No DCH connection is involved — the user must ensure the PVC is mounted on their pod.
 
 ```mermaid
 sequenceDiagram
@@ -150,16 +190,16 @@ sequenceDiagram
     participant DR as Data Registry API
     participant PVC as PVC Mount<br/>(/mnt/data/documents)
 
-    User->>DR: GET /catalog/projects/{p}/collections/{c}/volumes/claim-documents
-    DR-->>User: volume metadata<br/>location: /mnt/data/documents/<br/>connection_ref: None
+    User->>DR: GET /v1/{p}/namespaces/{c}/volumes/claim-documents
+    DR-->>User: volume metadata<br/>location: pvc:///mnt/data/documents/<br/>connection_ref: None
 
-    Note over User: PVC already mounted<br/>on pod by OpenShift
+    Note over User: User must ensure PVC is<br/>mounted on their pod<br/>(via workbench storage config<br/>or pod volume spec)
 
     User->>PVC: Read files from /mnt/data/documents/
     PVC-->>User: File contents
 ```
 
-Not all assets require DCH. Local storage is managed by OpenShift (PersistentVolume / PersistentVolumeClaim). The Data Registry tracks the asset metadata and location, but `connection_ref` is null. The Registry operates fully independently of DCH in this scenario.
+Not all assets require DCH. Local storage is managed by OpenShift (PersistentVolume / PersistentVolumeClaim). The Data Registry tracks the asset metadata and location, but `connection_ref` is null. The user is responsible for ensuring the PVC is mounted on their pod — via workbench storage configuration in the RHOAI Dashboard or by specifying the volume in their pod spec. The Registry operates fully independently of DCH in this scenario.
 
 ## Alternatives
 
@@ -185,9 +225,9 @@ Build connection CRUD capabilities into the Data Registry, eliminating the need 
 
 ### Shared Authorization Model
 
-Both the Data Registry and DCH use SelfSubjectAccessReview (SSAR) via kube-rbac-proxy for authorization. Each component defines its own Kubernetes API group and RBAC resources.
+Both the Data Registry and DCH use SubjectAccessReview (SAR) via kube-rbac-proxy for authorization. Each component defines its own Kubernetes API group and RBAC resources.
 
-**Data Registry — namespace-scoped authorization for 6.3:**
+**Data Registry — namespace-scoped authorization for 3.6:**
 
 The Data Registry defines three ClusterRoles that grant access to all registry resources within a namespace:
 
@@ -197,7 +237,7 @@ The Data Registry defines three ClusterRoles that grant access to all registry r
 | `dataregistry-edit` | Read and write access to Data Registry resources |
 | `dataregistry-admin` | Full access including administrative operations |
 
-Authentication uses bearer token (JWT) validated via Kubernetes TokenReview. Authorization uses SSAR scoped to the namespace (RHOAI project). A user with `dataregistry-view` in namespace `ml-team` can view all tables and volumes in that namespace, but cannot access assets in other namespaces. Per-resource authorization (e.g., restricting access to a specific collection or table) is a future enhancement.
+Authentication uses bearer token (JWT) validated via Kubernetes TokenReview. Authorization uses SAR scoped to the namespace (RHOAI project). A user with `dataregistry-view` in namespace `ml-team` can view all tables and volumes in that namespace, but cannot access assets in other namespaces. Per-resource authorization (e.g., restricting access to a specific collection or table) is a future enhancement.
 
 **Data Connect Hub — resource-level authorization:**
 
@@ -217,7 +257,8 @@ DCH uses kube-rbac-proxy for REST endpoints and in-service SubjectAccessReview f
 |---|---|---|
 | Scenario 0: Discover assets | `dataregistry-view` in namespace | -- |
 | Scenario 1: Iceberg table (mounted secret) | `dataregistry-view` in namespace | -- |
-| Scenario 2: PostgreSQL via DCH ingestion | `dataregistry-view` in namespace | `data-connection: read` + `data-store: get` |
+| Scenario 2a: DCH streaming (Arrow Flight) | `dataregistry-view` in namespace | `data-connection: read` + `data-store: get` |
+| Scenario 2b: DCH ExportedSecret (direct access) | `dataregistry-view` in namespace | `data-connection: read` + K8s Secret RBAC for ExportedSecret |
 | Scenario 3: PVC volume (no connection) | `dataregistry-view` in namespace | -- |
 
 Both components use ClusterRole aggregation labels to auto-inject permissions into standard OpenShift roles (`view`, `edit`, `admin`). Users with existing namespace roles automatically receive the corresponding Data Registry and DCH permissions without additional RBAC configuration.
@@ -225,7 +266,7 @@ Both components use ClusterRole aggregation labels to auto-inject permissions in
 ### Credential Isolation
 
 - The Data Registry stores `connection_ref` — a pointer to a DCH DataConnection (UUID) or RHAI Connection (name). It never stores or accesses credential content. Credentials are resolved through the connection object's API.
-- SSAR authorization is evaluated independently by each component. Compromising one component's authorization does not grant access to the other.
+- SAR authorization is evaluated independently by each component. Compromising one component's authorization does not grant access to the other.
 - In Scenario 2, DCH mediates all credential access. The calling user's pod never receives raw database credentials — DCH connects to the data source on the user's behalf and returns only query results.
 - In Scenario 3, volume security relies entirely on OpenShift PV/PVC access control model.
 - Both components use TLS for all API communication. The Data Registry reuses the Feast server's existing TLS configuration; DCH uses OpenShift service-serving certificates.
@@ -251,7 +292,7 @@ Both components use ClusterRole aggregation labels to auto-inject permissions in
 * [ADR-DR-0003: Future Integration Scenarios (PR #TBD)](https://github.com/opendatahub-io/architecture-decision-records/pull/154)
 * [Data Connect Hub ADR (PR #149)](https://github.com/opendatahub-io/architecture-decision-records/pull/149)
 * [Iceberg REST Catalog Spec](https://iceberg.apache.org/rest-catalog-spec/#rest-catalog-protocol)
-* [opendatahub-io/kube-rbac-proxy](https://github.com/opendatahub-io/kube-rbac-proxy) — SSAR authorization sidecar
+* [opendatahub-io/kube-rbac-proxy](https://github.com/opendatahub-io/kube-rbac-proxy) — SAR authorization sidecar
 
 ## Reviews
 
