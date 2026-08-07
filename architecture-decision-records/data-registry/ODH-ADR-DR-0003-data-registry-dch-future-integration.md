@@ -13,18 +13,18 @@
 
 ## What
 
-This ADR defines two future integration scenarios between the Data Registry ([ADR-DR-0001](https://github.com/opendatahub-io/architecture-decision-records/pull/150)) and the Data Connect Hub (DCH, [PR #149](https://github.com/opendatahub-io/architecture-decision-records/pull/149)) that are out of scope for the 6.3 release but documented here for directional alignment:
+This ADR defines two future integration scenarios between the Data Registry ([ADR-DR-0001](https://github.com/opendatahub-io/architecture-decision-records/pull/150)) and the Data Connect Hub (DCH, [PR #149](https://github.com/opendatahub-io/architecture-decision-records/pull/149)) that are out of scope for the 3.6 release but documented here for directional alignment:
 
 1. **Automated Schema Discovery** — DCH discovers the schema of external data sources (e.g., PostgreSQL column names and types) and asynchronously populates the Data Registry, eliminating manual schema entry at table registration time.
 2. **Cross-Component Lineage via OpenLineage** — Both the Data Registry and DCH emit OpenLineage events to a shared lineage server, enabling end-to-end data provenance tracking from external sources through ingestion, transformation, and registration.
 
-These scenarios build on the 6.3 integration contract defined in [ADR-DR-0002](https://github.com/opendatahub-io/architecture-decision-records/pull/153), specifically the `connection_ref` model and DCH ingestion flow.
+These scenarios build on the 3.6 integration contract defined in [ADR-DR-0002](https://github.com/opendatahub-io/architecture-decision-records/pull/153), specifically the `connection_ref` model and DCH ingestion flow.
 
 ## Why
 
-- **Schema entry is manual in 6.3.** When registering a non-Iceberg table (e.g., PostgreSQL), users must provide column names and types manually. For large schemas, this is tedious and error-prone. Automated discovery via DCH eliminates this friction.
-- **No cross-component lineage in 6.3.** The Data Registry and DCH operate independently — there is no shared lineage graph that traces data from external sources through ingestion and transformation. Users cannot answer "where did this data come from?" across component boundaries.
-- **Directional alignment.** Defining these scenarios now — before the 6.3 components ship — ensures future enhancements are architecturally compatible with the 6.3 design. Retrofitting lineage or schema discovery into an incompatible design is significantly more expensive.
+- **Schema entry is manual in 3.6.** When registering a non-Iceberg table (e.g., PostgreSQL), users must provide column names and types manually. For large schemas, this is tedious and error-prone. Automated discovery via DCH eliminates this friction.
+- **No cross-component lineage in 3.6.** The Data Registry and DCH operate independently — there is no shared lineage graph that traces data from external sources through ingestion and transformation. Users cannot answer "where did this data come from?" across component boundaries.
+- **Directional alignment.** Defining these scenarios now — before the 3.6 components ship — ensures future enhancements are architecturally compatible with the 3.6 design. Retrofitting lineage or schema discovery into an incompatible design is significantly more expensive.
 
 ## Goals
 
@@ -37,13 +37,15 @@ These scenarios build on the 6.3 integration contract defined in [ADR-DR-0002](h
 
 * **Committing to implementation timelines.** These scenarios are directional — no release target is set.
 * **Defining the OpenLineage server deployment model.** Which OpenLineage-compatible server (e.g., Marquez) to deploy and how is a separate decision.
-* **Changing the 6.3 integration contract.** Nothing in this ADR modifies the `connection_ref` model, consumption scenarios, or authorization model defined in ADR-DR-0002.
+* **Changing the 3.6 integration contract.** Nothing in this ADR modifies the `connection_ref` model, consumption scenarios, or authorization model defined in ADR-DR-0002.
 
 ## How
 
 ### Scenario 4: Automated Schema Discovery via DCH
 
-In 6.3, when a user registers a non-Iceberg table (e.g., PostgreSQL) in the Data Registry, they provide the schema manually (column names and types). This scenario eliminates manual entry by having DCH discover the schema from the data source and asynchronously update the Data Registry.
+In 3.6, when a user registers a non-Iceberg table (e.g., PostgreSQL) in the Data Registry, they provide the schema manually (column names and types). This scenario eliminates manual entry by having DCH discover the schema from the data source and asynchronously update the Data Registry.
+
+Discovered schemas will typically be richer than manually-entered ones — including column types, nullability, constraints, and defaults. The Data Registry schema model may need to be extended to accommodate this additional metadata.
 
 Schema discovery is triggered by `dch.ingest()`. When the user ingests data from a source, they pass the Data Registry asset ID alongside the connection ID. DCH uses the asset ID to discover the source schema and asynchronously update the Data Registry asset — table registration is never blocked.
 
@@ -65,7 +67,7 @@ sequenceDiagram
 
     Note over DCH: Async: DCH updates<br/>Registry with discovered schema
 
-    DCH->>DR: POST /catalog/projects/{p}/<br/>collections/{c}/tables/claims-db<br/>with discovered schema
+    DCH->>DR: POST /v1/{p}/namespaces/{c}/<br/>generic-tables/claims-db<br/>with discovered schema
     DR-->>DR: Schema updated
 ```
 
@@ -74,6 +76,8 @@ Table registration returns immediately — the user does not wait for schema dis
 **Service-to-service authentication:** DCH uses the asset ID from the original table registration to POST the discovered schema back to the Data Registry. The authentication mechanism for this service-to-service call (e.g., dedicated ServiceAccount with `dataregistry-edit` permissions, or delegated user token) is an open question.
 
 ### Scenario 5: Cross-Component Lineage via OpenLineage
+
+Cross-component lineage enables users and platform components to answer key data provenance questions: *Where did this data come from?* *What downstream assets are affected if this source changes?* *What ingestion or transformation produced this dataset?* These questions are essential for impact analysis, debugging data quality issues, and compliance reporting.
 
 Both the Data Registry and DCH emit OpenLineage events at key moments in the data lifecycle to a shared OpenLineage-compatible server (e.g., Marquez). The server correlates events by matching dataset identifiers across producers, building an end-to-end lineage graph.
 
@@ -194,7 +198,7 @@ When DCH ingests data from an external source and the user has linked the result
 
 This allows the OpenLineage server to correlate the DCH ingestion event with the Data Registry dataset event for the same asset — building the lineage edge between the external source and the registered asset.
 
-The `dataregistry://` namespace scheme follows the pattern used by other OpenLineage integrations (e.g., Spark uses `spark://` for application-level namespaces). The `{rhai-namespace}` qualifier scopes identifiers to a Kubernetes namespace, consistent with the Data Registry SSAR authorization boundary.
+The `dataregistry://` namespace scheme follows the pattern used by other OpenLineage integrations (e.g., Spark uses `spark://` for application-level namespaces). The `{rhai-namespace}` qualifier scopes identifiers to a Kubernetes namespace, consistent with the Data Registry SAR authorization boundary.
 
 ## Open Questions
 
@@ -202,6 +206,8 @@ The `dataregistry://` namespace scheme follows the pattern used by other OpenLin
 2. **Service-to-service authentication for schema discovery.** DCH must POST discovered schema back to the Data Registry. The identity used for this call (dedicated ServiceAccount with `dataregistry-edit`, delegated user token, or other mechanism) is to be defined.
 3. **Asset UUID implementation.** Feast SavedDataset does not have a built-in UUID field. The Data Registry needs to add a persistent UUID to the Table and Volume metadata — either as a new field in the SavedDataset proto, or as a reserved property key in the existing tags map. The UUID must be generated once at registration time and remain immutable across renames and collection moves.
 4. **Schema drift handling.** If the source schema changes between ingestions, DCH may update the Registry with a different schema each time. A conflict resolution strategy (e.g., additive-only, version history, user confirmation) is needed.
+5. **Schema model extension.** Discovered schemas from external sources may include richer metadata (nullability, constraints, defaults) than the current Data Registry schema model supports. The schema model may need to be extended to store this additional metadata without losing fidelity.
+6. **Schema discoverability.** For tables with large schemas (dozens or hundreds of columns), users need the ability to search, filter, and browse schema metadata — both in the UI and via the API. The Data Registry API and UI design should account for this.
 
 ## Alternatives
 
@@ -235,6 +241,8 @@ A single component collects data lifecycle events from the Registry and DCH, the
 - **Schema drift from source changes.** Repeated ingestions from a changing source schema may update the Registry schema unpredictably. Without a conflict resolution strategy, users may see schema metadata that does not match their expectations.
 - **OpenLineage server is a new dependency.** Cross-component lineage requires deploying and operating an OpenLineage-compatible server. This adds infrastructure complexity and an additional failure domain.
 - **Asset UUID migration.** Adding UUIDs to existing assets (registered before the UUID feature ships) requires a one-time migration. Assets without UUIDs cannot participate in the lineage graph until migrated.
+- **Lineage reflects tracked operations, not underlying data changes.** The lineage graph is built from events emitted by instrumented components (Data Registry, DCH, KFP). Changes to underlying data that bypass these components (e.g., direct S3 writes) are not captured. This is consistent with how lineage works in other platforms — lineage tracks what instrumented producers report.
+- **Lineage event history retention.** Without event history retention on the OpenLineage server, the lineage graph reflects the latest state — point-in-time queries (e.g., "what was in this dataset on July 15th?") are not supported. Retention policies depend on the OpenLineage server deployment.
 
 ## Stakeholder Impacts
 
@@ -247,7 +255,7 @@ A single component collects data lifecycle events from the Registry and DCH, the
 ## References
 
 * [ADR-DR-0001: Data Registry for RHOAI (PR #150)](https://github.com/opendatahub-io/architecture-decision-records/pull/150)
-* [ADR-DR-0002: Data Registry and DCH Integration (PR #TBD)](https://github.com/opendatahub-io/architecture-decision-records/pull/153)
+* [ADR-DR-0002: Data Registry and DCH Integration (PR #153)](https://github.com/opendatahub-io/architecture-decision-records/pull/153)
 * [Data Connect Hub ADR (PR #149)](https://github.com/opendatahub-io/architecture-decision-records/pull/149)
 * [OpenLineage Spec](https://openlineage.io/docs/spec/object-model)
 * [Marquez — OpenLineage-compatible metadata server](https://marquezproject.ai/)
