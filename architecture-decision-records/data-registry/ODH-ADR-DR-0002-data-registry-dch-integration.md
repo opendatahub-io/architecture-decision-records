@@ -142,6 +142,8 @@ sequenceDiagram
 
 The user resolves the `connection_ref` by calling the DCH API with `?with_secret_info=true`, which returns the credential values inline (requires `secrets: get` RBAC permission). This avoids the need to mount connection secrets on the pod. DCH's role is managing the connection lifecycle (creation, credential rotation, auto-migration from RHAI Connections) and serving credentials on demand. The Data Registry's role is providing the table schema and metadata.
 
+**Note:** Clients may continue to use the current approach of mounting connection secrets as environment variables or files on their pods, as documented in [Alternative 1](#alternative-1-mounting-connection-secrets-on-pods). The `?with_secret_info=true` flow is an additional option — not a replacement for direct secret mounting.
+
 ### Scenario 2: User takes advantage of DCH Ingestion to access data - PostgreSQL Table via DCH Ingestion API
 
 A data scientist discovers a PostgreSQL table in the Data Registry. They use the DCH Python SDK to ingest data — without needing database credentials or PostgreSQL driver libraries on their pod.
@@ -192,6 +194,8 @@ sequenceDiagram
 
 Local storage is managed by OpenShift (PersistentVolume / PersistentVolumeClaim). The `connection_ref` points to the connection describing the PVC, but no credential retrieval via DCH is needed — the user is responsible for ensuring the PVC is mounted on their pod, via workbench storage configuration in the RHOAI Dashboard or by specifying the volume in their pod spec.
 
+**Broader applicability:** This scenario is not limited to PVC-backed volumes. Any RHAI Connection type can follow this pattern — the user mounts the connection secret directly on their pod (as environment variables or files) and accesses the data source without involving DCH or the Data Registry at runtime. This is the default approach today for RHAI Connections. The Data Registry is optional in this flow: users can continue to discover and use RHAI Connections through the RHOAI Dashboard exactly as they do today, whether or not the corresponding data asset is registered in the Data Registry.
+
 ### Edge Cases
 
 | Edge Case | Behavior |
@@ -208,21 +212,22 @@ Local storage is managed by OpenShift (PersistentVolume / PersistentVolumeClaim)
 
 ### Alternative 1: Mounting Connection Secrets on Pods
 
-Instead of retrieving credentials programmatically via `?with_secret_info=true`, users mount connection secrets directly on their pods as environment variables — either by attaching an RHAI Connection to a workbench via the RHAI Dashboard, or by mounting a DCH ExportedSecret via pod volume spec.
+Current (as of RHAI 3.5) RHAI Connections expose credentials as Kubernetes secrets that can be mounted on pods as environment variables. Users attach an RHAI Connection to a workbench via the RHAI Dashboard, and clients can continue to use this approach.
 
-**Why not chosen as the primary approach:**
+**Known restrictions with environment variable mounting:**
 
-- **Environment variable collisions.** Mounting connection secrets as environment variables on the pod causes conflicts when multiple connections use the same variable names (e.g., `AWS_ACCESS_KEY_ID`). RHAI connections currently enforce a restriction that only one connection of the same type (e.g., S3) can be attached to a workbench, specifically because of these environment variable name collisions. This makes it impractical for users who need to access multiple S3-compatible data sources from the same workbench.
-- **Workbench restart required.** Currently, a workbench must be restarted for new secrets to be attached to the pod. This means a user discovering a new data asset in the Data Registry would need to stop their workbench, attach the connection, restart, and resume their work — making the "find to use" flow disruptive and impractical.
-- **ExportedSecret complexity.** The DCH ExportedSecret approach (where the DCH operator creates a combined secret from DataConnection metadata and credentials) adds operational complexity — an additional operator watch loop, a new secret resource to manage, and the same pod-mounting limitations above.
+- **Environment variable collisions.** Mounting connection secrets as environment variables on the pod causes conflicts when multiple connections use the same variable names (e.g., `AWS_ACCESS_KEY_ID`). RHAI connections currently enforce a restriction that only one connection of the same type (e.g., S3) can be attached to a workbench, specifically because of these environment variable name collisions. This can be addressed by mounting secrets as files in different paths or by using environment variable prefixes in the pod descriptor.
+- **Workbench restart required.** A workbench must be restarted to attach a new connection to the pod — whether mounted as environment variables or files. For secrets already mounted as files, the kubelet updates the file contents automatically when credentials rotate, without requiring a restart.
 
-### Alternative 2: Credential Vending via Data Registry loadTable
+**DCH ExportedSecret:** When a DCH DataConnection is marked as `exportAsSecret`, the DCH service API layer automatically creates the exported secret — it is ready to use. The user specifies the secret name, so the user knows directly where to find it. The exported secret can then be mounted on pods following the same patterns described above.
 
-Iceberg engines (PyIceberg, Spark, Trino) expect `loadTable` to return credentials in the response `config` field — this is standard Iceberg REST Catalog credential vending (how Unity Catalog and Polaris work). If DCH had a credential resolution API, the Data Registry `loadTable` could call it internally and return credentials in `config`. Engines would get everything in one call — no separate DCH API call, no mounting secrets, no workbench restart.
+### Alternative 2: Credential Resolution via Data Registry loadTable
 
-This approach would improve Scenario 1 by eliminating the extra step of calling the DCH API with `?with_secret_info=true` — credentials would be vended as part of the standard Iceberg REST Catalog flow. However, it requires a new server-to-server integration between the Data Registry and DCH (the Registry would need to call DCH's credential resolution API during `loadTable`), which introduces a runtime dependency and is out of scope for the current release. This is tracked as a future integration scenario in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
+Iceberg engines (PyIceberg, Spark, Trino) expect `loadTable` to return credentials in the response `config` field — this is the standard Iceberg REST Catalog pattern (how Unity Catalog and Polaris work). If DCH had a credential resolution API, the Data Registry `loadTable` could call it internally and return credentials in `config`. Engines would get everything in one call — no separate DCH API call, no mounting secrets, no workbench restart.
 
-**Scoping note:** DCH returns credentials from Kubernetes secrets only (given proper RBAC permissions). There is no plan in DCH to integrate with cloud-native credential vending services (AWS STS, IBM Cloud IAM, GCP, Azure) or Vault. A future `loadTable` credential vending integration would be scoped to Kubernetes secret-based credentials resolved through DCH.
+This approach would improve Scenario 1 by eliminating the extra step of calling the DCH API with `?with_secret_info=true` — credentials would be returned as part of the standard Iceberg REST Catalog flow. However, it requires a new server-to-server integration between the Data Registry and DCH (the Registry would need to call DCH's credential resolution API during `loadTable`), which introduces a runtime dependency and is out of scope for the current release. This is tracked as a future integration scenario in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
+
+**Scoping note:** DCH returns credentials from Kubernetes secrets only (given proper RBAC permissions). There is no plan in DCH to integrate with cloud-native credential resolution services (AWS STS, IBM Cloud IAM, GCP, Azure) or Vault. A future `loadTable` credential resolution integration would be scoped to Kubernetes secret-based credentials resolved through DCH.
 
 ## Security and Privacy Considerations
 
