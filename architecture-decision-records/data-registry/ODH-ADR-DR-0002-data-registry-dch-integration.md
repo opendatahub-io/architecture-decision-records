@@ -65,7 +65,7 @@ In the table below we list the different Data Registry Asset Types and formats, 
 | Table | iceberg | S3 credentials via DCH API or RHAI secret | `{type: dch, id: uuid}` or `{type: rhai, id: secret-name}` | Direct (PyIceberg, Spark, Trino) |
 | Table | postgresql | DCH DataConnection | `{type: dch, id: uuid}` | DCH SDK |
 | Table | oci (OCI Artifact registry) | Credentials via DCH API or RHAI secret | `{type: dch, id: uuid}` or `{type: rhai, id: secret-name}` | Direct (user libraries) |
-| Volume | s3 | S3 credentials via DCH API or RHAI secret | `{type: dch, id: uuid}` or `{type: rhai, id: secret-name}` | Direct (user libraries) |
+| Volume | s3 | S3 credentials via DCH API or RHAI secret | `{type: dch, id: uuid}` or `{type: rhai, id: secret-name}` | DCH SDK (jsonl, binary via Flight) or Direct (user libraries) |
 | Volume | uri/pvc | Credentials via DCH API or RHAI secret, or OpenShift-managed (local PVC) | `{type: dch, id: uuid}` or `{type: rhai, id: secret-name}` or None (local) | Direct (user libraries / filesystem) |
 | Volume | hugging face (custom uri) | Credentials via DCH API or RHAI secret | `{type: dch, id: uuid}` or `{type: rhai, id: secret-name}` | Direct (user libraries) |
 
@@ -157,7 +157,7 @@ sequenceDiagram
     DR-->>User: table metadata<br/>format: postgresql<br/>connection_ref: {type: dch,<br/>id: 550e8400-...}<br/>schema: [claim_id, status, amount]
 
     User->>DCH: dch.ingest(connection_id="550e8400-...",<br/>query="SELECT * FROM claims")
-    Note over User,DCH: Headers: Authorization, x-tenant-id,<br/>x-dch-connection-id
+    Note over User,DCH: Headers: Authorization, x-tenant-id,<br/>x-data-connection-id
 
     DCH->>PG: Connect using stored credentials<br/>Execute query
     PG-->>DCH: Result rows
@@ -167,7 +167,7 @@ sequenceDiagram
 The user never sees database credentials. DCH handles driver dependencies, connection pooling, and credential management. The Data Registry provides the `connection_ref` that links the table asset to the right DCH DataConnection.
 
 This pattern is essential for:
-- Non-S3 data sources (e.g., PostgreSQL) where credential mounting alone is insufficient for data ingestion
+- Data sources where users benefit from DCH handling the connection and data transfer (e.g., PostgreSQL, S3 with jsonl/binary formats)
 - Environments where credential exposure to user pods must be minimized
 - Clients that do not want to install and maintain database-specific driver libraries
 
@@ -221,6 +221,8 @@ Instead of retrieving credentials programmatically via `?with_secret_info=true`,
 Iceberg engines (PyIceberg, Spark, Trino) expect `loadTable` to return credentials in the response `config` field — this is standard Iceberg REST Catalog credential vending (how Unity Catalog and Polaris work). If DCH had a credential resolution API, the Data Registry `loadTable` could call it internally and return credentials in `config`. Engines would get everything in one call — no separate DCH API call, no mounting secrets, no workbench restart.
 
 This approach would improve Scenario 1 by eliminating the extra step of calling the DCH API with `?with_secret_info=true` — credentials would be vended as part of the standard Iceberg REST Catalog flow. However, it requires a new server-to-server integration between the Data Registry and DCH (the Registry would need to call DCH's credential resolution API during `loadTable`), which introduces a runtime dependency and is out of scope for the current release. This is tracked as a future integration scenario in [ADR-DR-0003](https://github.com/opendatahub-io/architecture-decision-records/pull/154).
+
+**Scoping note:** DCH returns credentials from Kubernetes secrets only (given proper RBAC permissions). There is no plan in DCH to integrate with cloud-native credential vending services (AWS STS, IBM Cloud IAM, GCP, Azure) or Vault. A future `loadTable` credential vending integration would be scoped to Kubernetes secret-based credentials resolved through DCH.
 
 ## Security and Privacy Considerations
 
