@@ -77,7 +77,7 @@ DCH auto-migrates existing RHAI Connections by watching labeled Kubernetes secre
 
 For Scenario 1, users need direct access to connection credentials (e.g., S3 keys) without relying on DCH ingestion APIs. Rather than requiring users to mount the connection secret onto their pod — which can cause conflicts when multiple connections use the same environment variable names (e.g., `AWS_ACCESS_KEY_ID`) — DCH supports retrieving credentials programmatically:
 
-```
+```http
 GET /api/v1/data/connections/{id}?with_secret_info=true
 ```
 
@@ -205,8 +205,9 @@ Local storage is managed by OpenShift (PersistentVolume / PersistentVolumeClaim)
 | DCH DataConnection exists but is not ready | UI shows connection status. Asset is browsable in the Data Registry, but accessing data may fail. UI warns about connection state. |
 | Asset registered without `connection_ref` | Valid for local PVC volumes and assets where the user manages access independently. |
 | RHAI Connection after DCH auto-migration | Both `type: rhai` and `type: dch` references remain valid. The underlying Kubernetes secret is preserved by DCH during migration. |
+| `connection_ref` type does not match the asset format | The consuming client must validate that the connection type is compatible with the asset format before resolving credentials — e.g., reject PostgreSQL connection credentials for an Iceberg table, or S3 credentials for a PostgreSQL ingestion. Mismatched references should be surfaced as a validation error, not silently resolved. |
 
-**Connection status visibility:** The Data Registry stores `connection_ref` as metadata — it does not track or validate the connection's runtime status. When an asset has a `connection_ref`, the consuming client (notebook, pipeline, agent, Data Hub UI) must call the DCH API (`GET /api/v1/data/connections/{id}`) to determine whether the connection exists, is ready, or is accessible to the current user. The Data Registry returns the asset regardless of connection state; it is the responsibility of the consuming client to check connection status and surface appropriate guidance — such as "connection not found", "connection not ready", or "insufficient permissions" — before the user attempts to access the data.
+**Connection status visibility:** The Data Registry stores `connection_ref` as metadata — it does not track or validate the connection's runtime status. When an asset has a `connection_ref`, the consuming client (notebook, pipeline, agent, Data Hub UI) resolves connection status through the path appropriate for the connection type: for `type: dch`, call the DCH API (`GET /api/v1/data/connections/{id}`) to determine whether the connection exists, is ready, or is accessible to the current user; for `type: rhai`, check the referenced Kubernetes secret directly in the asset's namespace. The Data Registry returns the asset regardless of connection state; it is the responsibility of the consuming client to check connection status and surface appropriate guidance — such as "connection not found", "connection not ready", or "insufficient permissions" — before the user attempts to access the data.
 
 ## Alternatives
 
@@ -241,7 +242,7 @@ The Data Registry defines three ClusterRoles that grant access to all registry r
 
 | ClusterRole | Access Level |
 |---|---|
-| `dataregistry-view` | Read-only access to all Data Registry resources (tables, volumes, collections, search) |
+| `dataregistry-view` | Read-only access to all Data Registry resources (namespaces, tables, volumes) |
 | `dataregistry-edit` | Read and write access to Data Registry resources |
 | `dataregistry-admin` | Full access including administrative operations |
 
@@ -281,7 +282,17 @@ The table above covers the consumption side — discovering and using data. Regi
 
 DCH does not introduce new K8s Secret permissions — credentials still live in standard Kubernetes secrets, and mounting or reading them requires the same `secrets: get` permission as any other secret. Creating a DataConnection via the DCH API requires `data-connection: create`; if the underlying secret does not yet exist, `secrets: create` is also needed.
 
-Both components use ClusterRole aggregation labels to auto-inject permissions into standard OpenShift roles (`view`, `edit`, `admin`). Users with existing namespace roles automatically receive the corresponding Data Registry and DCH permissions without additional RBAC configuration. The specific aggregation label selectors for each component are TBD — to be defined in the respective Data Registry and DCH ADRs.
+Both components use ClusterRole aggregation labels to auto-inject permissions into standard OpenShift roles (`view`, `edit`, `admin`). Users with existing namespace roles automatically receive the corresponding Data Registry and DCH permissions without additional RBAC configuration.
+
+**Aggregated roles summary:**
+
+| OpenShift Role | Data Registry ClusterRole | Data Registry Verbs | DCH Permissions |
+|---|---|---|---|
+| `view` | `dataregistry-view` | `get`, `list` on namespaces, tables, volumes | `data-connection: read`, `data-store: get` |
+| `edit` | `dataregistry-edit` | `get`, `list`, `create`, `update`, `delete` on namespaces, tables, volumes | `data-connection: create, read, patch, delete`, `data-store: get` |
+| `admin` | `dataregistry-admin` | Same as edit (future: grant/revoke capabilities) | Full DCH access |
+
+For most deployments, this means zero additional RBAC configuration — users who can already work in a namespace can automatically use the Data Registry and DCH in that namespace.
 
 ### Credential Isolation
 
