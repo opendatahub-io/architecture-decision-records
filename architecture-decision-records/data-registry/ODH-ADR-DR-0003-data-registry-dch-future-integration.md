@@ -28,10 +28,10 @@ These scenarios build on the 3.6 integration contract defined in [ADR-DR-0002](h
 
 ## Goals
 
-* Define the automated schema discovery flow: how DCH discovers source schemas and updates the Data Registry asynchronously
-* Define the cross-component lineage model: OpenLineage event types, asset identifiers, and the common namespace convention
+* Define the schema discovery flow for populating asset schemas from external data sources
+* Define the cross-component lineage model for tracking data provenance across the Data Registry and DCH
 * Establish the asset UUID requirement for stable lineage correlation
-* Identify open questions and design decisions that must be resolved before implementation
+* Identify open questions and design decisions for further exploration
 
 ## Non-Goals
 
@@ -41,13 +41,15 @@ These scenarios build on the 3.6 integration contract defined in [ADR-DR-0002](h
 
 ## How
 
-### Scenario 4: Automated Schema Discovery via DCH
+### Scenario 4: Schema Discovery via DCH
 
-In 3.6, when a user registers a non-Iceberg table (e.g., PostgreSQL) in the Data Registry, they provide the schema manually (column names and types). This scenario eliminates manual entry by having DCH discover the schema from the data source and asynchronously update the Data Registry.
+In 3.6, when a user registers a non-Iceberg table (e.g., PostgreSQL) in the Data Registry, they provide the schema manually (column names and types). This scenario eliminates manual entry by letting the user request schema discovery as a separate operation — the Data Registry orchestrates the introspection by calling DCH, which connects to the data source and returns the discovered schema.
 
-Discovered schemas will typically be richer than manually-entered ones — including column types, nullability, constraints, and defaults. The Data Registry schema model may need to be extended to accommodate this additional metadata.
+This approach follows the pattern established by Unity Catalog and similar metadata registries: the catalog is the metadata store, not the introspection engine. Schema discovery is delegated to the connector layer (DCH) which already holds the credentials and knows how to connect to each data source type. The Data Registry acts as the orchestrator — it receives the user's request, delegates introspection to DCH, and stores the result.
 
-Schema discovery is triggered by `dch.ingest()`. When the user ingests data from a source, they pass the Data Registry asset ID alongside the connection ID. DCH uses the asset ID to discover the source schema and asynchronously update the Data Registry asset — table registration is never blocked.
+Discovered schemas will typically be richer than manually-entered ones — including column types, nullability, constraints, and defaults. The Data Registry schema model may need to be extended to accommodate this additional metadata (see Open Questions).
+
+Schema discovery is a **separate API** from asset registration. The user first registers the table (with or without a manual schema), then calls the discover-schema endpoint to populate or enrich the schema from the live data source.
 
 ```mermaid
 sequenceDiagram
@@ -56,24 +58,21 @@ sequenceDiagram
     participant DCH as DCH Service
     participant PG as PostgreSQL
 
-    User->>DR: POST register table<br/>format: postgresql<br/>connection_ref: {type: dch, id: 550e8400-...}<br/>schema: (empty)
-    DR-->>User: Registered table<br/>asset_id: insurance-demo.claims.claims-db<br/>schema: pending
+    User->>DR: POST register table<br/>format: postgresql<br/>connection_ref: {type: dch, id: 550e8400-...}<br/>schema: (empty or manual)
+    DR-->>User: Registered table<br/>asset_id: insurance-demo.claims.claims-db
 
-    User->>DCH: dch.ingest(<br/>connection_id="550e8400-...",<br/>asset_id="insurance-demo.claims.claims-db",<br/>query="SELECT * FROM claims")
-
-    DCH->>PG: Execute query + discover schema<br/>SELECT column_name, data_type<br/>FROM information_schema.columns<br/>WHERE table_name = 'claims'
-    PG-->>DCH: Result rows +<br/>[claim_id VARCHAR, status VARCHAR,<br/>amount NUMERIC]
-    DCH-->>User: Arrow RecordBatch
-
-    Note over DCH: Async: DCH updates<br/>Registry with discovered schema
-
-    DCH->>DR: POST /v1/{p}/namespaces/{c}/<br/>generic-tables/claims-db<br/>with discovered schema
-    DR-->>DR: Schema updated
+    User->>DR: POST /v1/{p}/namespaces/{ns}/<br/>tables/{table}/discover-schema
+    DR->>DCH: Introspect source schema<br/>connection_id: 550e8400-...<br/>table: claims
+    DCH->>PG: SELECT column_name, data_type,<br/>is_nullable, column_default<br/>FROM information_schema.columns<br/>WHERE table_name = 'claims'
+    PG-->>DCH: [claim_id VARCHAR NOT NULL,<br/>status VARCHAR, amount NUMERIC]
+    DCH-->>DR: Discovered schema
+    DR-->>DR: Store schema on asset
+    DR-->>User: 200 OK — schema populated
 ```
 
-Table registration returns immediately — the user does not wait for schema discovery. When the user subsequently ingests data via DCH, the `asset_id` parameter tells DCH which Data Registry asset to update. DCH discovers the source schema as part of the ingestion, then asynchronously patches the Registry asset with the column names and types. On subsequent lookups, the table metadata includes the populated schema.
+The discover-schema call is synchronous from the user's perspective — the Data Registry calls DCH, waits for the introspection result, stores it, and returns the populated schema. This keeps the interaction simple and avoids the need for polling or webhooks. For large or slow data sources, the API may support an async mode in a future iteration.
 
-**Service-to-service authentication:** DCH uses the asset ID from the original table registration to POST the discovered schema back to the Data Registry. The authentication mechanism for this service-to-service call (e.g., dedicated ServiceAccount with `dataregistry-edit` permissions, or delegated user token) is an open question.
+**Scope:** Schema discovery is available only for assets with `connection_ref.type: dch`, since DCH is the component that holds the connection credentials and connector logic. Assets with `connection_ref.type: rhai` (Kubernetes-secret-backed connections) are not supported in the initial implementation — extending discovery to RHAI connections is a potential future enhancement.
 
 ### Scenario 5: Cross-Component Lineage via OpenLineage
 
@@ -117,20 +116,20 @@ sequenceDiagram
     participant S3 as S3 / MinIO
 
     User->>DR: Register claims-db table<br/>format: postgresql<br/>connection_ref: {type: dch, id: 550e8400-...}
-    DR->>OL: RunEvent<br/>namespace: dataregistry://ml-team<br/>name: insurance-demo.claims.claims-db
+    DR->>OL: RunEvent<br/>namespace: dataregistry://ml-team<br/>name: 7f3b1a2c-...(asset UUID)
 
     User->>DCH: dch.ingest(<br/>connection_id="550e8400-...",<br/>asset_id="insurance-demo.claims.claims-db")
     DCH->>PG: Query claims data
     PG-->>DCH: Result rows
     DCH-->>User: Arrow RecordBatch
-    DCH->>OL: RunEvent<br/>input: postgresql://db:5432/analytics<br/>/public.claims<br/>output: dataregistry://ml-team<br/>/insurance-demo.claims.claims-db
+    DCH->>OL: RunEvent<br/>input: postgresql://db:5432/analytics<br/>/public.claims<br/>output: dataregistry://ml-team<br/>/7f3b1a2c-...(asset UUID)
 
     User->>KFP: Submit transformation pipeline
     KFP->>S3: Read raw claims, write enriched claims
-    KFP->>OL: RunEvent<br/>input: dataregistry://ml-team<br/>/insurance-demo.claims.claims-db<br/>output: dataregistry://ml-team<br/>/insurance-demo.claims.enriched-claims
+    KFP->>OL: RunEvent<br/>input: dataregistry://ml-team<br/>/7f3b1a2c-...(asset UUID)<br/>output: dataregistry://ml-team<br/>/a2b3c4d5-...(asset UUID)
 
     User->>DR: Register enriched-claims table<br/>format: iceberg<br/>connection_ref: {type: dch, id: 550e8400-...}
-    DR->>OL: RunEvent<br/>namespace: dataregistry://ml-team<br/>name: insurance-demo.claims.enriched-claims<br/>schema facet: [claim_id, status,<br/>amount, risk_score]
+    DR->>OL: RunEvent<br/>namespace: dataregistry://ml-team<br/>name: a2b3c4d5-...(asset UUID)<br/>schema facet: [claim_id, status,<br/>amount, risk_score]
 ```
 
 The OpenLineage server now holds a lineage graph: `PostgreSQL (claims) -> DCH ingestion -> claims-db (registered) -> KFP transform -> enriched-claims (Iceberg)`. A lineage UI (e.g., Marquez) can render this as a DAG.
@@ -168,17 +167,17 @@ Example OpenLineage RunEvent emitted by DCH during ingestion:
   }],
   "outputs": [{
     "namespace": "dataregistry://ml-team",
-    "name": "insurance-demo.claims.auto-claims",
+    "name": "7f3b1a2c-9d4e-5f6a-b7c8-d9e0f1a2b3c4",
     "facets": {
       "dataRegistryAsset": {
-        "assetUuid": "7f3b1a2c-9d4e-5f6a-b7c8-d9e0f1a2b3c4"
+        "displayPath": "insurance-demo.claims.auto-claims"
       }
     }
   }]
 }
 ```
 
-The `connectionId` on the run tells you *which connection was used* for this ingestion. The `assetUuid` on the output dataset is the stable identifier that links this event to the dataset node in the lineage graph — even if the asset is later renamed or moved between collections.
+The `connectionId` on the run tells you *which connection was used* for this ingestion. The asset UUID in the output dataset `name` field is the stable identifier that links this event to the dataset node in the lineage graph — even if the asset is later renamed or moved between collections. The human-readable path is available in `facets.dataRegistryAsset.displayPath` for UI display.
 
 #### Proposed Common Asset Identifier
 
@@ -188,13 +187,13 @@ OpenLineage identifies datasets with two fields: `namespace` (the data source or
 
 | Dataset Location | OpenLineage namespace | OpenLineage name | Example |
 |---|---|---|---|
-| Data Registry asset | `dataregistry://{rhai-namespace}` | `{project}.{collection}.{asset}` | `dataregistry://ml-team` / `insurance-demo.claims.auto-claims` |
+| Data Registry asset | `dataregistry://{rhai-namespace}` | `{asset-uuid}` | `dataregistry://ml-team` / `7f3b1a2c-9d4e-5f6a-b7c8-d9e0f1a2b3c4` |
 | External database (DCH source) | `{protocol}://{host}:{port}/{database}` | `{schema}.{table}` | `postgresql://db.example.com:5432/analytics` / `public.claims` |
 | S3 storage | `s3://{bucket}` | `{path}` | `s3://poc-underwriting` / `insurance-demo/claims/auto_claims` |
 
 When DCH ingests data from an external source and the user has linked the result to a Data Registry asset (via `connection_ref`), DCH emits a RunEvent with:
 - **input**: the external source identifier (e.g., `postgresql://...` / `public.claims`)
-- **output**: the Data Registry asset identifier (e.g., `dataregistry://ml-team` / `insurance-demo.claims.enriched-claims`)
+- **output**: the Data Registry asset identifier (e.g., `dataregistry://ml-team` / `{asset-uuid}`)
 
 This allows the OpenLineage server to correlate the DCH ingestion event with the Data Registry dataset event for the same asset — building the lineage edge between the external source and the registered asset.
 
@@ -202,28 +201,41 @@ The `dataregistry://` namespace scheme follows the pattern used by other OpenLin
 
 ## Open Questions
 
-1. **Schema discovery API contract.** The `dch.ingest()` call will accept an `asset_id` parameter so DCH can asynchronously update the Data Registry with discovered schema. The exact API contract (new parameter on existing ingestion endpoint vs. separate schema discovery endpoint) is to be defined.
-2. **Service-to-service authentication for schema discovery.** DCH must POST discovered schema back to the Data Registry. The identity used for this call (dedicated ServiceAccount with `dataregistry-edit`, delegated user token, or other mechanism) is to be defined.
+1. **Schema discovery API contract.** The Data Registry exposes a `discover-schema` endpoint that calls DCH to introspect the data source. The exact DCH API contract for schema introspection (e.g., Flight `GetSchema` command, dedicated endpoint, or Python SDK call) is to be defined with the DCH team.
+2. **Service-to-service authentication for schema discovery.** The Data Registry must call DCH to introspect the data source schema. The identity used for this call (delegated user token, dedicated ServiceAccount, or other mechanism) is to be defined.
 3. **Asset UUID implementation.** Feast SavedDataset does not have a built-in UUID field. The Data Registry needs to add a persistent UUID to the Table and Volume metadata — either as a new field in the SavedDataset proto, or as a reserved property key in the existing tags map. The UUID must be generated once at registration time and remain immutable across renames and collection moves.
-4. **Schema drift handling.** If the source schema changes between ingestions, DCH may update the Registry with a different schema each time. A conflict resolution strategy (e.g., additive-only, version history, user confirmation) is needed.
+4. **Schema drift handling.** If the source schema changes between schema discovery calls, the discovered schema may differ from the previously stored one. A conflict resolution strategy (e.g., additive-only, version history, user confirmation before overwrite) is needed.
 5. **Schema model extension.** Discovered schemas from external sources may include richer metadata (nullability, constraints, defaults) than the current Data Registry schema model supports. The schema model may need to be extended to store this additional metadata without losing fidelity.
 6. **Schema discoverability.** For tables with large schemas (dozens or hundreds of columns), users need the ability to search, filter, and browse schema metadata — both in the UI and via the API. The Data Registry API and UI design should account for this.
+7. **DCH lineage context.** For DCH to include the Data Registry asset UUID in lineage events, it needs to receive the asset context. For schema discovery (where the Data Registry calls DCH), the Registry can pass the asset UUID in the request. For user-initiated ingest flows where the user may not provide asset context, the correlation mechanism is TBD.
 
 ## Alternatives
 
-### Alternative 1: Synchronous Schema Discovery at Registration
+### Alternative 1: Schema Discovery Coupled to Ingest
+
+DCH discovers the schema during `dch.ingest()` and asynchronously pushes the discovered schema to the Data Registry.
+
+**Why not:** Multiple issues identified during review:
+
+- **Query-based schema is incomplete.** DCH dynamically computes the Flight schema for the user's query, not for the entire table. If the user queries `SELECT col_a, col_b FROM claims`, DCH would need to run a separate query (`information_schema.columns`) to get the full table schema — parsing the user query to extract the table name, with performance implications from running an extra query on every ingest call.
+- **Eventual consistency.** The async update creates a window where the Registry has no schema or a stale schema. Consumers reading the asset between registration and the async patch make decisions on incomplete metadata.
+- **Tight coupling.** DCH writing directly to the Registry creates a direct dependency. DCH must know the Registry API, authenticate to it, and handle write failures — responsibilities outside its core data movement function.
+- **Placeholder assets.** If ingestion never happens (or DCH is unavailable), registered tables remain permanently without schema, creating a poor user experience.
+- **Concurrency issues.** Parallel ingestion requests could race to update the schema, with no guarantee of ordering or idempotency.
+
+### Alternative 2: Synchronous Schema Discovery at Registration
 
 The Data Registry calls DCH synchronously during table registration to discover the schema before returning to the user.
 
-**Why not:** Blocks table registration on DCH availability. Registration fails if DCH is down. Users cannot register tables when DCH is not installed in the namespace.
+**Why not:** Blocks table registration on DCH availability. Registration fails if DCH is down. Users cannot register tables when DCH is not installed in the namespace. The chosen approach (separate discover-schema API) gives the user control over when to discover the schema without coupling it to registration.
 
-### Alternative 2: No Schema Discovery — Manual Entry Only
+### Alternative 3: No Schema Discovery — Manual Entry Only
 
 Users always provide schema manually at registration time.
 
 **Why not:** Acceptable for small schemas but impractical for tables with dozens or hundreds of columns. Error-prone and time-consuming. Does not scale.
 
-### Alternative 3: Centralized Lineage Emitter
+### Alternative 4: Centralized Lineage Emitter
 
 A single component collects data lifecycle events from the Registry and DCH, then emits consolidated OpenLineage events.
 
@@ -231,13 +243,14 @@ A single component collects data lifecycle events from the Registry and DCH, the
 
 ## Security and Privacy Considerations
 
-- **Service-to-service schema updates.** DCH writing schema data to the Data Registry requires a controlled authentication mechanism. The identity should have minimal permissions (write access to schema metadata only, not full `dataregistry-admin`).
+- **Service-to-service schema introspection.** The Data Registry calling DCH for schema discovery requires a controlled authentication mechanism. The identity should have minimal permissions — sufficient to call DCH's schema introspection API but not to initiate ingestion or modify connections.
 - **Lineage data sensitivity.** OpenLineage events contain dataset names, namespaces, and schema metadata. The lineage server must enforce access controls consistent with the Data Registry and DCH authorization models — a user should not see lineage for assets they cannot access in the Registry.
+- **Credential sanitization in lineage events.** External source identifiers (e.g., PostgreSQL connection URLs) may contain embedded credentials. Components emitting OpenLineage events must strip credentials from namespace URIs before emission — the namespace should contain only `host:port/database`, never usernames or passwords. This is a responsibility of each emitting component (DCH, KFP).
 - **Asset UUID as stable identifier.** The asset UUID is not a credential, but it is a stable correlation key. If exposed outside the cluster, it could be used to track dataset identity across environments. The UUID should be treated as internal metadata.
 
 ## Risks
 
-- **Schema discovery depends on DCH availability.** If DCH is down when a user calls `dch.ingest()` with an `asset_id`, the schema update does not happen. The table remains with its manually-entered (or empty) schema until a successful ingestion occurs.
+- **Schema discovery depends on DCH availability.** If DCH is down when the Data Registry calls it for schema introspection, the discover-schema request fails. The table retains its manually-entered (or empty) schema until DCH is available and the user retries.
 - **Schema drift from source changes.** Repeated ingestions from a changing source schema may update the Registry schema unpredictably. Without a conflict resolution strategy, users may see schema metadata that does not match their expectations.
 - **OpenLineage server is a new dependency.** Cross-component lineage requires deploying and operating an OpenLineage-compatible server. This adds infrastructure complexity and an additional failure domain.
 - **Asset UUID migration.** Adding UUIDs to existing assets (registered before the UUID feature ships) requires a one-time migration. Assets without UUIDs cannot participate in the lineage graph until migrated.
@@ -248,8 +261,8 @@ A single component collects data lifecycle events from the Registry and DCH, the
 
 | Group | Key Contacts | Date | Impacted? |
 | ----- | ------------ | ---- | --------- |
-| Data Registry | Ana Biazetti | 2026-08-05 | Yes — must implement asset UUID and accept schema updates from DCH |
-| Data Connect Hub | Marius Danciu | 2026-08-05 | Yes — must implement schema discovery on `dch.ingest()` and emit OpenLineage events |
+| Data Registry | Ana Biazetti | 2026-08-05 | Yes — must implement asset UUID, discover-schema API, and OpenLineage event emission |
+| Data Connect Hub | Marius Danciu | 2026-08-05 | Yes — must expose schema introspection API for Data Registry to call, and emit OpenLineage events for ingestion runs |
 | Data Science Pipelines (KFP) | TBD | 2026-08-05 | Yes — KFP pipelines emit OpenLineage RunEvents in the lineage scenario |
 
 ## References
