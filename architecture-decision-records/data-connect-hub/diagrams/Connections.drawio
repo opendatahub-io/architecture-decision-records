@@ -1,6 +1,6 @@
 <mxfile host="Electron" pages="5">
   <diagram id="gDweF5NzPNWK_yuZlWTg" name="Cluster">
-    <mxGraphModel dx="2398" dy="1014" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="2034" dy="1875" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -11,7 +11,7 @@
           <mxGeometry height="460" width="390" x="640" y="300" as="geometry" />
         </mxCell>
         <mxCell id="c5ll-w2fBzAtoEW1Apa6-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;verticalAlign=top;align=right;dashed=1;arcSize=4;fillColor=none;fontColor=#333333;strokeColor=#666666;strokeWidth=2;" value="opendatahub.&amp;nbsp; namespace&amp;nbsp;&amp;nbsp;" vertex="1">
-          <mxGeometry height="170" width="570" x="50" y="40" as="geometry" />
+          <mxGeometry height="260" width="570" x="50" y="-50" as="geometry" />
         </mxCell>
         <mxCell id="c5ll-w2fBzAtoEW1Apa6-6" edge="1" parent="1" source="c5ll-w2fBzAtoEW1Apa6-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="c5ll-w2fBzAtoEW1Apa6-5">
           <mxGeometry relative="1" as="geometry">
@@ -99,10 +99,10 @@
         </mxCell>
         <mxCell id="2zibwWPWx7204_rjGXAo-4" connectable="0" parent="2zibwWPWx7204_rjGXAo-3" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="DSC managed" vertex="1">
           <mxGeometry relative="1" x="0.0298" y="-2" as="geometry">
-            <mxPoint x="50" as="offset" />
+            <mxPoint x="50" y="-86" as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="2zibwWPWx7204_rjGXAo-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="OpenDataHub Operator" vertex="1">
+        <mxCell id="2zibwWPWx7204_rjGXAo-2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data Operator" vertex="1">
           <mxGeometry height="40" width="180" x="180" y="60" as="geometry" />
         </mxCell>
         <mxCell id="Qx5GWgKKPwwzqSyvEAOn-2" edge="1" parent="1" source="5Fdv3TRyCuLCrD0Ucrp4-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="c5ll-w2fBzAtoEW1Apa6-5">
@@ -168,6 +168,12 @@
         </mxCell>
         <mxCell id="Qx5GWgKKPwwzqSyvEAOn-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Vault&amp;nbsp;&lt;div&gt;VSO&lt;/div&gt;" vertex="1">
           <mxGeometry height="50" width="130" x="1110" y="484" as="geometry" />
+        </mxCell>
+        <mxCell id="9yCiu5OvNjbeXF3zEi1z-2" edge="1" parent="1" source="9yCiu5OvNjbeXF3zEi1z-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="2zibwWPWx7204_rjGXAo-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="9yCiu5OvNjbeXF3zEi1z-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="OpenDataHub Operator" vertex="1">
+          <mxGeometry height="40" width="180" x="180" y="-20" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
@@ -376,7 +382,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="YCaP9GA6LyfOY9V5phUI" name="hard-tenancy">
-    <mxGraphModel dx="2191" dy="879" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1688" dy="549" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -458,7 +464,7 @@
         <mxCell id="Ih0-LnttAg41ibsyvsvJ-4" edge="1" parent="1" source="Ih0-LnttAg41ibsyvsvJ-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="Ih0-LnttAg41ibsyvsvJ-2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="Ih0-LnttAg41ibsyvsvJ-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="OpenDataHub Operator" vertex="1">
+        <mxCell id="Ih0-LnttAg41ibsyvsvJ-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data Operator" vertex="1">
           <mxGeometry height="40" width="160" x="1030" y="200" as="geometry" />
         </mxCell>
         <mxCell id="kfPxBpkpRvg6TOZGirD0-2" edge="1" parent="1" source="kfPxBpkpRvg6TOZGirD0-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="b5oSKLPg8KPdu3rNIEfh-2">
@@ -507,11 +513,17 @@
         <mxCell id="BXV1yqOolo1MBqmNCt_s-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Credentials Secret" vertex="1">
           <mxGeometry height="40" width="160" x="850" y="500" as="geometry" />
         </mxCell>
+        <mxCell id="bAX7IkiMA1AsIBONo_4x-2" edge="1" parent="1" source="bAX7IkiMA1AsIBONo_4x-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="Ih0-LnttAg41ibsyvsvJ-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="bAX7IkiMA1AsIBONo_4x-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="OpenDataHub Operator" vertex="1">
+          <mxGeometry height="40" width="160" x="1030" y="130" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
   <diagram id="kI2DuiQNFtqnDPao_IBn" name="soft-tenancy">
-    <mxGraphModel dx="1437" dy="941" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="958" dy="628" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -536,8 +548,8 @@
         <mxCell id="4LVEs7yFaN2-CE1TdqQq-11" edge="1" parent="1" source="4LVEs7yFaN2-CE1TdqQq-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="4LVEs7yFaN2-CE1TdqQq-15">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="4LVEs7yFaN2-CE1TdqQq-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data-Connect-Hub&lt;div&gt;Service instances&amp;nbsp;&lt;/div&gt;" vertex="1">
-          <mxGeometry height="60" width="180" x="640" y="500" as="geometry" />
+        <mxCell id="4LVEs7yFaN2-CE1TdqQq-12" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data-Connect-Hub&lt;div&gt;Service instance&amp;nbsp;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="47.5" width="180" x="640" y="506.25" as="geometry" />
         </mxCell>
         <mxCell id="4LVEs7yFaN2-CE1TdqQq-15" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=9.17391304347828;shadow=1;" value="Postgres&lt;div&gt;metadata&lt;/div&gt;" vertex="1">
           <mxGeometry height="70" width="60" x="700" y="610" as="geometry" />
@@ -566,7 +578,7 @@
         <mxCell id="4LVEs7yFaN2-CE1TdqQq-20" edge="1" parent="1" source="4LVEs7yFaN2-CE1TdqQq-21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="4LVEs7yFaN2-CE1TdqQq-19">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="4LVEs7yFaN2-CE1TdqQq-21" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="OpenDataHub Operator" vertex="1">
+        <mxCell id="4LVEs7yFaN2-CE1TdqQq-21" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data Operator" vertex="1">
           <mxGeometry height="40" width="180" x="980" y="590" as="geometry" />
         </mxCell>
         <mxCell id="4LVEs7yFaN2-CE1TdqQq-22" edge="1" parent="1" source="4LVEs7yFaN2-CE1TdqQq-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="4LVEs7yFaN2-CE1TdqQq-5">
@@ -591,7 +603,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="4LVEs7yFaN2-CE1TdqQq-27" parent="1" style="rounded=1;whiteSpace=wrap;html=1;shadow=1;" value="HttpRoutes" vertex="1">
+        <mxCell id="4LVEs7yFaN2-CE1TdqQq-27" parent="1" style="rounded=1;whiteSpace=wrap;html=1;shadow=1;" value="HttpRoute" vertex="1">
           <mxGeometry height="40" width="90" x="640" y="440" as="geometry" />
         </mxCell>
         <mxCell id="AzMZEd90SqtOGDBnIb6b-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;glass=0;shadow=1;align=left;spacing=8;arcSize=12;" value="DataConnectiService&amp;nbsp;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;CR&lt;/span&gt;" vertex="1">
@@ -602,6 +614,12 @@
         </mxCell>
         <mxCell id="j4KMG-5JbQ_5gSW17ESy-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="Credentials Secret" vertex="1">
           <mxGeometry height="40" width="160" x="1260" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="w73K5ld4b0qyUH7fSf0A-2" edge="1" parent="1" source="w73K5ld4b0qyUH7fSf0A-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="4LVEs7yFaN2-CE1TdqQq-21">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="w73K5ld4b0qyUH7fSf0A-1" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="OpenDataHub Operator" vertex="1">
+          <mxGeometry height="40" width="180" x="980" y="660" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>
