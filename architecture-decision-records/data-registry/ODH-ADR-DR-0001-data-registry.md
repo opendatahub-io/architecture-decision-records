@@ -222,4 +222,4 @@ The Data Registry does not store or manage credentials. When registering a table
 
 | Reviewed by | Date | Notes |
 | ----------- | ---- | ----- |
-|             |      |       |
+|  @danielezonca   |   2027-08-14   |       |
