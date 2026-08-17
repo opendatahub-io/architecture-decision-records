@@ -138,7 +138,10 @@ spec:
 
 status:
   phase: Ready
-  externalHostName: example.myorg.com
+  addresses:
+    type: hostname
+    value: example.myorg.com
+
 ```
        
 
