@@ -96,9 +96,16 @@ We propose to build the DCH solution with multi-tenancy in mind right from its i
   - Tenants can no longer be distinguished by the hostname. Instead we will require the presence of the `x-tenant-id` header. This is similar to EvalHub and MLFlow approaches for multi-tenancy.
   - Tenants are segregated by a tenant-id field in the metadata store (Postgres)
 
+##### Tenancy mapping
+
+- At REST and gRPC API level the tenant is specified via `x-tenant-id` header
+- At metadata store level all records contain a `tenant-id` field that denotes the tenancy context.
+- At kube level the tenant is represented by the namepace. Thus for `x-tenant-id: team-a` the RoleBindings checked for SAR will need to live in the `team-a` namespace. Kube secrets that DataConnection REST records point to must live in the namespace with the same name as the tenant-id. In other words `tenant-id == namespace`
 
 ##### Note
 For the initial release we will adopt the soft tenancy approach as this implies less development and does not require a separate tenants discovery service.
+
+
 
 
 #### Service overview
