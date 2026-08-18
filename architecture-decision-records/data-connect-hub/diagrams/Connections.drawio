@@ -382,7 +382,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="YCaP9GA6LyfOY9V5phUI" name="hard-tenancy">
-    <mxGraphModel dx="1688" dy="549" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1442" dy="388" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -425,7 +425,7 @@
         <mxCell id="jkeFcgj1UpncEKOKjD9Q-3" edge="1" parent="1" source="_k7r-sZPs36TkGdYxlLC-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="jkeFcgj1UpncEKOKjD9Q-1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="_k7r-sZPs36TkGdYxlLC-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data-Connect-Hub&lt;div&gt;Service instance&amp;nbsp;&lt;/div&gt;&lt;div&gt;tenant 1&lt;/div&gt;" vertex="1">
+        <mxCell id="_k7r-sZPs36TkGdYxlLC-3" parent="1" style="rounded=0;whiteSpace=wrap;html=1;shadow=1;" value="Data-Connect-Hub&lt;div&gt;Service instance&amp;nbsp;&lt;/div&gt;&lt;div&gt;tenant 2&lt;/div&gt;" vertex="1">
           <mxGeometry height="60" width="180" x="480" y="290" as="geometry" />
         </mxCell>
         <mxCell id="jkeFcgj1UpncEKOKjD9Q-1" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=9.17391304347828;shadow=1;" value="Postgres" vertex="1">
