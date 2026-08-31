@@ -15,6 +15,12 @@
 
 How the ModelExpress metadata service is deployed on a cluster: how many instances run, where, and in which namespace its metadata CRs (`ModelMetadata`, `ModelCacheEntry`) live. The decision: a shared cluster singleton in a system namespace by default, with namespace-scoped instances as an opt-in isolation flow.
 
+## Background
+
+ModelExpress splits into a control plane and a data plane. The control plane is the metadata service this ADR covers: a gRPC service that tracks which models exist and where, so a new replica can find a peer that already holds the weights. The data plane moves the bytes, using [NIXL](https://github.com/ai-dynamo/nixl) as the transport library for GPU-to-GPU P2P transfer over RDMA-capable fabrics: InfiniBand, RoCE, EFA, or multi-node NVLink (MNNVL).
+
+The hardware requirement applies only to the data plane. The metadata service runs on any cluster, and on nodes without an RDMA fabric ModelExpress falls back through its loading chain (ModelStreamer, GPUDirect Storage, the engine's native loader), still using the shared metadata and download coordination. The deployment model below is therefore independent of node hardware; the P2P fast path lights up where the fabric exists.
+
 ## Why
 
 ModelExpress deduplicates model downloads and coordinates peer-to-peer weight transfer between inference workloads. Its metadata service tracks which models exist on the cluster and where, using namespaced CRs as its state store. The benefit grows with the number of workloads sharing one metadata view: two namespaces serving the same model only deduplicate if they share a metadata service. That argues for one shared instance. Some tenants, however, must not expose even model names across namespace boundaries, so an isolated topology has to exist too.
