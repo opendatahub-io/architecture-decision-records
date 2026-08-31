@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-08-31 |
 | Scope          | ModelExpress |
-| Status         | Approved |
+| Status         | Draft |
 | Authors        | [Will Eaton](@wseaton) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
