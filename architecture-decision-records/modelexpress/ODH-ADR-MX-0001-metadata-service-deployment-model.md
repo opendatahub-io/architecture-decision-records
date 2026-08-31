@@ -63,6 +63,13 @@ The metadata service is deployed via a namespaced `ModelExpressServer` CR reconc
 
 Metadata is low sensitivity (model names, source types, cache locations), but model names alone can reveal what a tenant is working on; the namespace-scoped topology covers that case. In the shared topology, tenants cannot read the system namespace's CRs and reach the service only over gRPC gated by the ServiceAccount allowlist. Token validation results are cached (`cacheTtlSecs`, default 60s), so a revoked ServiceAccount retains access up to the TTL.
 
+### Possible attacks
+
+* **Weight poisoning via peer registration.** In P2P mode, replicas that hold a model are the cache: an allowlisted workload can register as a source and serve tampered weights or JIT artifacts to every new replica that selects it. Upstream checksums (per-chunk CRCs, SHA-256-sealed artifact manifests) catch corruption in transit but not a malicious peer, because the peer authors its own manifest. The allowlist is therefore the trust boundary: admitting a ServiceAccount to a shared instance means trusting it to serve weights to all consumers. Admins should allowlist only workloads they would let publish models cluster-wide; tenants that cannot extend that trust belong on a namespace-scoped instance, which bounds the blast radius to the namespace.
+* **Metadata CR tampering.** Write access to `ModelMetadata`/`ModelCacheEntry` CRs in the service's namespace allows redirecting peers to attacker-controlled sources without touching the service at all. Only the server's ServiceAccount needs write on those CRs; no tenant RBAC should reach the system namespace.
+* **Cache poisoning.** Write access to a shared cache volume poisons checkpoints for every consumer of that instance. Cache volumes should be mounted only by the service's own pods.
+* **Registration flooding.** An allowlisted caller can register bogus models to churn eviction or bloat the metadata namespace. Low impact (coordination degrades, serving does not), handled by revoking the offending ServiceAccount.
+
 ## Risks
 
 * The shared singleton is a coordination point. An outage degrades to independent downloads, not serving outages, and replicas are configurable on the CR.
