@@ -52,6 +52,26 @@ The metadata service is deployed via a namespaced `ModelExpressServer` CR reconc
 
 **Install.** The ODH operator deploys the ModelExpress operator when the component is enabled in the `DataScienceCluster`. The operator watches `ModelExpressServer` CRs in all namespaces and requires no other component to be enabled.
 
+## KServe Integration
+
+The metadata service and KServe operate at different layers. The metadata service is cluster infrastructure: admin-provisioned, auth-configured, consumed by workloads across namespaces and orchestrators. KServe is one consumer. Its responsibility is workload templating, not metadata service lifecycle.
+
+### Metadata service deployment
+
+The ModelExpress operator is a standalone `DataScienceCluster` component. KServe does not install or manage `ModelExpressServer` instances. An admin creates the CR, configures the ServiceAccount allowlist, and the operator publishes the gRPC endpoint on `status.endpoint`. KServe workloads consume that endpoint.
+
+### LLMISVC workload templating
+
+For a `LLMInferenceService` targeting a ModelExpress-managed model, KServe templates the pod spec: it injects the metadata service endpoint (read from `ModelExpressServer` status) and a projected ServiceAccount token. This gives the engine's ModelExpress sidecar or init container what it needs to register, discover peers, and coordinate downloads. No manual pod spec editing required.
+
+### RL training workloads as consumers
+
+The metadata service is not inference-specific. RL training flows, GRPO actors, reward model servers, reference policy replicas, are consumers on the same terms: same weights, same deduplication, same peer registration (see [ModelExpress: Distributing Model Artifacts at the Speed of Light](https://developer.nvidia.com/blog/modelexpress-distributing-model-artifacts-at-the-speed-of-light) for upstream discussion of the RL use case). These workloads run under training orchestrators (TorchX, KubeFlow Training Operator), not KServe. A KServe-owned metadata service would force RL pipelines to depend on a serving stack they do not use, or to run a separate metadata instance and lose cross-workload deduplication.
+
+### Relationship to LocalModelCache
+
+KServe's `LocalModelCache` (`serving.kserve.io/v1alpha1`) is pull-based: it names a `sourceModelUri`, provisions PVs via `LocalModelNodeGroup`, and downloads weights to node-local storage. ModelExpress replaces that pull with P2P coordination (GPU-to-GPU DMA over RDMA fabrics) and metadata-driven deduplication. These are parallel caching paths. `LocalModelCache` has no metadata service endpoint field and its download agent does not speak the ModelExpress protocol. Merging them would conflate admin-scoped infrastructure with tenant-scoped caching policy. A possible future convergence: ModelExpress already falls back through its loading chain to local disk when no P2P peer is available, so integration amounts to pointing ModelExpress at the same PV that `LocalModelCache` provisions. That change would live in KServe and would not alter the deployment model defined here.
+
 ## Alternatives
 
 * **Cluster-scoped metadata CRDs with one mandatory instance.** Trivial discovery, but per-tenant visibility becomes impossible without admission-level filtering, and the service needs cluster-scoped write access. The isolation flow stops being implementable.
