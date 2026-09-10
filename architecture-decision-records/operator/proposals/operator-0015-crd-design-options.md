@@ -38,6 +38,14 @@ watches the MaaS-owned `AITenant` resource.
 The design must support tenancy semantics without making the Kubernetes API
 depend on overloaded or implementation-specific names.
 
+## Reference design
+
+The baseline multi-tenancy framework and strategy are maintained in the draft
+Operator-0015 pull request. This KEP is a focused design exploration and does
+not duplicate those documents:
+
+[Operator-0015 draft PR #156](https://github.com/opendatahub-io/architecture-decision-records/pull/156/changes)
+
 ## Goals
 
 - Represent the organizational tenancy boundary and hierarchy.
