@@ -69,7 +69,7 @@ not duplicate those documents:
 
 ### Public naming
 
-Use full Organization-based kinds for new or pre-release APIs:
+Use full Organization-based kinds for the proposed API:
 
 ```text
 Organization
@@ -93,10 +93,15 @@ spec:
 organization.opendatahub.io/*
 ```
 
-If compatibility requires it, the existing `tenancy.opendatahub.io` API group
-can remain while the resource kinds change. If the API is still entirely
-pre-release, changing the group to `organization.opendatahub.io` can be
-considered separately.
+Because the current implementation is only a proof of concept and no
+`tenancy.opendatahub.io` API has shipped, use a clean API group:
+
+```text
+organization.opendatahub.io/v1alpha1
+```
+
+No conversion webhook, compatibility CRD, or field-preservation strategy is
+required for the POC rename.
 
 ### Core resources
 
@@ -114,8 +119,9 @@ OrganizationMaaS
   independently managed MaaS intent and configuration
 ```
 
-The current implementation names remain `PlatformTenant`, `TenantProfile`,
-`TenantProject`, and `TenantMaaS` until the naming migration is approved.
+The proof-of-concept names are `PlatformTenant`, `TenantProfile`,
+`TenantProject`, and `TenantMaaS`. They are replaced by the proposed
+Organization-based names before the API is shipped.
 
 ### Capability-specific MaaS resource
 
@@ -123,7 +129,7 @@ The existence of `OrganizationMaaS` enables MaaS for one root organization.
 The reference is immutable and the resource is root-only.
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: OrganizationMaaS
 metadata:
   name: nlp-team
@@ -192,7 +198,7 @@ Root Organizations are created by a cluster administrator. A root has no
 `spec.parent` and can contain child Organizations and Projects.
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: Organization
 metadata:
   name: research
@@ -226,7 +232,7 @@ A child Organization is created under a parent by an authorized parent or
 ancestor administrator. The parent reference is immutable.
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: Organization
 metadata:
   name: nlp-team
@@ -251,7 +257,7 @@ The profile contains tenant-wide policy and shared platform configuration. It
 does not contain MaaS-specific quotas or other capability-specific blocks.
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: OrganizationProfile
 metadata:
   name: nlp-team
@@ -285,7 +291,7 @@ If shared configuration later moves to `OrganizationPlatformConfig`, the
 profile retains the policy fields and the platform configuration becomes:
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: OrganizationPlatformConfig
 metadata:
   name: nlp-team
@@ -306,7 +312,7 @@ Project. The controller creates namespace labels, RoleBindings, and owned
 NetworkPolicies.
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: OrganizationProject
 metadata:
   name: sentiment-analysis
@@ -356,7 +362,7 @@ configured from the Organization profile and is valid only for a root
 Organization.
 
 ```yaml
-apiVersion: tenancy.opendatahub.io/v1alpha1
+apiVersion: organization.opendatahub.io/v1alpha1
 kind: OrganizationMaaS
 metadata:
   name: research
@@ -422,7 +428,7 @@ metadata:
     organization.opendatahub.io/name: research
     maas.opendatahub.io/managed-by: maas-operator
   ownerReferences:
-    - apiVersion: tenancy.opendatahub.io/v1alpha1
+    - apiVersion: organization.opendatahub.io/v1alpha1
       kind: OrganizationMaaS
       name: research
       controller: true
@@ -560,8 +566,8 @@ untouched unless an explicit adoption mechanism is introduced.
 
 ## Upgrade and migration
 
-If the current API is still pre-release, rename kinds and fields before
-production adoption:
+The current API is a proof of concept only. Rename kinds and fields before
+shipping the proposed API:
 
 ```text
 PlatformTenant  → Organization
@@ -572,8 +578,9 @@ tenantRef       → organizationRef
 tenant labels   → organization labels
 ```
 
-If resources are already consumed, introduce conversion or compatibility APIs.
-Do not perform a textual rename of JSON fields without a conversion strategy.
+Because no `tenancy.opendatahub.io` API has shipped, no conversion or
+compatibility API is required. The POC manifests can be replaced directly with
+the proposed API group and resource names.
 
 The `AITenant` adapter should move from the tenancy operator to the MaaS
 operator before the tenancy API is considered stable.
@@ -609,7 +616,7 @@ managed namespaces and capability resources for metrics attribution.
 | Too many CRDs | Add capability CRDs only for independently configured services. |
 | Profile growth | Keep shared configuration small; promote it to `OrganizationPlatformConfig` when needed. |
 | Cross-team API coupling | Keep the MaaS adapter in the MaaS operator. |
-| Naming migration cost | Rename before API stability, or provide conversion APIs. |
+| Naming migration cost | Complete the rename before the first shipped release. |
 | Duplicate tenant identities | Make Organization the canonical identity and treat `AITenant` as transitional. |
 
 ## Graduation criteria
@@ -625,7 +632,8 @@ Before the design is considered stable:
 
 ## Open questions
 
-- Should the API group remain `tenancy.opendatahub.io` after the kind rename?
+- Should the proposed API group be `organization.opendatahub.io`, or should a
+  broader platform API group be selected?
 - Should shared configuration begin on `OrganizationProfile` or use
   `OrganizationPlatformConfig` immediately?
 - Is Gateway configuration shared across all capabilities?
