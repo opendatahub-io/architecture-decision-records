@@ -8,6 +8,7 @@
 | Authors        | [Edson Tirelli](@etirelli) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
+| Amended by     | [ODH-ADR-0008](../ODH-ADR-0008-align-catalogs-and-registries.md) |
 | Tickets        | |
 | Other docs:    | AI Asset Registry PRD (internal document), MLflow Tiger Team Final Status (internal document), [Skills Registry RFC](https://github.com/mlflow/rfcs/pull/10), [MCP Registry](https://github.com/mlflow/rfcs/tree/main/rfcs/0004-mcp-registry) |
 
@@ -34,7 +35,7 @@ The MLflow Tiger Team (January–March 2026) validated the integration architect
 * Establish MLflow as the single registry backend for all AI asset types in OpenShift AI.
 * Provide unified governance — lifecycle management, versioning, access policies, and auditing — across all asset types through a consistent set of MLflow APIs and patterns.
 * Maintain a federated registry solution where each asset type defines its own metadata schema, lifecycle states, and validation rules while sharing common infrastructure.
-* Preserve the separation between registry (governance and lifecycle) and catalog (discovery and consumption), with AI Hub remaining the catalog layer.
+* Preserve the separation between the Asset Library (vendor delivery, built on AI Hub) and platform-managed assets. The Asset Catalog (RHOAI administrator curation and user discovery) and Asset Registry (workspace governance and lifecycle) remain distinct roles sharing MLflow, as defined in [ODH-ADR-0008](../ODH-ADR-0008-align-catalogs-and-registries.md).
 * Enable cross-asset relationship tracking so that composed assets (e.g., agents referencing models, tools, and guardrails) can express and govern their dependency graphs.
 * Align with upstream MLflow development to leverage community investment and minimize downstream-only maintenance.
 
@@ -42,20 +43,22 @@ The MLflow Tiger Team (January–March 2026) validated the integration architect
 
 * **Prescribing the migration path for existing registries** — the migration from Kubeflow Model Registry to MLflow Model Registry is a separate, implementation-level decision that will be documented in its own ADR.
 * **Defining the complete data model for each asset type** — individual asset type registries (MCP servers, skills, agents) will have their own design documents and, where warranted, their own ADRs.
-* **Replacing AI Hub** — AI Hub remains the catalog and discovery layer. This ADR concerns the governance backend, not the consumption experience.
+* **Replacing AI Hub** — AI Hub remains the foundation for the Asset Library and vendor delivery. The Asset Catalog and Asset Registry share MLflow under [ODH-ADR-0008](../ODH-ADR-0008-align-catalogs-and-registries.md); this ADR does not prescribe their user experience.
 * **Defining the model deployment or serving layer** — How registered models are deployed and served (e.g., via KServe) is outside the scope of this ADR.
 
 ## How
 
 ### Architectural Principles
 
-**1. Registry–Catalog Separation**
+**1. Asset Library Boundary and Catalog–Registry Roles**
 
-Registries and catalogs serve complementary but distinct functions. The registry handles governance: ownership, versioning, lifecycle state, access policies, approval status, and audit trails. The catalog is the vehicle for Red Hat to distribute approved, tested, and verified assets, and to provide users with a way to handle consumption: discovery, browsing, understanding, and adopting assets.
+[ODH-ADR-0008](../ODH-ADR-0008-align-catalogs-and-registries.md) refines this ADR's original terminology: the vendor-distribution layer previously called the catalog is now the **Asset Library**, built on AI Hub. Red Hat or a partner uses this layer to deliver curated and certified assets into the platform.
 
-These responsibilities are architecturally separate. MLflow is the registry. Users import curated artifacts from the catalog (e.g., AI Hub) into their workspace registry for governance and lifecycle management.
+The **Asset Catalog** is the RHOAI administrator-curated set of assets available for user discovery and consumption. The **Asset Registry** handles workspace governance: ownership, versioning, lifecycle state, access policies, approval status, and audit trails. Catalog and registry are distinct roles sharing MLflow, differentiated by namespace scope, RBAC, and role-specific workflows.
 
-This principle is already present in the current architecture and applies to all new registry work under this ADR.
+The Asset Library remains architecturally separate from this shared MLflow substrate. Users import curated assets from the Asset Catalog into their workspace registry for governance and lifecycle management. Detailed import mechanics belong in follow-up designs.
+
+This amended principle applies to all new registry work under this ADR.
 
 **2. Metadata-First Design**
 
@@ -97,7 +100,7 @@ The registry must support a multi-actor collaboration workflow spanning asset au
 - **Authoring and registration** — Individual users and teams can register assets into their workspace registry. Registration does not imply approval for production use.
 - **Lifecycle promotion** — Assets progress through defined lifecycle states (e.g., draft → candidate → published → deprecated). Each promotion step requires authorization from a designated role (e.g., workspace owner, platform admin), enforced server-side.
 - **Cross-workspace sharing** — Teams may need to consume assets registered in other workspaces. The sharing model (explicit grants, federated discovery, or shared workspaces) must be defined per deployment topology. See ODH-ADR-ML-0002 for cross-namespace resource sharing.
-- **Catalog contribution** — The path for promoting a team-developed asset from a workspace registry into AI Hub for broader organizational consumption is outside the scope of this ADR and must be defined jointly with the AI Hub team.
+- **Catalog contribution** — The destination for a team-developed asset offered for broader organizational consumption is the Asset Catalog, not the vendor-delivery Asset Library. Detailed contribution and approval workflows are deferred to follow-up designs with the Asset Catalog and Asset Registry owners, consistent with [ODH-ADR-0008](../ODH-ADR-0008-align-catalogs-and-registries.md).
 - **Cross-asset dependency governance** — When a composed asset (e.g., an agent) depends on assets owned by other teams, the registry must surface these cross-team dependencies and notify downstream consumers of lifecycle changes (deprecation, retirement) in their dependency graph.
 
 Detailed role definitions, approval workflows, and notification mechanisms are implementation-level concerns to be addressed in per-asset-type registry ADRs.
@@ -162,7 +165,7 @@ Adopting this decision establishes the following architectural constraints for O
 
 1. **New AI asset types requiring governed lifecycle management must use MLflow as the registry backend.** Teams must not introduce new standalone registries without an explicit exception approved through the ADR process.
 
-2. **Registry and catalog are separate systems.** Components that need discovery and browsing capabilities should adopt a catalog solution. Components that need governance and lifecycle management should adopt the registry solution defined in this ADR. 
+2. **The Asset Library is separate; the Asset Catalog and Asset Registry share MLflow.** Vendor delivery belongs to the Asset Library. Administrator curation and platform-wide discovery belong to the Asset Catalog; workspace governance and lifecycle management belong to the Asset Registry. Catalog and registry remain distinct roles with namespace and RBAC boundaries on a shared implementation, as defined in [ODH-ADR-0008](../ODH-ADR-0008-align-catalogs-and-registries.md).
 
 3. **Asset type plugins must follow established MLflow patterns.** New registry plugins use the entity model, store interface, API surface, and workspace scoping patterns established by the MLflow project. Deviations require justification.
 
@@ -187,7 +190,7 @@ Adopting this decision establishes the following architectural constraints for O
 | Architects Team               | @opendatahub-io/architects | | Yes |
 | MLflow Core                   | Edson Tirelli, Matt Prahl | | Yes |
 | Model Registry                | Chris Hambridge  | | Yes |
-| AI Hub / Catalog              | Jessica Forrester | | Yes |
+| AI Hub / Asset Library        | Jessica Forrester | | Yes |
 | Skills Registry               | Bill Murdock     | | Yes |
 | Agent Platform / Kagenti      | Dimitri Saridakis | | Yes |
 | Product Management            | Peter Double, Myriam Fernandez | | Yes |
