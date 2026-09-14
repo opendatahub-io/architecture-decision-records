@@ -40,11 +40,16 @@ Given these constraints, the only lever available is behavioral: keep the field,
 
 ## How
 
-- `aigateway.modelsAsAService.managementState` is the canonical MaaS toggle and takes precedence whenever it's set; `kserve.modelsAsService` is only consulted as a fallback when it isn't, so there's no ambiguity if both are present.
-- `kserve.modelsAsService` stays in the API, documented as deprecated, and now defaults to `Removed` instead of `Managed`.
+- **Field precedence and fallback** (two independent layers in the operator):
+  - **AIGateway module on/off**: `aigateway.managementState` is canonical. If it is empty, the operator falls back to enabling AIGateway when `kserve.managementState` and `kserve.modelsAsService.managementState` are both `Managed`. An explicit `aigateway.managementState: Removed` wins even if the deprecated field is still `Managed`.
+  - **Nested MaaS toggle**: `aigateway.modelsAsAService.managementState` is canonical. If it is empty, the operator copies `kserve.modelsAsService.managementState` into the AIGateway module CR — but only when `kserve.managementState` is `Managed`. An explicit value on the new field wins over the deprecated field.
+  - Fallback is keyed off an **empty string**, not schema defaulting: omitting `aigateway.managementState` re-triggers the legacy path (use `Removed`, not omit).
+- `kserve.modelsAsService` stays in the API, documented as deprecated, with default `Removed` (unchanged from 3.4).
 - Its allowed transitions are one-directional: `Managed -> Removed` is allowed, so users can clean up after migrating, but `Removed -> Managed` is blocked, so the deprecated field can't be used to silently re-enable MaaS.
-- Setting `kserve.modelsAsService` to `Managed` now produces a non-blocking deprecation warning that points at the new field.
-- Migration is automatic and non-disruptive: existing `Managed` configurations keep working (via conversion and/or fallback), so clusters and GitOps manifests aren't forced to change immediately.
+- Setting `kserve.modelsAsService` to `Managed` produces a non-blocking deprecation warning that points at the new field.
+- **Migration paths**:
+  - **Stored v2 DSC (typical 3.4→3.5 upgrade)**: no DSC rewrite — the operator reads the deprecated field via fallback; GitOps sees no drift.
+  - **v1 API write**: the conversion webhook copies `kserve.modelsAsService` → `aigateway.modelsAsAService`.
 - `odh-cli` proactively surfaces the deprecated usage as an upgrade-assessment advisory, rather than relying solely on the runtime warning.
 
 ## Alternatives
