@@ -25,14 +25,14 @@ The hardware requirement applies only to the data plane. The metadata service ru
 
 ModelExpress deduplicates model downloads and coordinates peer-to-peer weight transfer between inference workloads. Its metadata service tracks which models exist on the cluster and where, using namespaced CRs as its state store. The benefit grows with the number of workloads sharing one metadata view: two namespaces serving the same model only deduplicate if they share a metadata service. That argues for one shared instance. Some tenants, however, must not expose even model names across namespace boundaries, so an isolated topology has to exist too.
 
-ModelExpress is enabled through the `DataScienceCluster` CR, and this ADR proposes it as a root-level component: a peer of Model Serving, not a sub-component of it, with no runtime dependency on KServe or any other component operator.
+ModelExpress is enabled through the `DataScienceCluster` CR, but this ADR proposes that its operator be deployed and managed by the existing AI Gateway operator. AI Gateway is the only current consumer. ModelExpress remains a platform capability rather than a KServe sub-component, leaving room for future RL and other workloads to consume the metadata service without making them depend on KServe.
 
 ## Goals
 
 * Default topology that maximizes cross-namespace deduplication with minimal setup.
 * Opt-in namespace-scoped topology for tenants that need metadata isolation.
 * Namespace-scoped CRDs throughout, so standard RBAC is the isolation mechanism.
-* Root-level `DataScienceCluster` component with no dependency on other component operators.
+* Deployment ownership aligned with the existing AI Gateway operator, without making ModelExpress a KServe sub-component.
 
 ## Non-Goals
 
@@ -50,23 +50,29 @@ The metadata service is deployed via a namespaced `ModelExpressServer` CR reconc
 
 **ServiceAccount token auth.** The service authenticates callers by Kubernetes ServiceAccount (`spec.security` on the CR): clients present a projected token, the service validates it via TokenReview against configured `tokenAudiences`, and checks the caller against an `allowedServiceAccounts` list of `namespace:serviceAccount` pairs. This is the access boundary that makes the shared endpoint safe to expose cluster-wide, and on isolated instances it pins access to the tenant's own ServiceAccounts. Shared instances should run `mode: enforce`; the default is disabled.
 
-**Install.** The ODH operator deploys the ModelExpress operator when the component is enabled in the `DataScienceCluster`. The operator watches `ModelExpressServer` CRs in all namespaces and requires no other component to be enabled.
+**Install and ownership.** The existing AI Gateway operator deploys and manages the ModelExpress operator when ModelExpress is enabled through the `DataScienceCluster` configuration. The ModelExpress operator watches `ModelExpressServer` CRs in all namespaces. This follows the same ownership pattern as the `llm-d-batch-gateway` operator: related gateway capabilities are delivered by the AI Gateway operator even when the reconciled resources have their own API and lifecycle. The arrangement is an installation and lifecycle boundary, not a runtime dependency on KServe; it establishes a platform path for future RL and other workloads to consume ModelExpress.
 
-## KServe Integration
+## AI Gateway and KServe Integration
+
+### AI Gateway operator deployment
+
+The AI Gateway operator is the deployment owner for the ModelExpress operator. AI Gateway is the only current ModelExpress consumer; this ownership choice establishes the integration boundary for future consumers such as RL workloads. It keeps gateway-adjacent infrastructure under the operator that already manages the AI Gateway integration surface and avoids introducing another top-level operator installation path. The ModelExpress operator remains responsible for its own `ModelExpressServer` reconciliation, status, authentication configuration, and metadata CRs; the AI Gateway operator does not absorb those APIs or reconcile those resources directly.
+
+ModelExpress is not nested under KServe. The AI Gateway operator may deploy the ModelExpress operator independently of KServe, and future ModelExpress consumers will not need to create KServe resources. This preserves a deployment model that can grow from the current AI Gateway integration to RL and other workload integrations.
 
 The metadata service and KServe operate at different layers. The metadata service is cluster infrastructure: admin-provisioned, auth-configured, consumed by workloads across namespaces and orchestrators. KServe is one consumer. Its responsibility is workload templating, not metadata service lifecycle.
 
 ### Metadata service deployment
 
-The ModelExpress operator is a standalone `DataScienceCluster` component. KServe does not install or manage `ModelExpressServer` instances. An admin creates the CR, configures the ServiceAccount allowlist, and the operator publishes the gRPC endpoint on `status.endpoint`. KServe workloads consume that endpoint.
+The ModelExpress operator is deployed through the AI Gateway operator. KServe does not install or manage `ModelExpressServer` instances. An admin creates the CR, configures the ServiceAccount allowlist, and the ModelExpress operator publishes the gRPC endpoint on `status.endpoint`. AI Gateway is the current consumer of that endpoint; future consumers such as RL workloads can integrate directly with ModelExpress.
 
 ### LLMISVC workload templating
 
 For a `LLMInferenceService` targeting a ModelExpress-managed model, KServe templates the pod spec: it injects the metadata service endpoint (read from `ModelExpressServer` status) and a projected ServiceAccount token. This gives the engine's ModelExpress sidecar or init container what it needs to register, discover peers, and coordinate downloads. No manual pod spec editing required.
 
-### RL training workloads as consumers
+### Future RL and other workloads as consumers
 
-The metadata service is not inference-specific. RL training flows, GRPO actors, reward model servers, reference policy replicas, are consumers on the same terms: same weights, same deduplication, same peer registration (see [ModelExpress: Distributing Model Artifacts at the Speed of Light](https://developer.nvidia.com/blog/modelexpress-distributing-model-artifacts-at-the-speed-of-light) for upstream discussion of the RL use case). These workloads run under training orchestrators (TorchX, KubeFlow Training Operator), not KServe. A KServe-owned metadata service would force RL pipelines to depend on a serving stack they do not use, or to run a separate metadata instance and lose cross-workload deduplication.
+The metadata service is not inference-specific. The deployment boundary is intentionally designed so future RL training flows, GRPO actors, reward model servers, reference policy replicas, and other workloads can consume it on the same terms: same weights, same deduplication, same peer registration (see [ModelExpress: Distributing Model Artifacts at the Speed of Light](https://developer.nvidia.com/blog/modelexpress-distributing-model-artifacts-at-the-speed-of-light) for upstream discussion of the RL use case). These workloads may run under training orchestrators (TorchX, KubeFlow Training Operator), not KServe. A KServe-owned metadata service would force future RL pipelines to depend on a serving stack they do not use, or to run a separate metadata instance and lose cross-workload deduplication.
 
 ### Relationship to LocalModelCache
 
@@ -77,7 +83,8 @@ KServe's `LocalModelCache` (`serving.kserve.io/v1alpha1`) is pull-based: it name
 * **Cluster-scoped metadata CRDs with one mandatory instance.** Trivial discovery, but per-tenant visibility becomes impossible without admission-level filtering, and the service needs cluster-scoped write access. The isolation flow stops being implementable.
 * **Namespace-scoped instances only.** Uniform and isolated, but N namespaces serving the same model means N downloads and N cache copies; the deduplication win disappears exactly where it matters (large shared foundation models).
 * **Redis metadata backend.** Upstream supports Redis instead of CRs. It adds a stateful service to run and secure, and loses `kubectl` inspectability, watch semantics, and RBAC scoping; the CRD backend gives us the namespace model for free.
-* **Sub-component of Model Serving.** Couples enablement to KServe with no technical dependency; non-KServe consumers (llm-d, raw deployments) would have to enable a serving stack they don't use.
+* **Sub-component of Model Serving/KServe.** Couples the current AI Gateway integration, and future RL or other workload integrations, to KServe despite there being no technical dependency.
+* **Standalone top-level operator installation.** Preserves independence, but creates a separate installation and lifecycle path for a capability already adjacent to AI Gateway concerns. It also diverges from the `llm-d-batch-gateway` operator ownership pattern.
 
 ## Security and Privacy Considerations
 
@@ -105,8 +112,10 @@ Metadata is low sensitivity (model names, source types, cache locations), but mo
 | Model Serving (KServe) | | | Maybe |
 | Dashboard            | | | No |
 
-* ODH Platform / Operator: new root-level `DataScienceCluster` component; the ODH operator gains the component handler and manifests to deploy the ModelExpress operator.
-* Model Serving: inference workloads are consumers of the endpoint; nothing here requires KServe changes.
+* ODH Platform / Operator: the AI Gateway operator gains ownership of the ModelExpress operator deployment and lifecycle; the ModelExpress operator remains responsible for ModelExpress APIs and reconciliation.
+* AI Gateway: owns deployment of the metadata capability and is the only current ModelExpress consumer, without taking ownership of ModelExpress custom resources.
+* Future workload integrations: RL and other workloads have a platform path to consume ModelExpress without requiring KServe.
+* Model Serving: ModelExpress is intentionally not nested under KServe, leaving future integrations independent of the serving stack.
 
 ## References
 
