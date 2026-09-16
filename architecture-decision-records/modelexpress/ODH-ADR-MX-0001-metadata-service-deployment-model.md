@@ -60,15 +60,15 @@ The AI Gateway operator is the deployment owner for the ModelExpress operator. A
 
 ModelExpress is not nested under KServe. The AI Gateway operator may deploy the ModelExpress operator independently of KServe, and future ModelExpress consumers will not need to create KServe resources. This preserves a deployment model that can grow from the current AI Gateway integration to RL and other workload integrations.
 
-The metadata service and KServe operate at different layers. The metadata service is cluster infrastructure: admin-provisioned, auth-configured, consumed by workloads across namespaces and orchestrators. KServe is one consumer. Its responsibility is workload templating, not metadata service lifecycle.
+The metadata service and KServe operate at different layers. The metadata service is cluster infrastructure: admin-provisioned, auth-configured, consumed by workloads across namespaces and orchestrators. KServe is the current deployment-level integration point for serving workloads: it templates the ModelExpress-related custom resources and workload configuration needed by an inference deployment. The AI Gateway operator still owns deployment of the ModelExpress operator, and KServe does not own its lifecycle.
 
 ### Metadata service deployment
 
-The ModelExpress operator is deployed through the AI Gateway operator. KServe does not install or manage `ModelExpressServer` instances. An admin creates the CR, configures the ServiceAccount allowlist, and the ModelExpress operator publishes the gRPC endpoint on `status.endpoint`. AI Gateway is the current consumer of that endpoint; future consumers such as RL workloads can integrate directly with ModelExpress.
+The ModelExpress operator is deployed through the AI Gateway operator. KServe does not install or manage the ModelExpress operator, but it integrates at inference deployment time by templating the ModelExpress custom resources and workload configuration associated with the serving deployment. An admin creates the shared `ModelExpressServer` CR, configures the ServiceAccount allowlist, and the ModelExpress operator publishes the gRPC endpoint on `status.endpoint`. AI Gateway is the current consumer of that endpoint; future consumers such as RL workloads can integrate directly with ModelExpress.
 
 ### LLMISVC workload templating
 
-For a `LLMInferenceService` targeting a ModelExpress-managed model, KServe templates the pod spec: it injects the metadata service endpoint (read from `ModelExpressServer` status) and a projected ServiceAccount token. This gives the engine's ModelExpress sidecar or init container what it needs to register, discover peers, and coordinate downloads. No manual pod spec editing required.
+For a `LLMInferenceService` targeting a ModelExpress-managed model, KServe templates the deployment-level custom resources and pod spec: it injects the metadata service endpoint (read from `ModelExpressServer` status) and a projected ServiceAccount token. This gives the engine's ModelExpress sidecar or init container what it needs to register, discover peers, and coordinate downloads. KServe owns this workload templating integration; the ModelExpress operator owns reconciliation of the ModelExpress custom resources. No manual pod spec editing is required.
 
 ### Future RL and other workloads as consumers
 
