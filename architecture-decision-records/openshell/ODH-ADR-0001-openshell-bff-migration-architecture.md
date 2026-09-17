@@ -30,11 +30,11 @@ Proposal for changes to the Openshell Dashboard Go BFF in the upstream ([https:/
 - Struct embedding and decoration as a code pattern to maintain interoperability between upstream and downstream BFFs  
 - `Chi` ([GitHub \- go-chi/chi: lightweight, idiomatic and composable router for building Go HTTP services](https://github.com/go-chi/chi)) for easier routing and middleware handling  
 - A revamped file structure including the separation of handlers into separate objects to accompany interface decoration
-- Downstream will start by reusing the upstream BFF; reuse will involve directly using upstream's released images. Code decoration can be used for adding custom logic if needed.
+- Downstream will need to have modifications; reuse will involve directly using upstream's packages and wrapping them to support multi-gateway authentication flows which is not an upstream requirement.
 
 ## Description
 
-This architecture proposes the use of struct embedding and decorator patterns in order to facilitate extensibility in downstream codebases. Although downstream will start by reusing the upstream backend directly, the proposal offers a foundation for code reuse with flexibility for consumers. It relies on three primary mechanics:
+This architecture proposes the use of struct embedding and decorator patterns in order to facilitate extensibility in downstream codebases. The proposal offers a foundation for code reuse with flexibility for consumers and it relies on three primary mechanics:
 
 - Accept interfaces and return structs: Upstream will return structs with private fields while downstream will embed these and write interfaces to accept them.  
 - Dependency Injection: Functions and systems are built to accept any interface-abiding structure. This allows downstream consumers to inject their own custom logic, clients, or services into the upstream workflow.  
