@@ -56,13 +56,13 @@ The metadata service is deployed via a namespaced `ModelExpressServer` CR reconc
 
 ### KServe operator deployment
 
-The KServe operator is the deployment owner for the ModelExpress operator in this release. Serving workloads are the only current ModelExpress consumer, and KServe already carries the deployment-time integration described below, so nesting the operator lifecycle under KServe avoids a second installation path for a capability with one consumer. The ModelExpress operator remains responsible for its own `ModelExpressServer` reconciliation, status, authentication configuration, and metadata CRs; the KServe operator does not absorb those APIs or reconcile those resources directly.
+The KServe operator owns deployment of the ModelExpress operator in this release. Serving workloads are the only current ModelExpress consumer, and KServe already handles the deployment-time integration described below, so one component installs ModelExpress and hooks workloads up to it. The ModelExpress operator keeps `ModelExpressServer` reconciliation, status, authentication configuration, and the metadata CRs; the KServe operator does not reconcile those resources.
 
-The metadata service and KServe still operate at different layers. The metadata service is cluster infrastructure: admin-provisioned, auth-configured, and consumable by workloads across namespaces and orchestrators. KServe owns installing the ModelExpress operator and templating serving workloads against the endpoint, not the metadata service's runtime behavior.
+The metadata service is cluster infrastructure: admins provision it and configure its auth, and workloads in any namespace or orchestrator can call it. KServe installs its operator and templates serving workloads against its endpoint. How the service runs is up to the ModelExpress operator.
 
 ### Metadata service deployment
 
-The ModelExpress operator is deployed through the KServe operator. KServe does not create or manage `ModelExpressServer` instances. An admin creates the shared `ModelExpressServer` CR, configures the ServiceAccount allowlist, and the ModelExpress operator publishes the gRPC endpoint on `status.endpoint`. At inference deployment time, KServe templates the ModelExpress custom resources and workload configuration associated with the serving deployment.
+An admin creates the shared `ModelExpressServer` CR and configures the ServiceAccount allowlist, and the ModelExpress operator publishes the gRPC endpoint on `status.endpoint`. KServe does not create or manage `ModelExpressServer` instances. At inference deployment time it templates the ModelExpress custom resources and workload configuration for the serving deployment.
 
 ### LLMISVC workload templating
 
@@ -70,7 +70,7 @@ For a `LLMInferenceService` targeting a ModelExpress-managed model, KServe templ
 
 ### Future RL and other workloads as consumers
 
-The metadata service is not inference-specific. Future RL training flows, GRPO actors, reward model servers, reference policy replicas, and other workloads can consume it on the same terms: same weights, same deduplication, same peer registration (see [ModelExpress: Distributing Model Artifacts at the Speed of Light](https://developer.nvidia.com/blog/modelexpress-distributing-model-artifacts-at-the-speed-of-light) for upstream discussion of the RL use case). These workloads may run under training orchestrators (TorchX, KubeFlow Training Operator), not KServe.
+The metadata service is not inference-specific. Future RL training flows, GRPO actors, reward model servers, reference policy replicas, and other workloads can register as peers and share deduplicated weights with serving workloads (see [ModelExpress: Distributing Model Artifacts at the Speed of Light](https://developer.nvidia.com/blog/modelexpress-distributing-model-artifacts-at-the-speed-of-light) for upstream discussion of the RL use case). These workloads may run under training orchestrators (TorchX, KubeFlow Training Operator), not KServe.
 
 Under KServe ownership, those workloads would need KServe enabled to get the ModelExpress operator installed, even though the metadata service API does not depend on KServe. This release accepts that coupling because no non-serving consumer exists yet. Since ModelExpress APIs and reconciliation stay in the ModelExpress operator, moving installation out of KServe (to a root-level `DataScienceCluster` component or another owning operator) is a packaging change: `ModelExpressServer` CRs, endpoints, auth configuration, and both topologies carry over unchanged. Ownership should be revisited in a follow-up ADR once a non-serving consumer is committed.
 
@@ -84,7 +84,7 @@ KServe's `LocalModelCache` (`serving.kserve.io/v1alpha1`) is pull-based: it name
 * **Namespace-scoped instances only.** Uniform and isolated, but N namespaces serving the same model means N downloads and N cache copies; the deduplication win disappears exactly where it matters (large shared foundation models).
 * **Redis metadata backend.** Upstream supports Redis instead of CRs. It adds a stateful service to run and secure, and loses `kubectl` inspectability, watch semantics, and RBAC scoping; the CRD backend gives us the namespace model for free.
 * **Root-level `DataScienceCluster` component.** Keeps ModelExpress independent of the serving stack and is the likely end state once non-serving consumers exist. For this release it adds a component handler and a separate installation and lifecycle path for a capability whose only consumer is serving.
-* **AI Gateway operator ownership.** Follows the `llm-d-batch-gateway` operator ownership pattern, but splits the operator lifecycle from the KServe workload templating that consumes the endpoint, spreading one capability across two operators.
+* **AI Gateway operator ownership.** Follows the `llm-d-batch-gateway` operator ownership pattern, but puts the ModelExpress operator lifecycle in a different operator from the KServe workload templating that uses the endpoint.
 
 ## Security and Privacy Considerations
 
