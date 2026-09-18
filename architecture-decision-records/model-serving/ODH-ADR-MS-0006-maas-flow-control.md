@@ -14,7 +14,7 @@
 ## What
 
 Integrate MaaS with Gateway API Inference Extension flow control, using the AI tenant as the fairness key and the
-selected subscription as the logical objective key. An optional subscription request priority drives controller-managed
+selected subscription as the logical objective key. An optional subscription inference priority drives controller-managed
 `InferenceObjective` resources for the pools backing that subscription's models. When priority is unset, requests use
 scheduler priority `0` without a generated objective.
 
@@ -26,7 +26,7 @@ administrators should configure this once, without discovering pools or maintain
 
 ## Goals
 
-* Apply one subscription request priority to all eligible models in that subscription.
+* Apply one subscription inference priority to all eligible models in that subscription.
 * Group requests by AI tenant for fairness within each priority band.
 * Reuse existing flow-control headers and the `InferenceObjective` API.
 * Keep objectives synchronized with subscription and model topology changes, with operator visibility and live updates.
@@ -42,11 +42,11 @@ administrators should configure this once, without discovering pools or maintain
 
 ### Subscription priority and tenant fairness
 
-Add optional `MaaSSubscription.spec.requestPriority`, a signed `int32` matching `InferenceObjective.spec.priority`.
+Add optional `MaaSSubscription.spec.inferencePriority`, a signed `int32` matching `InferenceObjective.spec.priority`.
 Higher values mean higher scheduling priority. This field is independent of the existing `spec.priority`, which
 continues to control automatic subscription selection.
 
-| Request priority     | Objective lifecycle  | Scheduler priority |
+| Inference priority   | Objective lifecycle  | Scheduler priority |
 |----------------------|----------------------|--------------------|
 | Unset                | No objective created | Default `0`        |
 | Explicit `0`         | Objective created    | `0`                |
@@ -65,7 +65,7 @@ The MaaS subscription controller resolves each subscription's tenant and models,
 through that tenant's Gateway. For `LLMInferenceService` models, it discovers the active pool from
 `status.router.scheduler.inferencePool`, respecting the observed namespace and reference for managed and explicit pools.
 
-When request priority is set, the controller reconciles one objective per distinct `(subscription, pool)` pair in the
+When inference priority is set, the controller reconciles one objective per distinct `(subscription, pool)` pair in the
 pool's namespace, copying the priority and setting `spec.poolRef.name`. Models sharing a pool share that objective.
 Names must be deterministic, collision-resistant across tenant/subscription/pool identities, and independent of
 priority.
@@ -96,7 +96,7 @@ headers.
 
 ### Operator experience and propagation
 
-Authorized operators can view, set, change, and clear **Request priority** independently of subscription-selection
+Authorized operators can view, set, change, and clear **Inference priority** independently of subscription-selection
 priority. Show an unset value as **Scheduler default (0)** while preserving its unset state. Subscription details expose
 objective names, pool associations, and pending or failed reconciliation; unset priority indicates no objective is
 required.
@@ -119,7 +119,7 @@ interrupted when in-flight eviction is enabled. These consequences must be visib
 
 ## Security and Privacy Considerations
 
-Only authorized subscription editors may change request priority. The controller needs service/pool read access and
+Only authorized subscription editors may change inference priority. The controller needs service/pool read access and
 objective management permissions in model namespaces, reflected in both AI Gateway and ODH parent-operator RBAC.
 Preserve tenant-to-model Gateway validation, restrict direct objective edits to authorized administrators, and exclude
 credentials from headers and status mappings. Scheduler fallback must never bypass access control or token rate limits.
@@ -170,7 +170,7 @@ compatibility, and the distinction between unset and explicit `0`.
 | Group             | Key Contacts                            | Date          | Impacted?                                                               |
 |-------------------|-----------------------------------------|---------------|-------------------------------------------------------------------------|
 | MaaS / AI Gateway | @pierdipi, @mariusdanciu, @jland-redhat | Sept 14, 2026 | objective reconciliation, subscription metadata, and AuthPolicy headers |
-| Dashboard         | @andrewballantyne                       | Sept 17, 2026 | request priority in MaaSSubscription pages                              |
+| Dashboard         | @andrewballantyne                       | Sept 17, 2026 | inference priority in MaaSSubscription pages                            |
 
 ## References
 
