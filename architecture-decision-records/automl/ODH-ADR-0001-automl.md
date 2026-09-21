@@ -232,6 +232,5 @@ Each run emits refitted predictor artifacts, metrics and leaderboard artifacts, 
 
 | Reviewed by  | Date      | Approval | Notes |
 |--------------|-----------|----------|-------|
-| Ana Biazetti | Jan, 27   | TBD      | N/A   |
+| Ana Biazetti | Jan, 27   | YES      | N/A   |
 | Yuan Tang | Feb, 17th | YES      | N/A   |
-
