@@ -39,16 +39,7 @@ When MLflow is enabled on the pipeline server, KFP injects `KFP_MLFLOW_CONFIG` i
 |----------------------|---------|-------|
 | `KFP_MLFLOW_CONFIG` | Platform MLflow config (JSON) | Absent, empty, invalid JSON, or missing `endpoint` disables tracking (best-effort; training still runs) |
 
-| JSON field | Purpose | Notes |
-|------------|---------|-------|
-| `endpoint` | MLflow tracking server URL | Required for tracking. Kubernetes auth is refused on non-HTTPS endpoints (no bearer token over cleartext). |
-| `experimentId` | KFP-managed experiment ID | Optional. If missing, the stage-map publisher creates or uses an experiment named after the KFP run. |
-| `parentRunId` | KFP-managed parent run ID | When set, the stage-map publisher records this run. When unset, the publisher creates the parent run before writing the stage map. |
-| `workspacesEnabled` / `workspace` | Multi-tenant workspace | `workspace` is used only when `workspacesEnabled` is true. Sent as the `x-mlflow-workspace` request header. |
-| `authType` | Authentication | `kubernetes`: read the pod service-account token and set `MLFLOW_TRACKING_TOKEN` (Bearer). |
-| `timeout` | HTTP timeout | Applied as `MLFLOW_HTTP_REQUEST_TIMEOUT` (whole seconds, e.g. `"30s"` → `30`). |
-
-Without a valid blob, tracking is disabled; there is no pipeline parameter to turn logging off. With one, the stage-map publisher resolves the parent run and training components create child runs and explicitly call `mlflow.log_params()`, `mlflow.log_metrics()`, and `mlflow.log_artifact()`.
+The JSON schema is a platform KFP-to-MLflow contract and is not defined here. Without a valid configuration, tracking is disabled; there is no pipeline parameter to turn logging off. With one, the stage-map publisher resolves the parent run and training components create child runs and explicitly call `mlflow.log_params()`, `mlflow.log_metrics()`, and `mlflow.log_artifact()`.
 
 ### MLflow mapping model
 

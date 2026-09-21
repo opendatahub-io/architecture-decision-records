@@ -34,7 +34,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 ## How
 
-This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **MaaS** and the pattern's vector-store binding (notebook, starter-kit zip with Helm, one-click Agent Sandbox), the **BFF test endpoint**, and **index building** into the production vector store.
+The sections below define the artifact, inference, and indexing contracts for an optimized pattern.
 
 ## Table of contents
 
@@ -125,19 +125,8 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
   "evaluation": {
     "metrics": [
       {
-        "name": "answer_correctness",
-        "evaluator": "unitxt",
-        "description": "Measures how accurately the generated answer matches the ground-truth reference answers.",
-        "scores": {
-          "mean": 0.7161,
-          "ci_low": 0.6071,
-          "ci_high": 0.8149
-        }
-      },
-      {
         "name": "faithfulness",
         "evaluator": "unitxt",
-        "description": "Measures whether the generated answer is grounded in the retrieved context without hallucination.",
         "scores": {
           "mean": 0.9063,
           "ci_low": 0.8806,
@@ -145,63 +134,9 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
         }
       },
       {
-        "name": "context_correctness",
-        "evaluator": "unitxt",
-        "description": "Measures whether the retrieved context passages match the ground-truth reference documents.",
-        "scores": {
-          "mean": 0.95,
-          "ci_low": 0.8,
-          "ci_high": 1.0
-        }
-      },
-      {
-        "name": "faithfulness",
-        "evaluator": "ragas",
-        "description": "Ragas faithfulness: whether the generated answer is grounded in retrieved context.",
-        "scores": {
-          "mean": 0.874,
-          "ci_low": 0.82,
-          "ci_high": 0.92
-        },
-        "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
-      },
-      {
-        "name": "answer_relevancy",
-        "evaluator": "ragas",
-        "description": "Ragas answer relevancy: how on-topic the answer is versus the question.",
-        "scores": {
-          "mean": 0.912,
-          "ci_low": 0.86,
-          "ci_high": 0.95
-        },
-        "model_id": "publishers/ai-eng-cracow/models/redhataibge-m3"
-      },
-      {
-        "name": "context_precision",
-        "evaluator": "ragas",
-        "description": "Ragas context precision: whether relevant retrieved contexts are ranked high.",
-        "scores": {
-          "mean": 0.868,
-          "ci_low": 0.80,
-          "ci_high": 0.93
-        },
-        "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
-      },
-      {
-        "name": "context_recall",
-        "evaluator": "ragas",
-        "description": "Ragas context recall: how much of the ground-truth answer is present in retrieved context.",
-        "scores": {
-          "mean": 0.938,
-          "ci_low": 0.88,
-          "ci_high": 0.98
-        },
-        "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
-      },
-      {
         "name": "overall_score",
         "evaluator": "custom",
-        "description": "Equal-weight mean of every other metric that ran (Unitxt and Ragas on the product path).",
+        "description": "Equal-weight mean of active evaluator metrics.",
         "scores": {
           "mean": 0.8806,
           "ci_low": 0.7844,

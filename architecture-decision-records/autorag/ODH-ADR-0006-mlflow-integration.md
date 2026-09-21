@@ -41,16 +41,7 @@ When MLflow is enabled on the pipeline server, KFP injects `KFP_MLFLOW_CONFIG` i
 |----------------------|---------|
 | `KFP_MLFLOW_CONFIG` | Platform MLflow configuration JSON; the only injected MLflow configuration variable consumed by AutoRAG. |
 
-| JSON field | Purpose | Notes |
-|------------|---------|-------|
-| `endpoint` | MLflow tracking server URL | Required. Kubernetes authentication is refused on non-HTTPS endpoints. |
-| `experimentId` | KFP-managed experiment ID | Optional; if absent, create or use an experiment named for the KFP run. |
-| `parentRunId` | KFP-managed parent run ID | Resume when set; otherwise create a parent run. |
-| `workspacesEnabled` / `workspace` | Multi-tenant workspace | Send `workspace` as `x-mlflow-workspace` only when enabled. |
-| `authType` | Authentication | `kubernetes`: read the pod service-account token and configure Bearer authentication. |
-| `timeout` | HTTP timeout | Apply as whole seconds (for example, `"30s"` → `30`). |
-
-With valid configuration, components resume or create the parent run, create nested pattern runs, and explicitly call `mlflow.log_params()`, `mlflow.log_metrics()`, `mlflow.set_tags()`, and `mlflow.log_artifact()`.
+The JSON schema is a platform KFP-to-MLflow contract and is not defined here. With valid configuration, components resume or create the parent run, create nested pattern runs, and explicitly call `mlflow.log_params()`, `mlflow.log_metrics()`, `mlflow.set_tags()`, and `mlflow.log_artifact()`.
 
 ### KFP artifacts produced by the pipeline
 

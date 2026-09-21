@@ -195,15 +195,7 @@ Each preset fixes **ingestion, chunking search-space envelope, contextual enrich
 
 `inference_max_threads` is the benchmark query concurrency in `rag_templates_optimization` (`balanced` is lower because per-request context is larger).
 
-**Shared resource envelope** (not preset-specific):
-
-| Task | CPU / memory request | CPU / memory limit |
-|------|----------------------|--------------------|
-| `documents_discovery`, `search_space_preparation`, `models_pre_selector` | 2 / 8Gi | 32 / 64Gi |
-| `text_extraction`, `rag_templates_optimization` | 4 / 16Gi | 32 / 64Gi |
-| `publish_component_stage_map` | 0.5 / 512Mi | 1 / 1Gi |
-
-Docling extraction (`text_extraction`) is fixed per run by the preset, not repeated in each `pattern.json`. Use `speed` for plain text or quick runs; `balanced` for structured PDFs/DOCX with tables, headings, and LLM contextual enrichment.
+Docling extraction (`text_extraction`) is fixed per run by the preset, not repeated in each `pattern.json`. Use `speed` for plain text or quick runs; `balanced` for structured PDFs/DOCX with tables, headings, and LLM contextual enrichment. Resource sizing is maintained with the pipeline implementation.
 
 ---
 
@@ -220,18 +212,6 @@ Chunking splits documents into embeddable segments. **`chunking`** fields contro
 
 [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/) distinguish **Markdown export + post-split** (recursive path) from **native chunkers on the document model** (hybrid).
 
-### Extraction and optimization flow
-
-```text
-search_space_preparation → validate MaaS models, materialize chunking envelope
-text_extraction → DoclingDocument (JSON/YAML + artifacts) → manifest
-rag_templates_optimization → load DoclingDocument per trial → branch on chunking.method
-  hybrid: HybridChunker → embed contextualized chunk when include_metadata / LLM enrichment
-  recursive: export_to_markdown() → split string
-```
-
-One parse per document; trials branch on `chunking.method` without re-parsing PDFs. Persist with `doc.save_as_json()` / `save_as_yaml()` using `ImageRefMode.REFERENCED` and an `artifacts_dir`; record docling version in a sidecar manifest.
-
 ### Docling hybrid — `include_metadata`
 
 Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadata`**. When `true`, indexing inlines structural (and, on `balanced`, LLM) context into the text sent to the embedding model, not as separate vector fields.
@@ -247,19 +227,6 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 | `method` | `recursive`, `hybrid` |
 | `chunk_size`, `chunk_overlap` | Splitter limits (preset envelopes above) |
 | `include_metadata` | Hybrid contextualization in embed text |
-
-**Example (`balanced` hybrid trial):**
-
-```json
-{
-  "chunking": {
-    "method": "hybrid",
-    "chunk_size": 1024,
-    "chunk_overlap": 50,
-    "include_metadata": true
-  }
-}
-```
 
 ---
 
@@ -280,21 +247,6 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 | `ranker_k` | — | RRF constant (typical 60) |
 | `ranker_alpha` | — | Weighted fusion: 0 keyword ↔ 1 vector |
 | `distance_metric` | `cosine` | Vector similarity metric |
-
-**Example:**
-
-```json
-{
-  "retrieval": {
-    "method": "simple",
-    "number_of_chunks": 5,
-    "search_mode": "hybrid",
-    "ranker_strategy": "rrf",
-    "ranker_k": 60,
-    "ranker_alpha": 0.5
-  }
-}
-```
 
 ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.
 
