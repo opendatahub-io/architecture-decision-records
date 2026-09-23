@@ -40,7 +40,7 @@ This contract also establishes a baseline for complying with applicable OCP 5 Ne
 - Permit allow-all policies as a substitute for an explicit traffic design.
 - Require or prescribe egress isolation for every component.
 - Define a shared API or Custom Resource for NetworkPolicy configuration.
-- Define the multi-tenancy security model.
+- Define the multi-tenancy security model; the multi-tenancy ADR owns tenant identity and namespace membership. Component controllers MAY use protected platform tenant identity in policy selectors when available, but MUST NOT infer or change tenant membership.
 - Define controls for secondary networks, host networking, or application-layer authorization.
 - Define or modify labels on workloads not owned by the component.
 
@@ -66,10 +66,11 @@ Every module Helm chart or Kustomize bundle MUST contain at least one `networkin
 - Select module operator pods using specific, stable labels.
 - Declare explicit `policyTypes`.
 - Declare explicit ingress sources and ports for every allowed path.
-- Use specific pod selectors for operator allow policies; a documented namespace-wide default-deny policy is permitted.
-- Be tested in the module's supported deployment configuration.
+- Be tested in every supported product and platform variant; evidence MUST identify tested variants and document limitations or approved exceptions.
 
 If the module operator accepts no ingress traffic, its policy MUST declare `policyTypes: [Ingress]` with no ingress rules. Multiple policies are allowed, for example separate policies for metrics and webhook traffic.
+
+This extends the module bootstrap manifests permitted by [ODH-ADR-Operator-0012](ODH-ADR-Operator-0012-module-onboarding.md) to include `NetworkPolicy` for the module operator, not its operands.
 
 `opendatahub-operator` installs bundle policies with the module operator resources, manages their rendered state, and removes them during module-resource cleanup. The module operator MUST NOT reconcile the same bundle policy. It may read or watch the object when required, but must not compete with the platform field manager or assign a second controller owner.
 
@@ -88,7 +89,7 @@ Ingress policies MUST restrict the following endpoint types to their documented 
 
 Component teams MUST define and document the concrete target selectors, allowed source peers, and ports for each exposed endpoint. The target `spec.podSelector` MUST use stable labels applied to workloads owned by the component. Source selectors for pod-based callers MUST use stable labels owned by the calling service. A namespace-only peer is permitted when that namespace is dedicated to the approved caller and the broader access is documented. A CIDR peer is permitted only when the component verifies that it represents the actual traffic source in its supported deployment configuration. This ADR does not define a shared mapping for gateway or API-server peers. Placeholders and unresolved source identities are non-compliant.
 
-Webhook policies MUST permit admission traffic only on the webhook port and use the documented, verified representation of the Kubernetes API-server path. Controllers MUST NOT derive selectors from currently running pods or add labels to workloads they do not own.
+Webhook policies MUST restrict enforceable ingress to the documented API-server path and webhook port. When API-server traffic is node-sourced or otherwise bypasses NetworkPolicy, the component MUST document the limitation and its complementary protection; it MUST NOT add a broad ingress rule to compensate. Controllers MUST NOT derive selectors from currently running pods or add labels to workloads they do not own.
 
 Static operand policies placed only in a platform Kustomize overlay or Helm chart do not satisfy this contract. Modules using [ODH Platform Utilities](https://github.com/opendatahub-io/odh-platform-utilities) SHOULD use its deploy, dynamic ownership, and garbage-collection actions to implement the reconciliation and lifecycle requirements below.
 
@@ -139,13 +140,11 @@ User-facing ingress policies MUST cover endpoint paths exposed by the operand, i
 
 ### Policy content requirements
 
-Every component allow policy MUST target a specific pod set:
+Every module-bundle and operand policy MUST use a non-empty `spec.podSelector` targeting its workloads, including policies with no ingress or egress rules. Stable `app.kubernetes.io/*` or equivalent module-owned labels SHOULD be used.
 
-- `spec.podSelector` MUST contain meaningful labels.
-- `podSelector: {}` MUST NOT be used for a component allow policy. It MAY be used for a documented namespace-wide default-deny policy.
-- Stable `app.kubernetes.io/*` labels or an equivalent module-owned label contract SHOULD be used.
+Separately, `opendatahub-operator` MAY manage namespace-wide default-deny (`podSelector: {}`) in dedicated, platform-managed namespaces. It MUST first inventory all resident workloads and verify traffic in the restricted directions. Shared application namespaces MUST NOT receive these policies. This baseline does not replace workload-specific policies.
 
-Ingress allow rules MUST be explicit. Each ingress allow rule MUST contain a non-empty `from` list with specific NetworkPolicy peers and a non-empty `ports` list. Pod-based callers SHOULD be restricted by both namespace and pod selectors. A namespace-wide default-deny policy MAY use `ingress: []`. These patterns are prohibited for component allow policies:
+Ingress allow rules MUST be explicit. Each ingress allow rule MUST contain a non-empty `from` list with specific NetworkPolicy peers and a non-empty `ports` list. Pod-based callers SHOULD be restricted by both namespace and pod selectors. A workload-scoped default-deny policy MAY use `ingress: []`. These patterns are prohibited for component allow policies:
 
 ```yaml
 ingress:
@@ -158,11 +157,13 @@ from: []
 
 Omitting `from` or `ports`, using an empty list, or otherwise allowing unrestricted ingress is non-compliant for an ingress allow rule.
 
+Ingress peers MUST identify approved sources. Empty peers (`{}`), `namespaceSelector: {}`, and universal CIDRs (`0.0.0.0/0`, `::/0`) are prohibited. `podSelector: {}` and namespace-only peers require a documented, dedicated caller namespace.
+
 ### Optional egress restrictions
 
 This ADR does not require every component to restrict egress. A component that does not manage egress MUST omit `Egress` from the `policyTypes` of its policies; it MUST NOT add an allow-all egress rule.
 
-When a component manages egress, its egress policy MUST select the intended workloads with meaningful, stable labels and include `Egress` in `policyTypes`. Egress allow rules MUST contain non-empty `to` and `ports` lists and allow only documented destinations. An egress default-deny policy MAY use `egress: []`. In-cluster destinations SHOULD use stable namespace and pod selectors, while external destinations with stable address ranges MAY use the narrowest applicable CIDRs. Standard Kubernetes NetworkPolicy cannot select DNS names or reliably represent dynamically addressed services. Components that depend on such services, including external object storage or managed databases, MAY leave egress unmanaged or use separately governed network-specific controls outside this contract.
+When a component manages egress, its egress policy MUST select the intended workloads with meaningful, stable labels and include `Egress` in `policyTypes`. Egress allow rules MUST contain non-empty `to` and `ports` lists and allow only documented destinations. A workload-scoped egress default-deny policy MAY use `egress: []`. In-cluster destinations SHOULD use stable namespace and pod selectors, while external destinations with stable address ranges MAY use the narrowest applicable CIDRs. Standard Kubernetes NetworkPolicy cannot select DNS names or reliably represent dynamically addressed services. Components that depend on such services, including external object storage or managed databases, MAY leave egress unmanaged or use separately governed network-specific controls outside this contract.
 
 ### Controller RBAC and configuration
 
@@ -183,9 +184,9 @@ The module or component controller's ClusterRole or namespace-scoped Role MUST i
   - watch
 ```
 
-Permissions MUST be present in each controller's rendered Helm or Kustomize manifests. Platform RBAC does not replace controller RBAC. Namespace-scoped permissions SHOULD be used when policies are confined to one namespace. Each controller using cluster-scoped permissions MUST define its NetworkPolicy authority set and reject reconciliation outside it. Runtime validation for each controller MUST use its actual ServiceAccount and cover an authorized namespace and a namespace outside that authority set.
+Module controller RBAC MUST be present in its rendered Helm or Kustomize manifests; platform operator RBAC MUST be present in its installation manifests. Platform RBAC does not replace controller RBAC. Namespace-scoped permissions SHOULD be used when policies are confined to one namespace. Each controller using cluster-scoped permissions MUST define its NetworkPolicy authority set and reject reconciliation outside it.
 
-Modules MAY expose policy configuration through a resource appropriate to their use case. This ADR does not prescribe a shared Custom Resource or schema. Configured ingress or egress rules MUST be additive to the controller-owned policy baseline and meet the selector, peer, and port requirements in this ADR. A NetworkPolicy not reconciled by the responsible controller is an environmental override: it neither replaces the required component policy nor becomes part of its lifecycle.
+Modules MAY expose policy configuration without a shared CR or schema. Only principals authorized through RBAC or admission for the affected operand MAY add rules; rules affecting shared workloads or other namespaces require administrator or platform control. Controllers MUST validate added rules against this ADR's selector, peer, and port requirements. Rules MUST extend the controller-owned baseline without disabling required ingress protection. Components SHOULD expose effective rules through administrator-visible status or audit records. Unreconciled NetworkPolicies are environmental overrides outside the component lifecycle, not substitutes for component policies.
 
 Required ingress policy protection MUST remain enabled throughout the operand lifecycle. Components MUST NOT offer configuration that deletes a required ingress policy or stops its reconciliation.
 
@@ -216,16 +217,16 @@ Validation has separate bundle and runtime gates.
 
 The platform module-manifest compliance test MUST render every registered module Helm/Kustomize source and verify:
 
-- Every rendered module operator workload is selected by at least one NetworkPolicy using a non-empty `podSelector` specific to that workload.
+- Every rendered module operator workload is selected by at least one bundle policy with `Ingress` in `policyTypes`.
 - Each policy uses `networking.k8s.io/v1` and kind `NetworkPolicy`.
 - Policy namespace matches the rendered module operator namespace.
-- Each bundle allow-policy `podSelector` matches its intended rendered workload and no unrelated workload. A documented namespace-wide default-deny policy MAY use an empty selector.
-- `policyTypes` is explicit and includes `Ingress` for endpoint-protecting policies.
-- Every allowed ingress rule has explicit sources and ports; a policy with no ingress rules is valid when the selected operator requires no ingress.
-- No empty selector on a bundle allow policy or allow-all ingress pattern is present; a documented namespace-wide default-deny policy is valid.
-- Rendered RBAC grants the platform operator's ServiceAccount required NetworkPolicy verbs for module-bundle policies through the expected Role/RoleBinding or ClusterRole/ClusterRoleBinding and matches the controller's declared namespace authority set.
+- Each bundle policy has a non-empty `podSelector` matching its intended workloads and no unrelated workloads.
+- Each policy declares `policyTypes` explicitly.
+- Every ingress allow rule has explicit, approved sources and ports; empty or unrestricted peers and universal CIDRs are rejected. A policy with no ingress rules is valid when its operator requires no ingress.
+- No bundle policy allows ingress to an operator workload with no documented ingress endpoint.
+- Rendered module-controller RBAC grants its ServiceAccount the NetworkPolicy verbs required for its operand-policy scope through the expected Role/RoleBinding or ClusterRole/ClusterRoleBinding.
 
-This test validates module-bundle policies only. It MUST NOT claim to validate operand coverage or module-controller ownership.
+This test validates the module bundle and its controller RBAC. It MUST NOT claim to validate operand coverage or module-controller ownership. Platform operator RBAC MUST be validated separately against its installation manifests and installed ServiceAccount for module-bundle policy operations.
 
 #### Runtime validation by component teams
 
@@ -233,17 +234,17 @@ Component teams own runtime validation for their traffic paths and policy lifecy
 
 - Every documented endpoint has corresponding policy coverage.
 - Test evidence identifies each workload selector, Service and port, exposure path, allowed peer, and owning NetworkPolicy. Generated and user-created workloads are checked at runtime, not only from static manifests.
-- Allow-policy target selectors match the intended workloads and no unrelated pods. A documented namespace-wide default-deny policy MAY select every pod in its namespace.
-- Source peers and ports match the documented callers and endpoints.
+- All operand policy target selectors are non-empty and match the intended workloads and no unrelated pods.
+- Source peers and ports match documented callers and endpoints and exclude the unrestricted patterns above.
 - Deleting a policy causes the responsible controller to recreate it.
-- Failure to create or restore a required policy reports the component as not ready or degraded in both its component CR and the DSC component status; the status clears after recovery.
+- On required-policy creation or restoration failure, the component controller MUST report not ready or degraded on its component CR and retry recoverable errors. When a DSC manages the module, the platform MUST propagate this status to the DSC component. Status MUST clear only after the desired policy is reconciled.
 - Removing an operand leaves no policy created for that operand after reconciliation and cleanup complete.
 - Manual policy changes are reconciled to desired state.
 - When a component manages egress, egress peers and ports match its documented destinations.
 
 Where NetworkPolicy enforcement is available, component integration tests MUST also verify that unauthorized cross-namespace ingress is denied and approved module, gateway, monitoring, and webhook traffic continues to work. Components managing egress MUST also verify that documented egress succeeds and an unapproved destination is denied.
 
-Where NetworkPolicy enforcement is available, traffic-behavior tests MUST evaluate every NetworkPolicy that selects the tested pods, regardless of lifecycle owner, because NetworkPolicies are additive. Environmental overrides MUST be recorded in the test evidence. A deny-all baseline is a preferred test strategy, not a required object; every such qualification MUST include positive and negative traffic tests.
+Where NetworkPolicy enforcement is available, traffic-behavior tests MUST evaluate every NetworkPolicy that selects the tested pods, regardless of lifecycle owner, because NetworkPolicies are additive. Environmental overrides MUST be recorded in the test evidence. A deny-all baseline is a preferred test strategy, not a requirement; every such qualification MUST include positive and negative traffic tests.
 
 ### Platform support boundary
 
@@ -251,7 +252,7 @@ The platform supports this contract by:
 
 - Rendering and applying module-bundle policies with module operator resources.
 - Validating bundle-policy presence and shape during module compliance checks.
-- Preserving NetworkPolicy resources through Helm/Kustomize rendering and deployment.
+- Allowing `NetworkPolicy` as a module-bundle resource and preserving it through Helm/Kustomize rendering and deployment.
 - Passing platform namespace configuration required by module policies.
 - Cleaning up bundle policies with other rendered module resources.
 
@@ -305,6 +306,7 @@ This reduces component effort but violates least privilege, permits unintended c
 - Hostname-only or dynamically addressed egress destinations cannot be represented precisely by standard NetworkPolicy.
 - Components that do not manage egress can make unrestricted outbound connections unless another policy or network control restricts them.
 - An unrelated broad NetworkPolicy can weaken isolation because allowed traffic is the union of all policies selecting a pod.
+- NetworkPolicy cannot reliably restrict traffic from a Pod's node or `hostNetwork` workloads; webhook and API-server source paths need verification for each supported platform.
 - A module that omits operand reconciliation can appear compliant at bundle-render time while leaving runtime endpoints exposed.
 
 ## Stakeholder Impacts
@@ -323,6 +325,7 @@ Component teams must add bundle policies, operand reconciliation, RBAC, and runt
 - [Kubernetes NetworkPolicies](https://kubernetes.io/docs/concepts/services-networking/network-policies/)
 - [Kubernetes NetworkPolicy API](https://kubernetes.io/docs/reference/kubernetes-api/networking/network-policy-v1/)
 - [ODH Platform Utilities](https://github.com/opendatahub-io/odh-platform-utilities)
+- [ODH-ADR-Operator-0012: Module Onboarding](ODH-ADR-Operator-0012-module-onboarding.md)
 
 ## Reviews
 
