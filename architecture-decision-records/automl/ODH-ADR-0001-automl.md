@@ -9,11 +9,11 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-1066](https://redhat.atlassian.net/browse/RHAISTRAT-1066) |
-| Other docs:    | [AutoML feature documentation](../../documentation/components/automl/) |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-model-insights.md) · [ODH-ADR-0004](./ODH-ADR-0004-mlflow-integration.md) |
 
 ## What
 
-This ADR documents the architecture decision for AutoML, an automated system for building and optimizing machine learning models for tabular data within Red Hat OpenShift AI. AutoML leverages Kubeflow Pipelines to orchestrate the model training workflow, using the AutoGluon library to automatically build, evaluate, and select optimal models. Trained predictors can be registered in **RHOAI Model Registry** and deployed for inference on **KServe** using the **AutoGluon ServingRuntime**.
+This ADR documents the architecture decision for AutoML, an automated system for building and optimizing tabular and time-series models within Red Hat OpenShift AI. AutoML uses Kubeflow Pipelines and AutoGluon to build, evaluate, and select predictors. Trained predictors can be registered in **RHOAI Model Registry** and deployed on **KServe** using the **AutoGluon ServingRuntime**.
 
 AutoML provides **two separate pipelines** optimized for different use cases:
 
@@ -24,7 +24,7 @@ Each pipeline has distinct input parameters, defaults, and configurations tailor
 
 ## Why
 
-Manually building and optimizing machine learning models for tabular data is time-consuming and requires extensive ML expertise. This process involves:
+Manually building and optimizing tabular and time-series models is time-consuming and requires extensive ML expertise. This process involves:
 
 - Feature engineering and data preprocessing
 - Testing multiple model types and algorithms
@@ -43,13 +43,13 @@ AutoML automates this process, enabling users to:
 
 ## Goals
 
-* Provide automated ML model building and optimization for tabular data within RHOAI
+* Provide automated ML model building and optimization for tabular and time-series data within RHOAI
 * Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, Model Registry, KServe / AutoGluon ServingRuntime)
 * Support multiple ML task types (classification, regression, time-series forecasting)
 * Generate production-ready AutoGluon Predictor models as registerable / deployable artifacts
 * Enable evaluation using standardized metrics (accuracy, ROC-AUC, R², RMSE, MAPE, etc.)
-* Support multiple data sources and formats (S3, local filesystem; CSV, Parquet, XLSX)
-* Maintain compatibility with RHOAI Connections for secure data access
+* Support the pipeline-specific data formats and S3-compatible input contract in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)
+* Use RHOAI Connections for secure data access
 * Provide both programmatic (API) and UI
 * Support flexible configuration through optional parameters with sensible defaults
 
@@ -112,8 +112,8 @@ flowchart TB
 
 **Workflow Steps:**
 
-1. **Data Loading**: Tabular data is loaded from configured data sources (S3 or local filesystem). Supports CSV, Parquet, and XLSX formats and reading in batches of data.
-2. **Data Sampling & Splitting**:  A subset of training data (default: 500 samples) is sampled for initial model building to reduce computational cost.
+1. **Data Loading**: The pipeline loads the task-specific training data from S3-compatible storage. Parameter names and supported formats are defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md).
+2. **Data Sampling & Splitting**: A preset-bounded subset of training data is used for initial model building to reduce computational cost.
 Data is split into train/test sets using appropriate techniques:
    - random or stratified for classification
    - time-series split for forecasting
@@ -123,70 +123,35 @@ Data is split into train/test sets using appropriate techniques:
 6. **Model Registry** (post-pipeline): Users select and register a refitted predictor artifact (for example, `{model_name}_FULL/predictor/` — the `clone_for_deployment` export) in **RHOAI Model Registry** with metadata for versioning and deployment. Do not register the leaderboard HTML or other run-summary artifacts.
 7. **Model Deployment** (post-pipeline): Deploy that registered predictor artifact on **KServe** using the **AutoGluon ServingRuntime** (cluster runtime enabled by an admin; Red Hat-provided image).
 
-**MLflow Logging**: Done automatically via KFP native integration with MLflow.
+**MLflow Logging**: When enabled by KFP-injected configuration, AutoML uses explicit MLflow APIs and nested runs; see [ODH-ADR-0004](./ODH-ADR-0004-mlflow-integration.md).
 
 ### KFP components
-The KFP components planned to be delivered for the KFP pipeline implementation.
+
+The training pipelines comprise:
 
    - Data Loading
    - Data Sampling and Splitting
    - Model Selection
    - Model Refitting
    - Leaderboard Evaluation
-   - Notebook Generation
+   - Notebook Generation (per-model predictor notebooks plus the run-level experiment notebook)
 
 Model Registry registration and KServe deployment are platform / Dashboard flows outside the training pipeline.
 
 
 ### Input Parameters
 
-The pipelines accept parameters organized into logical groups:
-
-**Required Parameters:**
-- Experiment metadata (`name`)
-- Input data source (`input_data_reference`)
-- Task-specific parameters:
-  - Classification & Regression: `task_type`, `label_column`
-  - Time-Series: `timestamp_column`, `target`
-
-**Optional Parameters:**
-- Experiment description
-- Infrastructure configuration (results_reference)
-- Test data reference (external test data for evaluation)
-- MLFlow configuration for experiment tracking
-- Data preparation (sampling_config, split_config)
-- Model configuration (selection_config with time_limit, preset, eval_metric, top_n)
-- Time-series specific (prediction_length, time_series_config with covariates, static features, etc.)
-
-When optional parameters are omitted, AutoML uses AutoGluon default values.
+The public pipeline contract uses explicit S3 references (`train_data_secret_name`, `train_data_bucket_name`, `train_data_file_key`), optional external test-data references, task fields, `preset`, `eval_metric`, and `top_n`. Time series additionally requires identifiers, timestamp, target, and forecast horizon. Exact names, defaults, supported formats, and metric constraints are defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md).
 
 ### Artifacts Generated
 
-For each pipeline run, AutoML generates:
-
-1. **Model Artifact(s)** (multiple): Trained AutoGluon Predictor models with names following AutoGluon model naming conventions (e.g., `WeightedEnsemble_L3`, `CatBoost_BAG_L2`), each containing:
-   - Model files and weights
-   - Model configuration
-   - Performance metrics
-
-2. **AutoML Run Output Artifact** (single): Run-level artifact named `automl_output` with status properties and URI to log file with messages
-
-3. **Metrics Artifacts** (optional):
-   - **ClassificationMetrics**: Visual metrics for classification tasks (confusion matrix, ROC curve) rendered in Kubeflow Pipelines UI
-   - **Metrics**: Scalar metrics (accuracy, precision, recall, F1, ROC-AUC for classification; R², RMSE, MAE for regression; MAPE, sMAPE, MASE for time-series)
-
-4. **AutoML Experiment Summary**: Artifact named `automl_run_summary` providing a comprehensive report including:
-   - Data preparation details
-   - Model building and selection process
-   - Leaderboard of models ranked by performance
-   - Links to remaining artifacts
+Each run emits refitted predictor artifacts, metrics and leaderboard artifacts, and a run-level experiment notebook. The per-model directory layout, `model.json`, insight artifacts, and serving schemas are defined in [ODH-ADR-0003](./ODH-ADR-0003-model-insights.md). The run-level experiment notebook is distinct from per-model predictor notebooks.
 
 
 ### Supported Features
-Status: Tech Preview
 
-- **Data Type**: Tabular data (CSV, Parquet, XLSX)
-- **Data Sources**: S3, Local filesystem (FS)
+- **Data Type**: Tabular and time-series data (formats vary by pipeline; see [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md))
+- **Data Sources**: S3-compatible storage
 - **Supported Task Types**: 
   - Classification (Binary, Multiclass)
   - Regression
@@ -198,17 +163,6 @@ Status: Tech Preview
 - **Model Registry**: RHOAI Model Registry — register a selected refitted predictor artifact (e.g. `{model_name}_FULL/predictor/`) for versioning and deployment
 - **Model Serving**: KServe with the **AutoGluon ServingRuntime** (Red Hat-provided image; admin enables the runtime). Users deploy registered models from Model Registry / Dashboard after training.
 - **Interfaces**: API (programmatic), UI (RHOAI Dashboard)
-
-### Future Enhancements
-
-* Distributed training (full refit) of models with Kubeflow Katib (handled by a separate RFE: https://issues.redhat.com/browse/RHAIRFE-997)
-* ONNX converters for AutoGluon - contribution to experimental component `compile`. ONNX will solve the model/runtime lifecycle problem since onnx models are library version agnostic (library version used to train)
-* Predictor (AutoGluon model) conversion to MCP tool
-* Large tabular data support (1GB+) with incremental learning approaches
-* Model interpretability and explainability features integration
-* Bias detection and mitigation (fairness support)
-* Enhanced time-series features (multi-variate)
-
 
 ## Alternatives
 
@@ -260,20 +214,23 @@ Status: Tech Preview
 ## Risks
 
 * **Performance**: Model training can take significant time depending on dataset size, model complexity, and time limits. Benchmarking required to mitigate the risk.
-* **Resource Consumption**: Large datasets and complex models may require substantial compute resources or incremental learning approach (to be explored post TP)
+* **Resource Consumption**: Large datasets and complex models may require substantial compute resources. Mitigation: apply the documented preset and resource limits.
 
 
 ## References
 
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
 * [Kubeflow Pipelines Components](https://github.com/red-hat-data-services/pipelines-components)
+* [opendatahub-io/pipelines-components#235 — experiment notebook](https://github.com/opendatahub-io/pipelines-components/pull/235)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
+* AutoML sibling ADRs:
+  * [ODH-ADR-0002 — Experiment settings](./ODH-ADR-0002-experiment-settings.md)
+  * [ODH-ADR-0003 — Model insights](./ODH-ADR-0003-model-insights.md)
+* [AutoML component index](../../documentation/components/automl/README.md)
 
 ## Reviews
 
 | Reviewed by  | Date      | Approval | Notes |
 |--------------|-----------|----------|-------|
-| Ana Biazetti | Jan, 27   | TBD      | N/A   |
+| Ana Biazetti | Jan, 27   | YES      | N/A   |
 | Yuan Tang | Feb, 17th | YES      | N/A   |
-
-

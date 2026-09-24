@@ -2,18 +2,18 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-15 |
+| Date           | 2026-08-28 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) |
-| Other docs:    | [AutoRAG feature documentation](../../documentation/components/autorag/features/) — pipeline parameters, pattern schema, evaluation, MLflow, inference |
+| Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md) |
 
 ## What
 
-This ADR documents the architecture decision for AutoRAG, an automated system for building and optimizing Retrieval-Augmented Generation (RAG) applications within Red Hat OpenShift AI. AutoRAG uses Kubeflow Pipelines to orchestrate a hyperparameter optimization (HPO) workflow. The open-source **ai4rag** engine explores a configurable RAG search space and selects optimal parameter settings using GAM-based prediction.
+This ADR documents the architecture decision for AutoRAG, an automated system for building and optimizing Retrieval-Augmented Generation (RAG) applications within Red Hat OpenShift AI. AutoRAG uses Kubeflow Pipelines to orchestrate a hyperparameter optimization (HPO) workflow, explore a configurable RAG search space, and select parameter settings using GAM-based prediction.
 
 ## Why
 
@@ -32,7 +32,7 @@ AutoRAG automates this process, enabling users to:
 ## Goals
 
 * Provide automated optimization of document RAG applications within RHOAI
-* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, platform inference and vector I/O abstractions, vector databases, MLflow)
+* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, MaaS for chat and embeddings, database services, MLflow)
 * Support flexible search space definition through constraints and presets
 * Emit production-ready RAG patterns that separate **optimization**, **indexing**, and **inference** concerns
 * Enable evaluation using standardized, comparable metrics on user-provided benchmark data
@@ -43,8 +43,7 @@ AutoRAG automates this process, enabling users to:
 ## Non-Goals
 
 * Auto LLM deployment / shut down for experiment run purposes
-* Direct coupling to a specific LLM vendor or vector database product (access goes through platform abstractions)
-* Multi-modal RAG support (images, audio, video in documents)
+* Direct coupling to a specific LLM vendor or database product (access goes through platform abstractions)
 * LLM fine-tuning or model training capabilities
 * Optimization resume/checkpointing for interrupted runs
 
@@ -58,14 +57,14 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | --------- | -------------- |
 | **Kubeflow Pipelines** | Orchestrates the optimization workflow as containerized components |
 | **Managed pipelines** | Optimization and indexing ship as catalog-managed pipelines composed from reusable **pipelines-components** |
-| **ai4rag** | Search-space exploration, GAM-based configuration selection, pattern assembly, benchmark evaluation |
+| **Optimization engine** | Search-space exploration, GAM-based configuration selection, pattern assembly, benchmark evaluation |
 | **Document extraction** | Structured extraction from source documents (Docling) |
-| **Platform inference abstraction** | LLM inference, embeddings, and vector I/O (today: OGX) |
-| **Vector store** | Persistent document embeddings via pluggable adapters; supported backends are documented in [experiment settings](../../documentation/components/autorag/features/experiment_settings.md) and evolve without ADR changes |
+| **MaaS** | Chat completions, embeddings, model discovery, and Ragas evaluation via the MaaS Connection — see [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections) |
+| **Database store** | Simple RAG uses a persistent vector index via LangChain adapters (Milvus / PGVector); Graph RAG uses Neo4j graph, vector, and full-text indexes. `db_secret_name` selects the backend. |
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
 
-Operational detail for each layer (parameter names, search-space dimensions, metric backends) lives in the [feature documentation](../../documentation/components/autorag/features/).
+Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS / vector Connections, MLflow) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0006).
 
 ### Lifecycle Phases
 
@@ -106,16 +105,16 @@ flowchart LR
 
 **Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the vector store referenced by that pattern.
 
-**Phase 3 — Infer** — Consumers call the platform inference API using the pattern's exported **inference template**; retrieval is delegated to the registered vector store.
+**Phase 3 — Infer** — Consumers retrieve from the pattern's `store_binding` (query embeddings via MaaS) and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ### Pipeline Inputs (categories)
 
-The pipeline surface is defined in [experiment settings](../../documentation/components/autorag/features/experiment_settings.md). At the architectural level, inputs fall into:
+The pipeline surface is defined in [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md). At the architectural level, inputs fall into:
 
 | Category | Purpose |
 | -------- | ------- |
-| **Data references** | Source document location and benchmark data for evaluation |
-| **Platform credentials** | Connections/secrets for inference and vector I/O endpoints |
+| **Data references** | One to ten document locations (object keys or prefixes) in one Connection/bucket, plus benchmark data for evaluation ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#corpus-locations)) |
+| **Platform credentials** | MaaS Connection (chat and embeddings) and one generic database Connection (`db_secret_name`): vector DB for simple RAG or Neo4j for Graph RAG |
 | **Optimization controls** | Pattern budget, objective metric, quality preset |
 | **Search-space constraints** | Optional allow-lists and bounds on chunking, embedding, retrieval, and generation dimensions |
 
@@ -123,43 +122,32 @@ When optional constraints are omitted, AutoRAG applies defaults or explores the 
 
 ### Artifacts
 
-Each optimization run produces run-level and per-pattern artifacts. Per-pattern content is consolidated in **`pattern.json`** — the authoritative pattern record.
+Each optimization run produces run-level and per-pattern artifacts. **File names, layout, and `pattern.json` schema:** [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Evaluation row schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md).
 
-| Artifact category | Scope | Role |
-| ----------------- | ----- | ---- |
-| **Pattern record** (`pattern.json`) | Per pattern | Optimized settings, inference template, indexing workflow spec, evaluation summary |
-| **Evaluation detail** | Per pattern | Per-benchmark-row scores and retrieved context (audit and debugging) |
-| **Workflow notebooks** | Per pattern | Parameterized indexing and inference notebooks |
-| **Run output** | Per run | Execution status and logs |
-| **Experiment summary** | Per run | Data prep, search space, leaderboard, links to patterns |
+At the architectural level:
 
-Schema, field definitions, and examples: [RAG pattern inference](../../documentation/components/autorag/features/rag_pattern_inference.md), [RAG pattern evaluation](../../documentation/components/autorag/features/rag_pattern_evaluation.md).
+| Concern | Role |
+| -------- | ---- |
+| **Optimize** | Emit portable RAG patterns (settings, indexing spec, evaluation) |
+| **Index** | Full-corpus indexing from the pattern record (managed pipeline or notebook) |
+| **Infer / deploy** | Retrieve-and-generate from `settings` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)): notebook, Helm zip, or one-click Agent Sandbox. Dashboard tests a pattern via the AutoRAG BFF ([test endpoint](./ODH-ADR-0004-rag-pattern-inference.md#test-endpoint)); that path is not the agent contract. |
 
-📝 **Note:** Indexing may be executed via managed pipeline or notebook workflows; both are parameterized from the pattern record.
+### Scope
 
-### Scope (Tech Preview)
-
-Architectural boundaries for the current Tech Preview release:
+Architectural boundaries:
 
 | Dimension | In scope |
 | --------- | -------- |
 | **RAG type** | Document RAG (user-provided corpora) |
 | **Languages** | English-primary (language handling may evolve in prompts and detection) |
-| **Document types** | PDF, DOCX, PPTX, Markdown, HTML, plain text |
+| **Document types** | PDF, DOCX, PPTX, Markdown (including QMD/Rmd), HTML/XHTML, plain text, ODT, ODP, AsciiDoc, LaTeX, EPUB, and EML. This list is extensible; OCR-derived content and audio sources are future extensions, not current pipeline inputs. |
 | **Data sources** | S3-compatible storage, local filesystem |
-| **Search space** | Chunking, embedding, retrieval, and generation dimensions (see feature docs) |
-| **Evaluation** | Standardized metrics on user benchmark data with selectable optimization objective |
+| **Search space** | Chunking, embedding, retrieval, and generation dimensions (see [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md), [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)) |
+| **Evaluation** | Standardized metrics on user benchmark data with selectable optimization objective ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)) |
 | **Observability** | Optional MLflow tracking aligned with the AutoML parent/child run model |
 | **Interfaces** | Programmatic API and RHOAI Dashboard UI |
 
-Specific parameter names, presets, retrieval modes, and metric backends are **not** fixed in this ADR — see [feature documentation](../../documentation/components/autorag/features/).
-
-### Future Enhancements
-
-* Multi-lingual support beyond English-primary workflows
-* Synthetic benchmark / test data generation
-* Parallel or distributed optimization
-* First-class deployable inference endpoints for optimized patterns (beyond notebooks and platform API templates)
+Specific parameter names, presets, retrieval modes, and metric backends are detailed in sibling ADRs rather than this parent overview.
 
 ## Alternatives
 
@@ -198,7 +186,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are **no
 
 * **Data Access**: AutoRAG uses RHOAI Connections (Kubernetes Secrets) for secure access to data sources; credential names — not secret values — appear in pipeline parameters
 * **Namespace Isolation**: Connections are namespace-scoped, preventing cross-namespace data access
-* **Platform and vector store access**: Inference and vector I/O credentials are supplied via Connections/secrets and consumed through the platform abstraction layer
+* **Platform and database access**: MaaS credentials (`maas_secret_name`) for chat and embeddings; `db_secret_name` selects the vector database for simple RAG or Neo4j for Graph RAG. All are Connections/secrets.
 * **Artifact Storage**: Results are stored in user-configured pipeline artifact locations with appropriate access controls
 * **Data Privacy**: Documents and test data are processed within the pipeline execution environment; retention follows configured storage policies
 
@@ -207,10 +195,13 @@ Specific parameter names, presets, retrieval modes, and metric backends are **no
 * [ai4rag GitHub Repository](https://github.com/IBM/ai4rag)
 * [Kubeflow Pipelines Components](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
-* [AutoRAG feature documentation](../../documentation/components/autorag/features/)
-  * [Experiment settings](../../documentation/components/autorag/features/experiment_settings.md)
-  * [RAG pattern inference](../../documentation/components/autorag/features/rag_pattern_inference.md)
-  * [RAG pattern evaluation](../../documentation/components/autorag/features/rag_pattern_evaluation.md)
+* AutoRAG sibling ADRs:
+  * [ODH-ADR-0002 — Optimization settings](./ODH-ADR-0002-experiment-settings.md)
+  * [ODH-ADR-0003 — RAG templates](./ODH-ADR-0003-rag-templates.md)
+  * [ODH-ADR-0004 — Pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
+  * [ODH-ADR-0005 — Pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
+  * [ODH-ADR-0006 — MLflow integration](./ODH-ADR-0006-mlflow-integration.md)
+* [AutoRAG component index](../../documentation/components/autorag/README.md)
 
 ## Reviews
 
