@@ -21,7 +21,7 @@ This KEP evaluates three API-shape options:
 
 1. Embed service configuration in a central profile.
 2. Use a generic service-binding resource.
-3. Use capability-specific resources such as `TenantMaaS`.
+3. Use capability-specific resources such as `MaaSConfiguration`.
 
 It also evaluates replacing public `Tenant` terminology with `Organization`
 terminology and removing the tenancy operator's direct dependency on the MaaS
@@ -69,13 +69,14 @@ not duplicate those documents:
 
 ### Public naming
 
-Use full Organization-based kinds for the proposed API:
+Use descriptive, Organization-based kinds for identity resources and a
+capability-specific kind for MaaS:
 
 ```text
 Organization
 OrganizationProfile
 OrganizationProject
-OrganizationMaaS
+MaaSConfiguration
 ```
 
 The API still represents tenancy. The documentation defines an Organization as
@@ -92,6 +93,9 @@ spec:
 ```text
 organization.opendatahub.io/*
 ```
+
+Display-only names use metadata annotations rather than API fields; they do not
+affect organization placement, authorization, or reconciliation.
 
 Because the current implementation is only a proof of concept and no
 `tenancy.opendatahub.io` API has shipped, use a clean API group:
@@ -115,27 +119,32 @@ OrganizationProfile
 OrganizationProject
   namespace/project provisioning
 
-OrganizationMaaS
+MaaSConfiguration
   independently managed MaaS intent and configuration
 ```
 
 The proof-of-concept names are `PlatformTenant`, `TenantProfile`,
 `TenantProject`, and `TenantMaaS`. They are replaced by the proposed
-Organization-based names before the API is shipped.
+Organization-based names before the API is shipped. MaaS uses the
+capability-specific name `MaaSConfiguration` because its `organizationRef`
+already identifies the organization it serves.
 
 ### Capability-specific MaaS resource
 
-The existence of `OrganizationMaaS` enables MaaS for one root organization.
-The reference is immutable and the resource is root-only.
+The existence of `MaaSConfiguration` enables MaaS for one root organization.
+The reference is immutable and the resource is root-only. The MaaS admission
+webhook validates the root-only constraint, the immutable reference, and the
+one-configuration-per-root constraint; readiness is reported later through
+status conditions.
 
 ```yaml
 apiVersion: organization.opendatahub.io/v1alpha1
-kind: OrganizationMaaS
+kind: MaaSConfiguration
 metadata:
-  name: nlp-team
+  name: research
 spec:
   organizationRef:
-    name: nlp-team
+    name: research
   quotas:
     maxModels: 20
     maxSubscriptions: 100
@@ -143,21 +152,27 @@ spec:
 ```
 
 MaaS-specific quotas and service-specific client settings belong on this
-resource. Shared OIDC issuer and Gateway configuration do not.
+resource. Shared OIDC issuer and ingress Gateway configuration do not.
 
 ### Shared platform configuration
 
-OIDC and Gateway configuration is required by multiple capabilities, including
-MaaS and Observability. The initial shape can be a small section on the profile:
+OIDC and ingress Gateway configuration is required by multiple capabilities,
+including MaaS and Observability. The initial shape can be a small section on
+the profile. In this document, Gateway means the shared Kubernetes Gateway API
+`Gateway` used for tenant HTTP ingress; it does not mean the AI Gateway, MCP
+Gateway, or another application-level gateway.
 
 ```yaml
 kind: OrganizationProfile
 spec:
-  organization: nlp-team
+  organizationRef:
+    name: nlp-team
   platform:
     oidc:
       issuerUrl: https://sso.example.com/realms/rhoai
-    gateway:
+    ingressGatewayRef:
+      group: gateway.networking.k8s.io
+      kind: Gateway
       name: tenant-gateway
       namespace: openshift-ingress
 ```
@@ -169,22 +184,31 @@ service registry.
 The issuer is a strong candidate for shared configuration. Client IDs may
 remain capability-specific if MaaS and Observability use separate OIDC clients.
 
+Observability should follow the same ownership pattern as MaaS when its API is
+stabilized: an observability capability resource is reconciled by the
+observability operator, reads Organization identity and policy, and reports its
+own status. The profile's observability block is therefore transitional shared
+configuration, not a commitment that the tenancy operator will own
+observability resources.
+
 ### MaaS dependency boundary
 
 The target dependency graph is:
 
 ```text
-MaaS operator → Organization / OrganizationProfile / OrganizationMaaS
+MaaS operator → Organization / OrganizationProfile / MaaSConfiguration
 MaaS operator → AITenant, while AITenant exists
 ```
 
 The tenancy operator must not import, watch, create, or update `AITenant`.
-The MaaS operator watches `OrganizationMaaS`, validates the referenced
-organization and administrators using read-only access to the organization API,
-and owns the adapter from `OrganizationMaaS` to `AITenant`.
+The MaaS operator owns and reconciles `MaaSConfiguration`, validates the
+referenced organization and administrators using read-only access to the
+organization API, and owns the adapter from `MaaSConfiguration` to `AITenant`.
+The tenancy operator owns only `Organization`, `OrganizationProfile`, and
+`OrganizationProject`.
 
-When `AITenant` is removed, the MaaS operator reconciles `OrganizationMaaS`
-directly. The organization API does not change.
+When `AITenant` is removed, the MaaS operator reconciles
+`MaaSConfiguration` directly. The organization API does not change.
 
 ## Custom resource examples and usage
 
@@ -204,8 +228,9 @@ metadata:
   name: research
   labels:
     organization.opendatahub.io/managed-by: tenancy-controller
-spec:
-  displayName: Research Division
+  annotations:
+    organization.opendatahub.io/display-name: Research Division
+spec: {}
 ```
 
 ```sh
@@ -219,7 +244,6 @@ Expected observed status is illustrative:
 ```yaml
 status:
   root: research
-  phase: Ready
   conditions:
     - type: Ready
       status: "True"
@@ -236,8 +260,9 @@ apiVersion: organization.opendatahub.io/v1alpha1
 kind: Organization
 metadata:
   name: nlp-team
+  annotations:
+    organization.opendatahub.io/display-name: NLP Team
 spec:
-  displayName: NLP Team
   parent: research
 ```
 
@@ -262,7 +287,8 @@ kind: OrganizationProfile
 metadata:
   name: nlp-team
 spec:
-  organization: nlp-team
+  organizationRef:
+    name: nlp-team
   admins:
     - kind: Group
       name: nlp-team-admins
@@ -272,7 +298,9 @@ spec:
   platform:
     oidc:
       issuerUrl: https://sso.example.com/realms/rhoai
-    gateway:
+    ingressGatewayRef:
+      group: gateway.networking.k8s.io
+      kind: Gateway
       name: tenant-gateway
       namespace: openshift-ingress
   observability:
@@ -300,7 +328,9 @@ spec:
     name: nlp-team
   oidc:
     issuerUrl: https://sso.example.com/realms/rhoai
-  gateway:
+  ingressGatewayRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
     name: tenant-gateway
     namespace: openshift-ingress
 ```
@@ -308,8 +338,12 @@ spec:
 ### Provision an Organization Project
 
 An Organization Project maps one-to-one to a Kubernetes Namespace or OpenShift
-Project. The controller creates namespace labels, RoleBindings, and owned
-NetworkPolicies.
+Project. The controller creates namespace labels, RoleBindings, and tenant
+baseline NetworkPolicies that it owns. It does not own module or operand
+NetworkPolicies; those remain with the responsible component controller under
+the [module NetworkPolicy platform contract](https://github.com/opendatahub-io/architecture-decision-records/pull/164).
+The policies are additive and no policy object has more than one lifecycle
+manager.
 
 ```yaml
 apiVersion: organization.opendatahub.io/v1alpha1
@@ -334,6 +368,11 @@ spec:
         - 8080
 ```
 
+Cross-organization grants require the administrators of both the source and
+target projects to approve the same grant before either side is changed. The
+controller creates only additive policies that it owns and never deletes a
+policy owned by a component or another controller.
+
 ```sh
 kubectl apply -f organization-project-sentiment.yaml
 kubectl get organizationproject sentiment-analysis
@@ -357,13 +396,13 @@ status:
 
 ### Request MaaS for an Organization
 
-The existence of `OrganizationMaaS` requests MaaS. It is independently
+The existence of `MaaSConfiguration` requests MaaS. It is independently
 configured from the Organization profile and is valid only for a root
 Organization.
 
 ```yaml
 apiVersion: organization.opendatahub.io/v1alpha1
-kind: OrganizationMaaS
+kind: MaaSConfiguration
 metadata:
   name: research
 spec:
@@ -377,20 +416,19 @@ spec:
     maxApiKeys: 50
 ```
 
-The service adapter resolves the shared issuer and Gateway from
+The service adapter resolves the shared issuer and ingress Gateway from
 `OrganizationProfile` or `OrganizationPlatformConfig`:
 
 ```sh
 kubectl apply -f organization-maas-research.yaml
-kubectl get organizationmaas research
-kubectl describe organizationmaas research
+kubectl get maasconfiguration research
+kubectl describe maasconfiguration research
 ```
 
 Illustrative observed status:
 
 ```yaml
 status:
-  aiTenant: research
   ready: true
   conditions:
     - type: Ready
@@ -398,7 +436,18 @@ status:
       reason: MaaSReady
 ```
 
-Creating `OrganizationMaaS` for a child Organization is rejected:
+`MaaSConfiguration` is a capability request, not a request to change the
+DataScienceCluster component configuration. In an RHOAI deployment, the MaaS
+operator requires `aigateway.modelsAsAService: Managed` (or the equivalent
+component-management signal) before provisioning begins. It does not force
+that setting. If the capability is not managed, the resource remains present
+but reports a `CapabilityNotManaged` condition and no `AITenant` or MaaS-owned
+runtime resources are created. Structural constraints, such as root-only
+scope, remain webhook validation; this component-availability check is runtime
+status.
+
+Creating `MaaSConfiguration` for a child Organization is rejected at webhook
+admission, before the MaaS operator reconciles it:
 
 ```yaml
 spec:
@@ -409,7 +458,7 @@ spec:
 The webhook returns an error similar to:
 
 ```text
-MaaS provisioning is supported only for root Organizations
+MaaSConfiguration is supported only for root Organizations
 ```
 
 ### Transitional generated AITenant
@@ -429,7 +478,7 @@ metadata:
     maas.opendatahub.io/managed-by: maas-operator
   ownerReferences:
     - apiVersion: organization.opendatahub.io/v1alpha1
-      kind: OrganizationMaaS
+      kind: MaaSConfiguration
       name: research
       controller: true
       blockOwnerDeletion: true
@@ -445,9 +494,32 @@ spec:
     maxApiKeys: 50
 ```
 
+The legacy `AITenant.spec.gateway` value is populated from the shared
+`ingressGatewayRef`; it refers to the same Kubernetes Gateway API ingress
+object and not to an AI Gateway or MCP Gateway.
+
 The tenancy operator does not create or watch this resource. The MaaS operator
 owns the adapter and can replace it later without changing the Organization
-API.
+API. During the transition, only the MaaS operator may create, update, or
+delete this generated `AITenant`; the tenancy operator's old adapter must be
+disabled before the MaaS operator takes ownership. The owner reference and
+managed-by label are the handoff markers, and a cutover check must confirm that
+no two reconcilers are writing the same `AITenant`.
+
+The transition is ordered as follows:
+
+1. Deploy the MaaS operator's `MaaSConfiguration` reconciler with read-only
+   access to Organization resources and write access to its own `AITenant`
+   adapter resources.
+2. Stop and remove the tenancy operator's `AITenant` watch and reconciler;
+   existing tenancy-side resources are not updated during the handoff.
+3. Verify that each generated `AITenant` has the `MaaSConfiguration`
+   owner-reference and MaaS managed-by label, then allow the MaaS operator to
+   resume reconciliation.
+4. After all generated resources are owned by the MaaS operator, remove the
+   tenancy-side adapter code. If the `AITenant` CRD is later removed, the MaaS
+   operator switches to direct `MaaSConfiguration` reconciliation without an
+   Organization API change.
 
 ### Typical administrative workflow
 
@@ -467,18 +539,31 @@ kubectl --as=alice --as-group=nlp-team-admins \
 kubectl apply -f organization-maas-research.yaml
 
 # 5. Inspect the complete Organization subtree.
-kubectl get organizations,organizationprofiles,organizationprojects,organizationmaas
+kubectl get organizations,organizationprofiles,organizationprojects,maasconfigurations
 ```
 
 ### Delete and cleanup
 
 Deleting an Organization Project removes the resources owned by that project
-controller. Deleting `OrganizationMaaS` removes MaaS resources owned by the MaaS
-operator. Existing unmanaged namespaces and manually created MaaS resources are
-not adopted or deleted automatically.
+controller. The only disable operation in this proposal is deleting the
+`MaaSConfiguration`; there is no separate `enabled` field. Deletion is handled
+by the MaaS operator's finalizer and follows this contract:
+
+1. Stop accepting new subscriptions and API-key issuance for the organization.
+2. Revoke active API keys while retaining revocation/audit records for 90 days.
+3. Delete MaaS-owned tenant control-plane resources, including the MaaS API
+   namespace and policies. Deployed models and model data are retained unless
+   their own lifecycle explicitly deletes them.
+4. Leave the shared Gateway untouched because it is not MaaS-owned.
+5. Remove the finalizer only after the owned cleanup has completed.
+
+Transient failures retain the finalizer, set a deletion-failure condition, and
+are retried idempotently. If cleanup partially succeeds, subsequent retries
+reconcile the remaining MaaS-owned resources; they never adopt or delete
+unmanaged namespaces, manually created MaaS resources, or the shared Gateway.
 
 ```sh
-kubectl delete organizationmaas research
+kubectl delete maasconfiguration research
 kubectl delete organizationproject sentiment-analysis
 kubectl delete organization nlp-team
 ```
@@ -547,22 +632,26 @@ resources but does not need permission to modify them.
 
 ### Ownership
 
-The capability-owning operator owns capability implementation resources. For
-the transition, the MaaS operator owns `AITenant`. The tenancy operator owns
-organization resources and does not own MaaS implementation resources.
+The capability-owning operator owns the capability resource and its
+implementation resources. The MaaS operator owns `MaaSConfiguration` and,
+during the transition, its generated `AITenant`. The tenancy operator owns
+Organization resources and does not own MaaS implementation resources.
 
 ### Status
 
-Capability status belongs on the capability resource. MaaS readiness should be
-reported on `OrganizationMaaS`, not copied into the general organization
-profile. Shared platform configuration status belongs on the resource that owns
-that configuration.
+Capability status belongs on the capability resource. MaaS readiness is
+reported on `MaaSConfiguration`, not copied into the general organization
+profile; the stable status uses conditions and does not expose the transitional
+`AITenant` name. Shared platform configuration status belongs on the resource
+that owns that configuration.
 
 ### Lifecycle
 
-Creating `OrganizationMaaS` requests MaaS. Deleting it removes MaaS resources
-owned by the MaaS operator. Existing manually created MaaS resources remain
-untouched unless an explicit adoption mechanism is introduced.
+Creating `MaaSConfiguration` requests MaaS. The MaaS operator owns its
+reconciliation and applies the deletion contract above. It waits for the
+RHOAI AI Gateway MaaS capability to be managed and does not mutate that
+component setting. Existing manually created MaaS resources remain untouched
+unless an explicit adoption mechanism is introduced.
 
 ## Upgrade and migration
 
@@ -573,7 +662,7 @@ shipping the proposed API:
 PlatformTenant  → Organization
 TenantProfile   → OrganizationProfile
 TenantProject   → OrganizationProject
-TenantMaaS      → OrganizationMaaS
+TenantMaaS      → MaaSConfiguration
 tenantRef       → organizationRef
 tenant labels   → organization labels
 ```
@@ -625,10 +714,14 @@ Before the design is considered stable:
 
 - Naming is approved by platform, MaaS, and Observability teams.
 - Shared OIDC and Gateway ownership is defined.
-- `OrganizationMaaS` authorization is tested against organization admins.
+- `MaaSConfiguration` authorization is tested against organization admins.
 - The tenancy operator has no direct dependency on `AITenant`.
 - MaaS can remove `AITenant` without changing the organization API.
 - Existing unmanaged MaaS resources remain unaffected.
+- MaaS deletion, disable-as-delete, retry, and partial-failure behavior is
+  covered by controller tests before the adapter ownership handoff.
+- The AITenant cutover proves that only one controller reconciles each
+  generated resource at a time.
 
 ## Open questions
 
@@ -639,13 +732,12 @@ Before the design is considered stable:
 - Is Gateway configuration shared across all capabilities?
 - Is the OIDC issuer shared while client IDs remain capability-specific?
 - Should ancestor administrators manage capability resources directly?
-- Which team owns the `OrganizationMaaS` API and its webhook?
 
 ## Implementation history
 
 - Initial design used `PlatformTenant`, `TenantProfile`, and `TenantProject`.
 - MaaS configuration was first embedded as `TenantProfile.spec.services.maas`.
-- The design moved to capability-specific `TenantMaaS`.
+- The design moved to the capability-specific `MaaSConfiguration` resource.
 - The implementation introduced a transitional tenancy-side `AITenant` adapter.
 - The target architecture moves that adapter into the MaaS operator.
 - Public naming is now under discussion in favor of Organization-based kinds.
