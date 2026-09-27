@@ -107,6 +107,22 @@ organization.opendatahub.io/v1alpha1
 No conversion webhook, compatibility CRD, or field-preservation strategy is
 required for the POC rename.
 
+The CRDs retain these full kinds as their canonical API names and expose the
+following lowercase `kubectl` short names through API discovery:
+
+| Kind | Resource name | Short name |
+|---|---|---|
+| `Organization` | `organizations` | `org` |
+| `OrganizationProfile` | `organizationprofiles` | `orgprof` |
+| `OrganizationProject` | `organizationprojects` | `orgproj` |
+| `MaaSConfiguration` | `maasconfigurations` | `maascfg` |
+
+For example, the complete organization view can be inspected with:
+
+```sh
+kubectl get org,orgprof,orgproj,maascfg
+```
+
 ### Core resources
 
 ```text
@@ -235,8 +251,8 @@ spec: {}
 
 ```sh
 kubectl apply -f organization-research.yaml
-kubectl get organizations research
-kubectl get organization research -o yaml
+kubectl get org research
+kubectl get org research -o yaml
 ```
 
 Expected observed status is illustrative:
@@ -268,8 +284,8 @@ spec:
 
 ```sh
 kubectl apply -f organization-nlp-team.yaml
-kubectl get organizations
-kubectl get organization nlp-team -o jsonpath='{.status.root}{"\n"}'
+kubectl get org
+kubectl get org nlp-team -o jsonpath='{.status.root}{"\n"}'
 ```
 
 The controller creates an initial restrictive `OrganizationProfile` for the
@@ -311,8 +327,8 @@ spec:
 
 ```sh
 kubectl apply -f organization-profile-nlp-team.yaml
-kubectl get organizationprofile nlp-team
-kubectl describe organizationprofile nlp-team
+kubectl get orgprof nlp-team
+kubectl describe orgprof nlp-team
 ```
 
 If shared configuration later moves to `OrganizationPlatformConfig`, the
@@ -375,7 +391,7 @@ policy owned by a component or another controller.
 
 ```sh
 kubectl apply -f organization-project-sentiment.yaml
-kubectl get organizationproject sentiment-analysis
+kubectl get orgproj sentiment-analysis
 kubectl get namespace sentiment-analysis --show-labels
 kubectl get networkpolicies -n sentiment-analysis
 ```
@@ -421,8 +437,8 @@ The service adapter resolves the shared issuer and ingress Gateway from
 
 ```sh
 kubectl apply -f organization-maas-research.yaml
-kubectl get maasconfiguration research
-kubectl describe maasconfiguration research
+kubectl get maascfg research
+kubectl describe maascfg research
 ```
 
 Illustrative observed status:
@@ -539,7 +555,7 @@ kubectl --as=alice --as-group=nlp-team-admins \
 kubectl apply -f organization-maas-research.yaml
 
 # 5. Inspect the complete Organization subtree.
-kubectl get organizations,organizationprofiles,organizationprojects,maasconfigurations
+kubectl get org,orgprof,orgproj,maascfg
 ```
 
 ### Delete and cleanup
@@ -563,9 +579,9 @@ reconcile the remaining MaaS-owned resources; they never adopt or delete
 unmanaged namespaces, manually created MaaS resources, or the shared Gateway.
 
 ```sh
-kubectl delete maasconfiguration research
-kubectl delete organizationproject sentiment-analysis
-kubectl delete organization nlp-team
+kubectl delete maascfg research
+kubectl delete orgproj sentiment-analysis
+kubectl delete org nlp-team
 ```
 
 Deletion authorization remains subject to the validating webhook and the
