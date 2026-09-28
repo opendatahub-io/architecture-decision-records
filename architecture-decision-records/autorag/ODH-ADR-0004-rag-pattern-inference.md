@@ -34,7 +34,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 ## How
 
-The sections below define the artifact, inference, and indexing contracts for an optimized pattern.
+The sections below define the artifact, inference, and indexing contracts for an optimized Simple RAG pattern. Graph RAG requires a separate end-to-end contract before it can use this production indexing and inference flow.
 
 ## Table of contents
 
@@ -214,7 +214,6 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
         "input_data_secret_name",
         "input_data_bucket_name",
         "input_data_keys",
-        "collection_name",
         "batch_size"
       ]
     }
@@ -239,7 +238,7 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
 
 Optimization and production use **MaaS** for Responses-compatible generation and embeddings (indexing and query-time vector search). For simple RAG, retrieval uses the LangChain vector-store adapter for `store_binding.provider_type` / `collection_name` (Milvus or PGVector credentials from `db_secret_name`).
 
-`settings` supplies defaults. A Responses-compatible request carries nonsecret generation, store, and retrieval values; it may override allowed defaults for that request. `connections` are deployment-only and are never accepted in the request.
+`settings` supplies defaults. A Responses-compatible request is a consumer-facing representation of the selected pattern settings; implementations may project those settings into the request shape while preserving the pattern's selected behavior. Requests may override only explicitly permitted nonsecret values. `connections` are deployment-only and are never accepted in the request.
 
 ```json
 {
@@ -285,7 +284,7 @@ Optimization and production use **MaaS** for Responses-compatible generation and
 
 ### One-click Deployment
 
-One-click deployment starts the default RAG application from `inference.runtime_spec`, using the prebuilt inference image and project Connections. It injects only the MaaS and database Connections; the request supplies nonsecret model, store, and retrieval settings. The Dashboard deployment guide owns runtime, Sandbox, and lifecycle details.
+One-click deployment starts the default RAG application from `inference.runtime_spec`, using the prebuilt inference image and project Connections. It injects only the MaaS and database Connections; the request may supply permitted nonsecret settings while remaining consistent with the selected pattern. The Dashboard deployment guide owns runtime, Sandbox, and lifecycle details.
 
 ### Test endpoint
 
@@ -301,7 +300,7 @@ Index building populates the production vector store via the managed **`document
 |-----------------------|------|
 | `pipeline_name` | Managed catalog name (e.g. `documents-indexing-pipeline`) |
 | `parameters` | Pre-filled from optimization run + pattern `settings` |
-| `overrides_allowed` | Keys the UI may expose for user override at submit time |
+| `overrides_allowed` | Keys the UI may expose for user override at submit time; implementations preserve consistency between the indexed corpus, selected pattern, and serving configuration |
 
 **Parameter sources:** optimization run → `maas_secret_name`, `db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Secret fields are **names only** (Kubernetes Secret references).
 
@@ -309,7 +308,7 @@ Index building populates the production vector store via the managed **`document
 
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
 
-**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (MaaS) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change.
+**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (MaaS) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change. Re-indexing must leave a coherent serving corpus, without unintended stale or duplicate content; replacement and update mechanics remain implementation-defined.
 
 ---
 

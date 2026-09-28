@@ -58,8 +58,7 @@ These parameters are the public surface of `autogluon_tabular_training_pipeline`
 | `train_data_secret_name` | `str` | (required) | Kubernetes **Secret** name holding S3-compatible credentials. Expected keys: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`. Mapped into the data loader task with `use_secret_as_env`. |
 | `train_data_bucket_name` | `str` | (required) | Bucket containing the training table file. |
 | `train_data_file_key` | `str` | (required) | Object key of the **CSV** file (features plus label column). |
-| `test_data_secret_name` | `Optional[str]` | `None` | Optional Kubernetes **Secret** for an **external holdout / test table**. Same key convention as `train_data_secret_name`. When set with `test_data_bucket_name` and `test_data_file_key`, the pipeline uses this file for evaluation instead of splitting test data from the training file. |
-| `test_data_bucket_name` | `Optional[str]` | `None` | Bucket containing the external test table. Required together with the other `test_data_*` parameters when external test data is used. |
+| `test_data_bucket_name` | `Optional[str]` | `None` | Bucket containing an external test table. The pipeline accesses it with `train_data_secret_name`; it is used for evaluation instead of splitting test data from the training file when paired with `test_data_file_key`. |
 | `test_data_file_key` | `Optional[str]` | `None` | Object key of the external test **CSV** (same schema expectations as training: features plus label column). |
 | `label_column` | `str` | (required) | Name of the target / label column. |
 | `task_type` | `str` | (required) | One of `binary`, `multiclass`, or `regression`. Drives metrics and AutoGluon problem type. |
@@ -80,8 +79,7 @@ AutoGluon’s **[`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/aut
 | `train_data_secret_name` | `str` | (required) | Kubernetes **Secret** for S3 access. Same key convention as tabular (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`). |
 | `train_data_bucket_name` | `str` | (required) | Bucket containing the time series file. |
 | `train_data_file_key` | `str` | (required) | Object key of the dataset (**CSV or Parquet**). Rows must support building a `TimeSeriesDataFrame`: identifiers, timestamps, target; optional covariate columns as below. |
-| `test_data_secret_name` | `Optional[str]` | `None` | Optional Kubernetes **Secret** for an **external holdout / test series file**. Same key convention as `train_data_secret_name`. When set with `test_data_bucket_name` and `test_data_file_key`, the pipeline uses this file for evaluation instead of a temporal test split from the training file. |
-| `test_data_bucket_name` | `Optional[str]` | `None` | Bucket containing the external test series file. Required together with the other `test_data_*` parameters when external test data is used. |
+| `test_data_bucket_name` | `Optional[str]` | `None` | Bucket containing an external test series file. The pipeline accesses it with `train_data_secret_name`; it is used for evaluation instead of a temporal test split when paired with `test_data_file_key`. |
 | `test_data_file_key` | `Optional[str]` | `None` | Object key of the external test dataset (**CSV or Parquet**); same column expectations as training (`id_column`, `timestamp_column`, `target`, optional covariates). |
 | `target` | `str` | (required) | Column with the **numeric value to forecast** (AutoGluon time series target). |
 | `id_column` | `str` | (required) | Column that identifies each series (for example `product_id`). Passed as `id_column` when constructing the time series frame; the internal frame uses `item_id`. |

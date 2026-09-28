@@ -49,7 +49,7 @@ AutoRAG automates this process, enabling users to:
 
 ## How
 
-AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **document sample**; pattern artifacts are designed for **full-corpus indexing** and production inference.
+AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **document sample**; pattern artifacts are designed for **full-corpus indexing** and production inference. The concrete indexing and inference path in this ADR set is Simple RAG; Graph RAG remains an extension until its end-to-end indexing and serving contract is defined.
 
 ### Architecture Components
 
@@ -103,9 +103,9 @@ flowchart LR
 4. **HPO loop** — Iteratively select configurations (GAM), execute RAG on the sample, evaluate against the benchmark, and emit ranked **patterns** until a pattern budget is reached
 5. **Finalize** — Store run artifacts, leaderboard, and optional MLflow experiment summary
 
-**Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the vector store referenced by that pattern.
+**Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the Simple RAG vector store referenced by that pattern.
 
-**Phase 3 — Infer** — Consumers retrieve from the pattern's `store_binding` (query embeddings via MaaS) and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
+**Phase 3 — Infer** — Simple RAG consumers retrieve from the pattern's `store_binding` (query embeddings via MaaS) and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ### Pipeline Inputs (categories)
 
@@ -187,6 +187,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
 * **Data Access**: AutoRAG uses RHOAI Connections (Kubernetes Secrets) for secure access to data sources; credential names — not secret values — appear in pipeline parameters
 * **Namespace Isolation**: Connections are namespace-scoped, preventing cross-namespace data access
 * **Platform and database access**: MaaS credentials (`maas_secret_name`) for chat and embeddings; `db_secret_name` selects the vector database for simple RAG or Neo4j for Graph RAG. All are Connections/secrets.
+* **Connection authorization**: Submission and deployment use Connections only through the authorization controls of the owning platform.
 * **Artifact Storage**: Results are stored in user-configured pipeline artifact locations with appropriate access controls
 * **Data Privacy**: Documents and test data are processed within the pipeline execution environment; retention follows configured storage policies
 

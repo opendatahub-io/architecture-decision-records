@@ -39,7 +39,7 @@ When MLflow is enabled on the pipeline server, KFP injects `KFP_MLFLOW_CONFIG` i
 |----------------------|---------|-------|
 | `KFP_MLFLOW_CONFIG` | Platform MLflow config (JSON) | Absent, empty, invalid JSON, or missing `endpoint` disables tracking (best-effort; training still runs) |
 
-The JSON schema is a platform KFP-to-MLflow contract and is not defined here. Without a valid configuration, tracking is disabled; there is no pipeline parameter to turn logging off. With one, the stage-map publisher resolves the parent run and training components create child runs and explicitly call `mlflow.log_params()`, `mlflow.log_metrics()`, and `mlflow.log_artifact()`.
+The JSON schema is a platform KFP-to-MLflow contract and is not defined here. Without a valid configuration, tracking is disabled; there is no pipeline parameter to turn logging off. With one, the stage-map publisher resolves the parent run and training components associate their model-level results with child runs.
 
 ### MLflow mapping model
 
@@ -52,11 +52,11 @@ Tabular and timeseries pipelines use the same mapping.
 | **Parent Metrics**  | `best_score`, `worst_score`, `mean_score`, `num_models_trained`, `total_fit_time_seconds`. |
 | **Child runs**      | **One child run per leaderboard row / refitted model** (each `name` in `model_names` or equivalent for timeseries), created as nested runs under the KFP parent. Enables side-by-side comparison in MLflow UI. Params: `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed. |
 | **Child Metrics**   | Task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`). |
-| **Child Artifacts** | Pointer to **`metrics`** (containing model's insights like confusion matrix etc.), pointer to trained model binaries **`predictor`**, and pointer to **`notebook`**. |
+| **Child Artifacts** | References to the model's metrics, predictor, and notebook pipeline artifacts. Pipeline artifacts remain authoritative; the integration does not require a particular MLflow model flavor or artifact layout. |
 
 ### Implementation approach
 
-MLflow has no native AutoGluon support, so tracking uses explicit APIs and nested runs. Logging a predictor requires a custom `mlflow.pyfunc` wrapper.
+MLflow integration uses the pipeline's parent/child run hierarchy to publish configuration, aggregate metrics, and references to pipeline artifacts. Component-level logging mechanics, including any model flavor or artifact representation, remain implementation details.
 
 ### Alignment with AutoGluon-native logging
 

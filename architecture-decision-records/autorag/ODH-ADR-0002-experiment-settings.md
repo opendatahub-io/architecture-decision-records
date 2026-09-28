@@ -63,7 +63,7 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `test_data_key` | `str` | (required) | Object key of the test data file |
 | `input_data_secret_name` | `str` | (required) | Secret for document corpus access (same key convention) |
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
-| `input_data_keys` | `list[str]` | `[]` | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
+| `input_data_keys` | `list[str]` | (required; non-empty) | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
 | `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and Ragas evaluation. |
 | `db_secret_name` | `str` | (required) | Database Connection selected by the active template: `MILVUS_*` or `PGVECTOR_*` for simple RAG, `NEO4J_*` for Graph RAG ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
@@ -236,16 +236,16 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 |---------------|----------|
 | `vector` | Embedding similarity only |
 | `keyword` | BM25 only |
-| `hybrid` | Vector + BM25 fused with RRF (recommended for production) |
+| `hybrid` | Vector + BM25 fused using the strategy selected for the pattern |
 
 | Parameter | Default | Role |
 |-----------|---------|------|
 | `method` | `simple` | Query-time retrieval strategy |
 | `number_of_chunks` | `5` | Top-k chunks (typical range 3–20) |
 | `search_mode` | `hybrid` | `vector`, `keyword`, or `hybrid` |
-| `ranker_strategy` | — | `rrf` or `weighted` (hybrid) |
-| `ranker_k` | — | RRF constant (typical 60) |
-| `ranker_alpha` | — | Weighted fusion: 0 keyword ↔ 1 vector |
+| `ranker_strategy` | Pattern-selected | `rrf` or `weighted` (hybrid) |
+| `ranker_k` | Pattern-selected | RRF constant, when the selected strategy is RRF |
+| `ranker_alpha` | Pattern-selected | Weighted-fusion balance, when the selected strategy is `weighted` |
 | `distance_metric` | `cosine` | Vector similarity metric |
 
 ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.

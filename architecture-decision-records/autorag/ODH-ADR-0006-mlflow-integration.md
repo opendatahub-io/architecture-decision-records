@@ -64,15 +64,15 @@ One parent run represents a KFP execution; each RAG pattern has one nested child
 | **Experiment** | KFP-managed experiment from `KFP_MLFLOW_CONFIG.experimentId`; otherwise `autorag_documents_rag_optimization` with an optional suffix. |
 | **Parent run** | KFP-managed parent from `KFP_MLFLOW_CONFIG.parentRunId` (resume when set; create when unset). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `db_secret_name`, `image`, `kfp_version`, `autorag_version`. |
 | **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of Unitxt / Ragas / custom metrics and chunking / retrieval / model choices. |
-| **Traces** | Required when `KFP_MLFLOW_CONFIG` is valid. One trace per benchmark request, attached to the pattern child run. P patterns × N benchmark rows = P × N traces. |
-| **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for MaaS chat completions. |
+| **Traces** | When tracing is enabled, request-level observability is associated with the pattern child run. The per-request source is `evaluation_results.json`; P patterns × N benchmark rows can yield P × N traces. |
+| **Spans** | Implementations may record retrieval, generation, and evaluation observability within a trace. Span names, types, and instrumentation are implementation details. |
 | **Params (child)** | From `pattern.json` `settings`: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id` / prompt fields, `store_binding` (`provider_type`, `collection_name`). |
 | **Metrics (child)** | Aggregate scores from `pattern.json` `evaluation.metrics[]`. Keying: [Metrics logged](#metrics-logged-child-runs). |
 | **Child Artifacts** | Pointers (URIs/paths) to the per-pattern files in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Not copied into MLflow. |
 
 ### Implementation approach
 
-`rag_templates_optimization` parses `KFP_MLFLOW_CONFIG` (lazy-importing `mlflow` only when valid), configures the client, and resumes or creates the parent run. It enables tracing and OpenAI autologging, then opens one nested run per pattern to log its parameters, aggregates, artifact pointers, and one trace per benchmark row from `pattern.json`. No separate work in `leaderboard_evaluation` or tracking artifact is needed.
+`rag_templates_optimization` reads the platform MLflow configuration, resumes or creates the parent run, and opens one nested run per pattern to log its configuration, aggregates, and artifact references. When tracing is enabled, request-level data is sourced from `evaluation_results.json`; `pattern.json` remains the selected-configuration and aggregate record. Instrumentation mechanics remain implementation details.
 
 ### Metrics logged (child runs)
 
@@ -86,33 +86,11 @@ AutoRAG computes Unitxt and Ragas metrics during optimization. Log **aggregates 
 
 Per-question rows stay in KFP `evaluation_results.json`.
 
-### Tracing per pattern child run
+### Optional tracing per pattern child run
 
-With valid `KFP_MLFLOW_CONFIG`, traces and stage spans are required and scoped to the pattern child run.
+When enabled by the platform configuration, tracing associates request-level observability with the relevant pattern child run. `evaluation_results.json` remains the source for those request-level records; tracing complements rather than replaces the pipeline artifacts.
 
-```
-Parent run (pipeline)
-└── Child run: pattern_A
-    ├── Trace: autorag.pattern_A.query_0
-    │   ├── autorag.retrieval      (SpanType.RETRIEVER)
-    │   ├── autorag.generation     (SpanType.CHAT_MODEL)
-    │   └── autorag.evaluation
-    ├── Trace: autorag.pattern_A.query_1
-    │   └── …
-    └── … (N traces = benchmark rows)
-```
-
-For each pattern, the trace count equals its benchmark evaluation-request count.
-
-**Spans and span types:**
-
-| Span name | `SpanType` | Inputs / outputs (summary) |
-|-----------|------------|----------------------------|
-| `autorag.retrieval` | `RETRIEVER` | Query in; retrieved documents out (`page_content`, `metadata.doc_uri`, `metadata.chunk_id`) per MLflow retriever schema |
-| `autorag.generation` | `CHAT_MODEL` | Query + context in; answer out; `mlflow.chat.tokenUsage`; `ai.model.name` / `ai.model.provider` |
-| `autorag.evaluation` | (default) | Ground truth, prediction, context in; per-metric scores out; `metric.{name}.{evaluator}` attributes |
-
-Enable `mlflow.openai.autolog()` at component start so MaaS OpenAI-compatible calls produce nested generation spans without duplicating request bodies. This requires `mlflow>=2.22` and `openai` in the component or AutoRAG image. Verify in the MLflow UI: parent run → child run → traces → retrieval, generation, and evaluation spans.
+The exact trace count, span structure, instrumentation library, and MLflow version support are implementation details. Implementations should retain the parent-run / pattern-child-run relationship so operators can navigate from aggregate experiment results to request-level observability.
 
 ## Alternatives
 

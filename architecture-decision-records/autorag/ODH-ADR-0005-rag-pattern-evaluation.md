@@ -99,7 +99,7 @@ Ragas calls use the same MaaS client as generation (`MAAS_BASE_URL`, `MAAS_API_K
 
 ### evaluation_results.json
 
-Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** contains **`evaluation_results.json`**: a JSON **array** with one object per benchmark row. Run-level aggregates (`scores.mean`, `ci_low`, `ci_high`) live in `pattern.json` → `evaluation.metrics[]` ([example](./ODH-ADR-0004-rag-pattern-inference.md#example-patternjson)), computed from `metrics[].score` across these rows. `speed` rows omit Ragas metrics.
+Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** contains **`evaluation_results.json`**: a JSON **array** with one object per benchmark row. Run-level aggregates (`scores.mean`, `ci_low`, `ci_high`) live in `pattern.json` → `evaluation.metrics[]` ([example](./ODH-ADR-0004-rag-pattern-inference.md#example-patternjson)), computed from available per-row evaluator results. `speed` rows omit Ragas metrics.
 
 | Field | Description |
 |-------|-------------|
@@ -107,7 +107,7 @@ Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** contains **`e
 | `correct_answers` | Ground-truth answers from the benchmark JSON |
 | `answer` | Generated answer for this pattern |
 | `answer_contexts[]` | Retrieved chunks: `text`, `document_key` (full object key / path, not a filename) |
-| `metrics[]` | Per-metric scores for this row: `name`, `evaluator`, `score` (**0–1** float). `name` + `evaluator` match `evaluation.metrics[]` in `pattern.json` |
+| `metrics[]` | Per-metric evaluator results for this row: `name`, `evaluator`, and a score when available. `name` + `evaluator` match `evaluation.metrics[]` in `pattern.json` |
 
 Example (`balanced`; `speed` omits Ragas metrics):
 
