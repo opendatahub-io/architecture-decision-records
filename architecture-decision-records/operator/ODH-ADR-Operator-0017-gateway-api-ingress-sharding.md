@@ -5,7 +5,7 @@
 | Date           | 2026-09-24 |
 | Scope          | RHOAI Operator (platform ingress and network-zone segmentation) |
 | Status         | Draft |
-| Authors        | [Davide Bianchi](@davidebianchi) |
+| Authors        | [Davide Bianchi](@davidebianchi), [Lindani Phiri](@lphiri) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-2272](https://redhat.atlassian.net/browse/RHAISTRAT-2272) |
@@ -34,22 +34,25 @@ behavior.
 ## Goals
 
 - Preserve existing single-ingress behavior when `additionalIngresses` is absent or empty.
+- Preserve existing default Gateway and HTTPRoute parent references when additional ingresses
+  are configured.
 - Allow administrators to expose supported platform endpoints through distinct ingress shards
-  and network zones.
+  when administrator-managed IngressController selectors enforce the intended network-zone
+  placement.
 - Report unexpected IngressController admission so administrators can verify and adjust their
   intended network-zone placement.
 - Keep browser authentication sessions and authentication availability independent per ingress.
-- Let administrators assign namespaces to an ingress; have the notebook controller report invalid
-  or unready assignments without falling back to the default ingress.
+- Let authorized namespace metadata writers assign namespaces to an ingress; have the notebook
+  controller report invalid or unready assignments without falling back to the default ingress.
 - Preserve correct ingress assignment and availability through configuration changes, upgrades,
   and rollback.
 
 ## Non-Goals
 
 - Automatically enabling every route-producing component to consume additional ingresses.
-  Model-serving, KServe, Dashboard, and other producers remain on the default listener until
-  separately integrated with the assignment contract.
-- Creating additional Gateway or GatewayClass resources in the initial implementation.
+  Model-serving (including KServe), Dashboard, and other producers continue using the default
+  ingress and its Gateway until separately integrated with the assignment contract.
+- Creating an additional GatewayClass for each ingress.
 - Installing or modifying IngressControllers, the Gateway provider, or external identity
   providers. These remain administrator-managed.
 - Supporting direct LoadBalancer exposure, a generic Kubernetes provider, or non-`OcpRoute`
@@ -69,24 +72,23 @@ API describes an ingress, not a Gateway topology: it can support a different bac
 architecture later. An absent or empty `additionalIngresses` preserves the existing default
 path. No new public DSC/DSCI API is required.
 
-OpenShift IngressControllers select traffic at the Route layer. For each additional ingress,
-the operator creates a Route intended for the configured IngressController and connects it to
-the existing managed Gateway, which continues to provide Gateway API routing for platform
-endpoints. The initial implementation uses reencrypt Routes and distinct internal listener
-ports on the shared Gateway Service; clients still use HTTPS port 443 externally. This avoids
-managing another Gateway and data plane per ingress. Gateway API limits a Gateway to 64
-listeners: additional ingresses cannot exceed 64 minus the listeners already required by the
-default ingress and other Gateway functions. The supported total may be lower if the provider
-or cluster capacity imposes tighter limits.
+OpenShift IngressControllers select traffic at the Route layer. The existing managed Gateway,
+Service, Route, and listeners remain the default ingress. For each additional ingress, the
+operator creates a separate named Gateway using the existing GatewayClass and an HTTPS
+listener on port 443. The provider provisions its Gateway Service; the operator creates a
+reencrypt Route intended for the configured IngressController and targeting that Service's
+HTTPS port, not the default Gateway Service. Clients use HTTPS port 443 externally. Each
+existing default HTTPRoute has a `parentRefs` entry naming the default Gateway; additional
+Gateways have different names. Omitting `sectionName` or `hostnames` can allow an HTTPRoute
+to attach to multiple listeners of its named Gateway, but not to a different Gateway. Thus
+existing default HTTPRoutes require no changes.
 
-The operator rejects conflicting ingress identities, hostnames, Route labels, client IDs, or
-listener ports and unsupported ingress/authentication combinations before reconciling.
-Internal listener ports must not collide with default, health, metrics, reserved, or sibling
-ports. Configuration validation must enforce the Gateway listener budget and proxy scaling
-bounds. CRD schema/CEL rules cover what they can; a validating webhook may be needed for
-constraints that cannot be expressed in the schema. The initial configuration uses an
-administrator-supplied `listenerPort`, but the `additionalIngresses` contract should not
-require that port if a future Gateway topology no longer needs one.
+The operator rejects conflicting ingress names, hostnames, Route labels, or client IDs and
+unsupported ingress/authentication combinations before creating or changing ingress resources.
+It reports Gateway, Route, and authentication readiness per ingress. Configuration validation
+must enforce proxy scaling bounds; per-ingress status reports Gateway provisioning failures if
+provider capacity is exhausted. CRD schema/CEL rules cover what they can; a validating webhook
+may be needed for constraints that cannot be expressed in the schema.
 
 ### Shard binding and availability
 
@@ -98,6 +100,8 @@ IngressController configuration and Route admission status with the intended pla
 reports discrepancies as warnings in per-ingress status; it does not remove or withhold the
 Route because administrators may intentionally configure overlapping selectors. Administrators
 remain responsible for deciding whether the observed placement meets their network policy.
+Separate Gateways prevent HTTPRoute attachment to the wrong Gateway, but do not prevent an
+IngressController from admitting the wrong OpenShift Route.
 
 `GatewayConfig` reports listener, Route, authentication, and overall readiness per ingress.
 Placement warnings are distinct from failures to program a listener, admit a Route, or make
@@ -107,9 +111,13 @@ readiness. Other ingresses remain independently reportable.
 ### Authentication boundary
 
 The operator provides a separate `kube-auth-proxy`, OAuth/OIDC client identity, cookie Secret,
-callback route, and readiness state for each additional ingress. Authorization on the shared
-Gateway directs each ingress to its corresponding proxy; callbacks return to that ingress
-without re-entering authorization. All ingresses use the top-level `GatewayConfig`
+callback HTTPRoute, and readiness state for each additional ingress. It creates a new callback
+HTTPRoute per additional Gateway, with a `parentRefs` entry naming that Gateway and a backend
+reference to that ingress's proxy Service. The existing default callback HTTPRoute remains
+unchanged on the default Gateway. Authorization on each Gateway directs requests to its proxy;
+callbacks return through that Gateway without re-entering authorization. Authentication
+filters must select only their intended Gateway workload so adding an ingress cannot redirect
+default traffic to another proxy. All ingresses use the top-level `GatewayConfig`
 authentication mode and provider settings. In OIDC mode, additional ingresses use distinct
 client IDs and client-secret references; in OpenShift OAuth mode, the operator provisions a
 separate OAuthClient for each. Mixed modes and per-ingress issuer overrides are unsupported.
@@ -121,31 +129,42 @@ does not imply bearer-token audience isolation.
 
 ### Component integration, assignment, and status
 
-`GatewayConfig` is the source of ingress configuration and status. The RHOAI operator projects
-the ingress information needed for routing into each integrated component CR. Each component
-uses that data to expose its routes through the selected ingress and reports assignment
-problems in its own status.
+`GatewayConfig` is the source of ingress configuration and status. For each integrated
+component, the RHOAI operator projects the ingress information that component needs: a
+Gateway reference to attach HTTPRoutes and, when it constructs public URLs, the ingress
+hostname. Components not integrated with additional ingresses continue using the default.
 
-Cluster administrators select an ingress for a namespace with the `opendatahub.io/ingress-name`
-annotation. Without it, components use the default ingress. If the selected ingress does not
-exist, the component sets an unresolved-ingress status condition on affected resources; it
-does not fall back to default.
+Workbenches is the first integration. The RHOAI operator projects additional Gateway
+references and hostnames into the `Workbenches` CR: the notebook controller uses the Gateway
+reference for Notebook HTTPRoutes and the hostname to construct workbench URLs. It retains
+`spec.gatewayDomain` and existing HTTPRoutes for default assignments. No other component's
+HTTPRoutes need changing for this integration.
 
-Workbenches is the first integration: the RHOAI operator projects ingresses into the
-`Workbenches` CR, retaining `spec.gatewayDomain` for the default. The notebook controller
-uses the projection for Notebook routes and reports `IngressResolved=False` with reason
-`IngressNotFound` when the selected ingress is missing.
+Administrators intend to select an ingress for a namespace with the
+`opendatahub.io/ingress-name` annotation. Kubernetes RBAC governs who can modify namespace
+metadata; the annotation does not establish who made the assignment. Without it, components
+use the default ingress. If the selected ingress does not exist, the component reports the
+unresolved or unready assignment on affected resources; it does not fall back to default.
+
+The notebook controller reports `IngressResolved=False` with reason `IngressNotFound` when
+the selected ingress is missing.
+Qualification must verify distinct Gateway Services; default Dashboard and authentication
+callback HTTPRoutes must work through the default Gateway but not through additional Gateways,
+and additional Notebook and callback HTTPRoutes only through their assigned Gateways.
 
 ### Lifecycle and ownership
 
-The RHOAI operator manages ingress infrastructure and projections into component CRs. Each
-component operator manages its routes and assignment status. Administrator-managed
-IngressControllers, external OIDC registrations, and supplied Secrets remain untouched.
+The RHOAI operator manages the default Gateway without changing its route attachment contract,
+and manages additional Gateways, Routes, authentication resources, and projections into
+module CRs. The Gateway provider provisions the Service for each Gateway. Each component
+operator manages its HTTPRoutes and assignment status. Administrator-managed IngressControllers,
+external OIDC registrations, and supplied Secrets remain untouched.
 
 On ingress removal, these controllers reconcile independently; cleanup order is not
-guaranteed. The RHOAI operator removes its ingress resources and projection; component
-operators remove routes for missing ingresses and report unresolved assignments without
-falling back to default.
+guaranteed. The RHOAI operator removes that ingress's Gateway, Route, authentication resources,
+and projection; component operators remove HTTPRoutes for missing ingresses and report
+unresolved assignments without falling back to default. The default Gateway and HTTPRoutes
+remain intact throughout.
 
 When no additional ingresses are configured, namespaces without an ingress annotation continue
 using the default ingress. Annotated namespaces still resolve the selected name and report an
@@ -155,35 +174,44 @@ error if it is missing.
 
 - What quantitative detection or availability target should apply when IngressController
   selector or domain configuration drifts?
-- Does TLS certificate rotation across multiple listeners require a coordinated rollout?
+- Does TLS certificate rotation across multiple Gateways require a coordinated rollout?
+- Does the OpenShift Gateway provider keep data planes distinct across Gateways, and how are
+  authentication filters scoped to each Gateway workload?
 - What selector complexity and cluster scale require qualification beyond the planned one-,
-  two-, and four-listener test topologies? These topologies are test coverage, not the Gateway
-  API limit.
+  two-, and four-Gateway test topologies? These topologies are test coverage, not a supported
+  Gateway-count limit.
 
 ## Alternatives
 
-### Keep only the default listener
+### Keep only the default Gateway
 
 This preserves the current architecture and avoids additional resources, but cannot route
 workbench traffic through distinct IngressController shards. It does not meet the customer
 requirement.
 
-### Create one Gateway per ingress
+### Share one Gateway across ingresses
 
-Multiple Gateways could provide separate data planes per ingress, reducing shared Envoy
-failures and allowing stronger NetworkPolicy separation between ingress data planes and auth
-proxies. They also require more Gateway, Envoy, TLS, and authentication lifecycle management.
-The initial implementation reuses the existing Gateway with distinct listeners to reduce
-delivery effort; live ROSA validation confirmed the Route-to-Gateway bridge. The public
-`additionalIngresses` API names ingresses rather than Gateways so this topology can be
-revisited without changing the ingress concept. Internal listener ports remain a current
-implementation constraint, not the long-term ingress abstraction.
+One Gateway with distinct internal listeners reduces Gateway and data-plane resources. Live
+ROSA validation confirmed the reencrypt Route-to-Gateway bridge using unique backend ports
+and listener-specific filters. However, a default HTTPRoute that references the whole Gateway
+without `sectionName` can attach to every compatible listener. Existing default Dashboard and
+authentication callback HTTPRoutes do not restrict their parent references to a listener; in
+`OcpRoute` mode the Gateway listeners also have no hostnames to constrain attachment. Adding
+listeners would therefore risk exposing default routes through additional ingress shards.
+Fixing this requires migrating every default and future HTTPRoute producer to explicit
+`sectionName`, coordinating cross-repository upgrades, and preventing unconstrained routes
+from attaching later. This conflicts with preserving existing default Routes. Separate Gateway
+parents avoid that migration and, if the provider provisions separate workloads, reduce the
+shared data-plane failure domain. The extra Gateway, Service, TLS, filter, and authentication
+lifecycle and resource cost is accepted. The public `additionalIngresses` API describes
+ingresses rather than fixing their backing Gateway topology forever.
 
-### Select listeners with public-host SNI
+### Select shared-Gateway listeners with public-host SNI
 
-This avoids allocating an internal listener port per ingress, but live ROSA validation showed
-that reencrypt Route termination does not preserve usable public-host SNI for backend listener
-selection. Unique internal ports and listener-specific filters were validated instead.
+This would avoid allocating an internal listener port per ingress in the shared-Gateway
+alternative, but live ROSA validation showed that reencrypt Route termination does not
+preserve usable public-host SNI for backend listener selection. It would also leave default
+HTTPRoutes without listener-specific parent references.
 
 ### Share one authentication proxy across additional ingresses
 
@@ -197,12 +225,25 @@ isolation and fault reporting; the additional resource cost is accepted.
   operator reports admission discrepancies but does not enforce exclusive admission; a Route
   admitted by another controller may be exposed outside the intended network zone until the
   administrator corrects its selectors or domain configuration. These warnings are advisory,
-  not a guarantee of network-zone isolation.
+  not a guarantee of network-zone isolation. Before using an additional ingress for network
+  separation, administrators must configure exclusive selectors, check which controllers admit
+  the Route, and monitor for drift. DNS configuration alone does not prevent exposure through
+  an unintended controller.
+- Namespace ingress assignment trusts any principal with effective `update` or `patch` access
+  to core `namespaces`. The dashboard ServiceAccount, for example, currently has cluster-wide
+  namespace `patch` permission. Neither the operator nor the notebook controller can tell from
+  the annotation whether an administrator made the assignment. Administrators must review
+  namespace-writing RBAC when relying on assignments for placement; the annotation itself
+  is not an authorization boundary.
 - Each ingress uses a distinct OAuth/OIDC client identity, cookie Secret, proxy, callback
   route, and NetworkPolicy. These isolate browser sessions and proxy access.
-- All listeners share one Envoy workload. A shared Envoy, Gateway Service, certificate, or
-  EnvoyFilter failure can affect every ingress; per-ingress NetworkPolicies cannot isolate
-  listeners inside that pod.
+- Default HTTPRoutes reference only the default Gateway; additional-ingress HTTPRoutes and
+  authentication callbacks must reference only their assigned Gateways. Verify on supported
+  OpenShift versions whether Gateway Services and Envoy pods are separate, and whether
+  NetworkPolicies select only the intended pods. If pods are shared, do not claim data-plane
+  or NetworkPolicy isolation between ingresses. Gateways still share a GatewayClass, controller,
+  and cluster dependencies; separate Gateway objects alone do not guarantee network-zone
+  isolation.
 - Cluster-valid bearer tokens remain accepted by each proxy when token validation is enabled.
   Document this limitation; do not describe browser-session isolation as full credential
   isolation.
@@ -210,20 +251,24 @@ isolation and fault reporting; the additional resource cost is accepted.
 
 ## Risks
 
-- **Shared Gateway failure domain:** Envoy, Gateway Service, TLS, or filter errors can affect
-  every ingress. Generate and validate the complete filter set atomically, restore the last
-  accepted configuration on rejection, and report per-ingress readiness.
+- **Gateway provider and configuration failures:** Each additional Gateway adds Service,
+  data-plane, TLS, and filter lifecycle. Verify that each Route reaches its Gateway's Service
+  and each authentication filter targets only its intended Gateway; scope updates and readiness
+  per ingress. Shared data planes, GatewayClass/controller, or cluster dependencies can still
+  affect multiple ingresses.
 - **IngressController drift:** Selector or domain changes can expose a Route through an
   unintended controller or leave it unadmitted until the administrator corrects the change.
   Report unexpected admission as a warning using IngressController configuration and Route
-  status; document that warnings do not block exposure or guarantee network-zone isolation.
-- **Gateway listener capacity:** Gateway API permits at most 64 listeners per Gateway, including
-  existing listeners. Validate available slots before adding ingresses and report provider
-  limits or capacity constraints that reduce the usable count.
+  status; administrators must investigate and correct selector or domain drift. Warnings do
+  not block exposure or guarantee network-zone isolation.
+- **Gateway capacity:** Additional Gateways increase provider, Service, Envoy, and cluster
+  resource usage. Qualify supported Gateway counts, enforce provider capacity bounds, and
+  report failed Gateway provisioning per ingress.
 - **Proxy resource pressure:** Each ingress adds an independently scaled auth proxy. Enforce
   HPA bounds and report authentication readiness when required replicas are unavailable.
 - **Cross-repository version skew:** An incompatible Workbenches projection can break route
-  assignment. Gate activation on compatible operand readiness and require ordered rollback.
+  assignment. Gate activation on compatible operand readiness and require ordered rollback;
+  default HTTPRoutes must remain attached to the default Gateway throughout.
 - **Authentication prerequisites:** Missing credentials or provider configuration can leave
   an ingress unavailable. Report `AuthenticationUnavailable` and do not mark it ready.
 
@@ -239,7 +284,7 @@ isolation and fault reporting; the additional resource cost is accepted.
 
 Notes:
 
-- AICP owns `GatewayConfig`, listener and Route reconciliation, authentication resources,
+- AICP owns `GatewayConfig`, Gateway and Route reconciliation, authentication resources,
   validation, status, cleanup, and the Workbenches projection.
 - The Workbenches team owns namespace assignment, HTTPRoute updates, Notebook status, RBAC,
   and controller packaging.
@@ -253,7 +298,11 @@ Notes:
 - [RHOAIENG-35058: Related engineering ticket](https://redhat.atlassian.net/browse/RHOAIENG-35058)
 - [ODH-ADR-Operator-0012: Gateway API Authentication Architecture](ODH-ADR-Operator-0012-gateway-api-authentication-architecture.md)
 - [OpenShift Gateway API deployment topologies](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/ingress_and_load_balancing/configuring-gateway-api#gateway-api-deployment-topologies_understand-gateway-api)
-- [Gateway API Gateway CRD (`spec.listeners` maximum: 64)](https://github.com/kubernetes-sigs/gateway-api/blob/main/config/crd/standard/gateway.networking.k8s.io_gateways.yaml)
+- [Gateway API ParentReference (`sectionName` and whole-Gateway attachment)](https://github.com/kubernetes-sigs/gateway-api/blob/main/apis/v1/shared_types.go)
+- [Current Dashboard HTTPRoute (default Gateway parent reference)](https://github.com/opendatahub-io/odh-dashboard/blob/858d53dc6db3a62b4b5e326562ecf9928d10335b/manifests/base/httproute.yaml)
+- [Current default authentication callback HTTPRoute](https://github.com/opendatahub-io/opendatahub-operator/blob/f2bbf2852006329badb18bae2e19a3dddc09df97/internal/controller/services/gateway/resources/kube-auth-proxy-httproute.tmpl.yaml)
+- [OpenShift Route API (admission status and target port)](https://github.com/openshift/api/blob/master/route/v1/types.go)
+- [OpenShift IngressController API (route and namespace selectors)](https://github.com/openshift/api/blob/master/operator/v1/types_ingresscontroller.go)
 
 ## Reviews
 
