@@ -141,7 +141,7 @@ spec:
   deletionPolicy: Retain
 ```
 
-**DatabaseClaim** (namespace-scoped) requests a dedicated database and user on the provider's PostgreSQL instance. If the database does not exist and the provider allows database creation, the operator creates it. If omitted, the default database configured on the provider is used.
+**DatabaseClaim** (namespace-scoped) requests a database-scoped role: dedicated when `spec.database` names a database, shared when omitted (the provider's default database is used). If the database does not exist and the provider allows database creation, the operator creates it.
 
 ```yaml
 apiVersion: infrastructure.opendatahub.io/v1alpha1
@@ -171,6 +171,8 @@ spec:
     name: rhai-db
 ```
 
+When `defaultProvider.managementState` moves to `Removed`, active claims are retained; the operator may clean up generated claim `Secret`s and the automatically managed `DatabaseProvider` only as cheaply re-derivable resources it will recreate on re-enable. Removal never automatically deletes the Internal database data or backing storage; they are retained by default, and deleting database state requires explicit administrator action. Setting `managementState: Managed` again reconnects to and reuses any retained backend rather than provisioning from scratch.
+
 #### CRD Kind Naming
 
 Kind names are immutable after release, so this is settled here rather than left to implementation.
@@ -184,6 +186,8 @@ The rationale is that a kind-per-engine model multiplies the API surface for eve
 The cost is accepted and stated plainly: **a generic kind name over-promises while the service is PostgreSQL-only.** Any non-PostgreSQL value of `spec.engine` is rejected by CEL validation in this version, so the over-promise is visible at admission time rather than at runtime.
 
 ### Relationship to the Connection API
+
+The `postgres` connection-type protocol and its field names defined here are intended as the standard contract for PostgreSQL credentials going forward, informed by CloudNativePG conventions rather than one-off naming for this service.
 
 [ODH-ADR-Operator-0009](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md) defines the Connection API: annotated `Secret` resources carrying credentials for external data sources, with an `opendatahub.io/connection-type-protocol` annotation driving validation and routing. It is normative for connection surfaces, and it explicitly permits custom protocols. [RHAISTRAT-176](https://redhat.atlassian.net/browse/RHAISTRAT-176) ("Connections 2.0") tracks its evolution. This section records why this service introduces new resources rather than reusing that API, and where it conforms to it instead.
 
@@ -241,6 +245,8 @@ A bind-only claim mode would recover those, and it is recorded in Future Conside
 ### Provider Selection
 
 Claims reference a provider by exact name or by label selector. When a selector matches multiple providers, the operator picks the one with the highest `db.infrastructure.opendatahub.io/selection-priority` annotation, breaking ties alphabetically. Once a selector-based claim binds to a provider, it keeps that provider as long as it still exists and matches. A newly appearing or higher-priority provider does not force rebinding.
+
+Kubernetes RBAC over claim-creation permissions in a namespace governs which principals may bind claims to a given cluster-scoped provider; this version has no additional provider-side namespace or subject allow-list.
 
 ### Provisioning Flow
 
@@ -316,9 +322,9 @@ An earlier draft of this section proposed publishing both shapes so that each co
 
 The consequence is stated plainly: **every consumer that reads a single connection string must change to compose one from the published fields.** Composition from these fields is a few lines in any language, and each consumer can do it directly. A shared Go helper in `odh-platform-utilities` would spare most of them from writing it separately and is recommended, but this contract does not depend on one existing: the fields are the contract, and a consumer that composes its own string is fully conformant.
 
-Two properties of the contract exist specifically to make consumer-side composition safe:
+Two properties of the contract are relevant to consumer-side composition:
 
-- **Generated passwords are alphanumeric** (`[A-Za-z0-9]`). Every character is an RFC 3986 unreserved character, so a naive `postgresql://user:password@host:port/dbname` interpolation is correct without percent-encoding. This is a **normative guarantee, not an implementation detail**: because composition now happens in consumers rather than in the operator, widening the password alphabet later would silently break naive composers. Any future change to password generation must preserve URL-safety.
+- **Generated passwords are alphanumeric** (`[A-Za-z0-9]`); this is an implementation detail. The service makes no guarantee that a URI or DSN composed from the published fields is correct: constructing and escaping any connection string is entirely the consumer's responsibility, because the service does not target a specific driver or URI dialect.
 - **`schema` is a first-class key.** A consumer holding a `SchemaClaim` must apply it — by setting `search_path` on connect, by schema-qualifying its DDL, or through whichever driver parameter its stack provides. This is the one place where ignoring a key is dangerous rather than merely limiting: a consumer that connects without applying `schema` connects *successfully* and then reads and writes the wrong schema. Adoption documentation must lead with this.
 
 #### What the `Secret` does not carry
@@ -398,7 +404,7 @@ TLS is part of the credential contract and is described here rather than left to
 - Certificate state is reported through a `TLSConfiguration` condition on both `DatabaseProvider` and claim resources, and through `status.tls` on the provider.
 - The resulting trust material reaches consumers through the `ca.crt` and `sslmode` keys of the claim `Secret`.
 - For External providers, TLS is the administrator's responsibility. The operator propagates the CA supplied on the provider's admin `Secret`, and uses the provider's configured SSL mode.
-- Default SSL mode is `require` for External providers and `disable` for the Internal backend's in-cluster traffic unless TLS is configured, in which case it follows the issued certificate.
+- The default SSL mode is `verify-full` (or the driver's equivalent) for both Internal backend in-cluster traffic and the External provider's administrator connection, encrypting traffic and verifying the server hostname using available CA material. Consumer-side connection settings for claims bound to External providers remain the administrator's responsibility. A weaker mode is acceptable only with an explicit documented reason.
 - The `Secret` publishes CA *material*, not a path. A consumer using `verify-ca` or `verify-full` mounts `ca.crt` and points its driver's trust-root setting (`sslrootcert` for libpq) at wherever it mounted the file. The operator cannot supply that path, because it does not know the consumer's mount layout.
 
 Three known gaps are recorded rather than designed away:
@@ -456,6 +462,8 @@ Claims self-heal when their managed resources drift:
 
 Repairs are performed during normal periodic reconciliation. The operator never silently drops data. `SchemaClaim` with `deletionPolicy: Retain` (the default) drops only the role on claim deletion; the schema and its data persist.
 
+`DatabaseClaim` with `deletionPolicy: Retain` (the default) drops only its role on claim deletion; its database and data persist. Deleting a claim bound to the provider's shared default database (when `spec.database` is omitted) never deletes that shared database, regardless of deletion policy, because other claims may depend on it.
+
 Drift recovery is **not** credential rotation, and this ADR does not introduce rotation. A password changes only when database-side state has to be re-provisioned; there is no scheduled or on-demand rotation workflow. Rotation remains a Non-Goal, and delivery work that assumes otherwise should be cut back to match.
 
 ### One-Way Doors
@@ -476,6 +484,7 @@ The extension allow-list is a fifth of the same character, though a narrower one
 - **Network isolation (Internal only)**: the operator dynamically configures a `NetworkPolicy` on the Internal backend's PostgreSQL `Pod`, allowing ingress only from namespaces with active provisioned claims. This list is recomputed on every reconcile. Namespace-level isolation is the minimum boundary provided by this service; additional security measures (e.g., pod-level or service-account-level controls) should be investigated if stricter isolation is required. For External providers, network isolation is the administrator's responsibility; this operator does not create `NetworkPolicy` resources for infrastructure it does not own.
 - **No credentials in logs**: generated credentials must never be logged or cached. Because consumers compose their own connection strings, the composed string embeds the password and becomes a new place it can leak — into logs, into error messages on connection failure, and into `application_name`-style diagnostics. Consumers must redact it, and any shared composition helper should offer a separately-redactable form for logging.
 - **SQL injection prevention**: all identifiers and literals interpolated into DDL must use proper quoting to prevent injection.
+- `ReadOnly` grants read-only access (`SELECT`) to the claim's objects, with no data modification or DDL. `ReadWrite` grants read/write access to data plus the DDL needed to manage objects within the claim's own schema or database; it never grants privileges outside that scope (e.g., on other claims' schemas/databases, or cluster-wide).
 - **Standing DDL privileges**: several current consumers run unversioned DDL at every startup. On a shared provider this means the claim role retains schema-modification rights for the life of the claim. The `access` field on a claim bounds this, but components that can separate migration from runtime credentials should be encouraged to do so.
 
 ### Future Considerations
