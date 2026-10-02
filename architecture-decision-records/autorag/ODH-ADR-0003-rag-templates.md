@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR defines the reusable AutoRAG templates selected during optimization: Simple RAG and Neo4j Graph RAG.
+This ADR defines the reusable AutoRAG templates selected during optimization: Vector RAG and Neo4j Graph RAG.
 
 ## Why
 
@@ -21,14 +21,14 @@ The template determines the retrieval composition, database backend, optimizatio
 
 ## Goals
 
-* Define Simple RAG and Neo4j Graph RAG.
+* Define Vector RAG and Neo4j Graph RAG.
 * Specify the database and retrieval contracts for each template.
 * Map templates to deployment artifacts.
 
 ## Non-Goals
 
 * Alternate Graph RAG engines or dual-engine comparisons.
-* Detailed pipeline parameters and Simple RAG search-space values ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)).
+* Detailed pipeline parameters and Vector RAG search-space values ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)).
 * Full `pattern.json`, indexing, or serving contracts ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ## How
@@ -39,14 +39,14 @@ A template is the retrieve-and-generate blueprint that AutoRAG parameterizes dur
 
 | Template | Composition | Database |
 |----------|-------------|----------|
-| **Simple RAG** | Single retrieve → generate hop over document chunks. | Milvus or PGVector. |
+| **Vector RAG** | Single retrieve → generate hop over document chunks. | Milvus or PGVector. |
 | **Neo4j Graph RAG** | Knowledge-graph construction followed by Neo4j vector, hybrid, or Cypher retrieval. | Neo4j graph, vector, and full-text indexes. |
 
 Each optimized instance is emitted as a RAG pattern. The shared artifact envelope and deployment contract are in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md).
 
-### Simple RAG
+### Vector RAG
 
-Simple RAG retrieves document chunks, then grounds one generation call in those chunks.
+Vector RAG retrieves document chunks, then grounds one generation call in those chunks.
 
 | Concern | Contract |
 |---------|----------|
@@ -58,7 +58,7 @@ Simple RAG retrieves document chunks, then grounds one generation call in those 
 
 ### Neo4j Graph RAG
 
-Neo4j Graph RAG uses `neo4j-graphrag` for knowledge-graph construction and Neo4j-native retrieval. `db_secret_name` selects the Neo4j connection; it is the same generic database parameter used by Simple RAG.
+Neo4j Graph RAG uses `neo4j-graphrag` for knowledge-graph construction and Neo4j-native retrieval. `db_secret_name` selects the Neo4j connection; it is the same generic database parameter used by Vector RAG.
 
 | Concern | Contract |
 |---------|----------|
@@ -68,7 +68,7 @@ Neo4j Graph RAG uses `neo4j-graphrag` for knowledge-graph construction and Neo4j
 | Pattern | `settings.store_binding.provider_type: neo4j`; `settings.retrieval.method` records the selected retriever. |
 | Optimization | Query-time retriever type, top-k, Cypher depth or limit, and generation settings. Index-changing settings use constrained allow-lists. |
 
-Graph RAG does not share Simple RAG chunk collections. LangGraph may orchestrate multi-step or tool-based flows around Neo4j retrieval; it is not a separate retrieval engine.
+Graph RAG does not share Vector RAG chunk collections. LangGraph may orchestrate multi-step or tool-based flows around Neo4j retrieval; it is not a separate retrieval engine.
 
 ## Template-to-deployment mapping
 
@@ -76,7 +76,7 @@ Serving behavior is defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inferen
 
 | Template | Deployment artifact |
 |----------|---------------------|
-| **Simple RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via the run-level `starter_kit.zip`. |
+| **Vector RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via the run-level `starter_kit.zip`. |
 | **Neo4j Graph RAG** | Graph RAG starter-kit template using `neo4j-graphrag` retrievers and LangGraph orchestration. |
 
 ## Related
