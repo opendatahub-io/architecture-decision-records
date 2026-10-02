@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR defines the reusable AutoRAG templates selected during optimization: Vector RAG and Neo4j Graph RAG.
+This ADR defines the reusable AutoRAG templates selected during optimization: Vector RAG and Graph RAG.
 
 ## Why
 
@@ -21,7 +21,7 @@ The template determines the retrieval composition, database backend, optimizatio
 
 ## Goals
 
-* Define Vector RAG and Neo4j Graph RAG.
+* Define Vector RAG and Graph RAG.
 * Specify the database and retrieval contracts for each template.
 * Map templates to deployment artifacts.
 
@@ -40,7 +40,7 @@ A template is the retrieve-and-generate blueprint that AutoRAG parameterizes dur
 | Template | Composition | Database |
 |----------|-------------|----------|
 | **Vector RAG** | Single retrieve → generate hop over document chunks. | Milvus or PGVector. |
-| **Neo4j Graph RAG** | Knowledge-graph construction followed by Neo4j vector, hybrid, or Cypher retrieval. | Neo4j graph, vector, and full-text indexes. |
+| **Graph RAG** | Knowledge-graph construction followed by vector, hybrid, or Cypher retrieval. | Neo4j graph, vector, and full-text indexes (currently supported graph database). |
 
 Each optimized instance is emitted as a RAG pattern. The shared artifact envelope and deployment contract are in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md).
 
@@ -56,9 +56,9 @@ Vector RAG retrieves document chunks, then grounds one generation call in those 
 | Pattern | `settings.store_binding` identifies the selected Milvus or PGVector collection. |
 | Optimization | Chunking, embedding, retrieval, and generation dimensions from [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md). |
 
-### Neo4j Graph RAG
+### Graph RAG
 
-Neo4j Graph RAG uses `neo4j-graphrag` for knowledge-graph construction and Neo4j-native retrieval. `db_secret_name` selects the Neo4j connection; it is the same generic database parameter used by Vector RAG.
+Graph RAG currently uses Neo4j, through `neo4j-graphrag`, for knowledge-graph construction and retrieval. `db_secret_name` selects the Neo4j connection; it is the same generic database parameter used by Vector RAG.
 
 | Concern | Contract |
 |---------|----------|
@@ -77,7 +77,7 @@ Serving behavior is defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inferen
 | Template | Deployment artifact |
 |----------|---------------------|
 | **Vector RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via the run-level `starter_kit.zip`. |
-| **Neo4j Graph RAG** | Graph RAG starter-kit template using `neo4j-graphrag` retrievers and LangGraph orchestration. |
+| **Graph RAG** | Graph RAG starter-kit template using `neo4j-graphrag` retrievers and LangGraph orchestration. |
 
 ## Related
 
