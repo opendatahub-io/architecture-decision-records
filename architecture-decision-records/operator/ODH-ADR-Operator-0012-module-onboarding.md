@@ -9,7 +9,7 @@
 | Supersedes     | N/A                              |
 | Superseded by: | N/A                              |
 | Tickets        |                                  |
-| Other docs:    | [Module Onboarding Guide](design/module-onboarding-guide.md) |
+| Other docs:    | [Module Onboarding Guide](design/module-onboarding-guide.md), [Per-Module Namespace Isolation](ODH-ADR-Operator-0015-module-namespace-isolation.md) |
 
 ## What
 
@@ -74,7 +74,7 @@ The ODH Operator acts as a meta-operator that manages module controllers through
 
 **ODH Operator Responsibilities:**
 - Manages the lifecycle (install, upgrade, uninstall) of module controllers
-- Deploys module controller manifests (Deployment, RBAC, CRDs)
+- Deploys the module controller's bootstrap manifest package
 - Renders platform configuration into each module's ConfigMap
 - Prunes module resources when modules are disabled or removed
   - **DSC mode:** additionally creates and updates module CRs based on DataScienceCluster configuration, and aggregates status from module CRs back to the DataScienceCluster
@@ -111,7 +111,7 @@ See the [Module Onboarding Guide](design/module-onboarding-guide.md) for complet
 
 Helm is the preferred method for packaging module controller manifests. Kustomize is supported but switching to Helm is highly encouraged. Manifests are embedded in the ODH controller binary at build time, ensuring the operator is self-contained.
 
-The manifests that the ODH Operator installs for a module controller must be limited to core Kubernetes types (Deployment, ServiceAccount, RBAC, CRD). This constraint is driven by the principle of least privilege: the ODH Operator today operates with near cluster-admin permissions, and reducing its scope to core Kubernetes types only - with no knowledge of workload-specific CRDs - is a key goal of this architecture.
+The manifests that the ODH Operator installs for a module controller must be limited to the strict minimum set of core Kubernetes resources required to deploy and run the module controller. The ODH Operator does not install or manage application operands or other workload-specific resources; the module controller remains responsible for those resources. Module-scoped platform baselines are governed by [ODH-ADR-Operator-0015](ODH-ADR-Operator-0015-module-namespace-isolation.md). The exact NetworkPolicy boundaries are to be defined in a separate ADR and are out of scope for this ADR.
 
 The module operator is the orchestrator for its feature area and should run as a separate Deployment from its operand controllers to maintain failure isolation and independent scaling. Common patterns include a single image with multiple entrypoints (recommended), multiple images when running upstream controllers alongside the module operator, or a single-process deployment for very simple modules.
 
