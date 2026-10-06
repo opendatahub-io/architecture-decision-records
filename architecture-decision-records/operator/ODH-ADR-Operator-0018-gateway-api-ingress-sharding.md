@@ -17,11 +17,12 @@ Establish Ingress/Gateway API sharding as an RHOAI platform capability so suppor
 endpoints can be exposed through distinct OpenShift ingress shards and network zones, such as
 separate network segments or dev/test/prod environments. This addresses the network-separation
 gap created by RHOAI 3.x's single-domain, path-based exposure model.
+This capability will be offered as Tech Preview initially so we can get customer feedback.
 
 ## Why
 
 RHOAI customers need platform endpoints to enter through distinct OpenShift IngressController
-shards and network zones. RHOAI 3.x's single-domain, path-based exposure cannot express that
+shards and network zones.  The primary usecase in scope is the ability to offer 'Notebook As A Service " on a separate network zone. RHOAI 3.x's single-domain, path-based exposure cannot express that
 placement. Earlier manual Route relabeling was not durable because controllers reconcile Route
 resources.
 
@@ -50,7 +51,7 @@ behavior.
 ## Non-Goals
 
 - Automatically enabling every route-producing component to consume additional ingresses.
-  Model-serving (including KServe), Dashboard, and other producers continue using the default
+  Dashboard, and other producers continue using the default
   ingress and its Gateway until separately integrated with the assignment contract.
 - Creating an additional GatewayClass for each ingress.
 - Installing or modifying IngressControllers, the Gateway provider, or external identity
@@ -255,7 +256,7 @@ isolation and fault reporting; the additional resource cost is accepted.
   isolation.
 - RHOAI does not manage customer IngressController or external identity-provider state.
 
-## Risks
+## Risks and Tradeoffs
 
 - **Gateway provider and configuration failures:** Each additional Gateway adds Service,
   data-plane, TLS, and filter lifecycle. Verify that each Route reaches its Gateway's Service
