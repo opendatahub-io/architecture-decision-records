@@ -22,9 +22,10 @@ This capability will be offered as Tech Preview initially so we can get customer
 ## Why
 
 RHOAI customers need platform endpoints to enter through distinct OpenShift IngressController
-shards and network zones.  The primary usecase in scope is the ability to offer 'Notebook As A Service " on a separate network zone. RHOAI 3.x's single-domain, path-based exposure cannot express that
-placement. Earlier manual Route relabeling was not durable because controllers reconcile Route
-resources.
+shards and network zones.
+The primary use case is to offer “Notebook as a Service” in a separate network zone. RHOAI 3.x's
+single-domain, path-based exposure cannot express that placement. Earlier manual Route relabeling
+was not durable because controllers reconcile Route resources.
 
 OpenShift selects a shard at the Route layer through IngressController `routeSelector`
 configuration. The operator therefore needs a supported configuration contract for
@@ -51,8 +52,8 @@ behavior.
 ## Non-Goals
 
 - Automatically enabling every route-producing component to consume additional ingresses.
-  Dashboard, and other producers continue using the default
-  ingress and its Gateway until separately integrated with the assignment contract.
+  Dashboard and other producers integrated with the default Gateway continue using the default
+  ingress and its Gateway until they adopt the assignment contract.
 - Creating an additional GatewayClass for each ingress.
 - Installing or modifying IngressControllers, the Gateway provider, or external identity
   providers. These remain administrator-managed.
