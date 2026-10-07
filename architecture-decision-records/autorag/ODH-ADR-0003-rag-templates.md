@@ -68,7 +68,7 @@ Graph RAG currently uses Neo4j, through `neo4j-graphrag`, for knowledge-graph co
 
 | Concern | Contract |
 |---------|----------|
-| Indexing | Extract entities and relations from the document corpus into Neo4j graph, vector, and full-text indexes. |
+| Indexing | Extract entities and relations from the document corpus into Neo4j graph, vector, and full-text indexes. Extraction policy is `settings.graph_extraction`; the extraction LLM is `settings.generation`. |
 | Retrieval | `search_mode: graph`. Neighbor expansion fields apply only in this mode ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#graph-only-fields)). Ranker fields do not apply. |
 | Generation | MaaS-backed generation grounded in graph or hybrid context. |
 | Pattern | `template_id` is `simple_graph_rag` or `agentic_graph_rag`; `settings.store_binding.provider_type: neo4j`. Extra `pattern.json` keys: [ODH-ADR-0004 Graph-only fields](./ODH-ADR-0004-rag-pattern-inference.md#graph-only-fields). |

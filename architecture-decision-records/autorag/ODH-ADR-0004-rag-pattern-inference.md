@@ -26,7 +26,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 * Document the inference notebook, parameterized starter-kit zip, Helm / BuildConfig deploy, and one-click Agent Sandbox
 * Document the AutoRAG BFF test endpoint (retrieve-and-generate from `pattern.json`; not the agent API)
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
-* Document Graph-only `pattern.json` fields (`knowledge_graph`, Graph retrieval expansion, KG indexing parameters)
+* Document Graph-only `pattern.json` fields (`graph_extraction`, Graph retrieval expansion, Graph indexing parameters)
 
 ## Non-Goals
 
@@ -83,7 +83,7 @@ pattern.json
 │   ├── store_binding (provider_type, collection_name)
 │   ├── chunking (method, chunk_size, chunk_overlap, include_metadata)
 │   ├── embedding (model_id, embedding_params)
-│   ├── knowledge_graph (Graph only)
+│   ├── graph_extraction (Graph only: mode; free-mode limits)
 │   ├── retrieval (method, number_of_chunks, search_mode;
 │   │              hybrid: ranker_strategy, ranker_alpha, ranker_k;
 │   │              graph: include_entity_neighbors, entity_* / relationship_* limits)
@@ -243,18 +243,15 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
 
 Present only when `template_id` is `simple_graph_rag` or `agentic_graph_rag` (`store_binding.provider_type: neo4j`). Vector patterns (`simple_rag`, `agentic_rag`) must not emit these keys. Shared envelope fields (`chunking`, `embedding`, `generation`, `evaluation`, `retrieval.method`, `retrieval.number_of_chunks`) stay as in the Vector example. Graph patterns set `search_mode` to `graph` ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#retrieval-methods)). For Neo4j, `collection_name` is the graph / index namespace.
 
-#### `settings.knowledge_graph`
+#### `settings.graph_extraction`
 
-LLM used at index time to extract entities and relations (ai4rag `Neo4jGraphStore` / `SimpleKGPipeline`). Distinct from `settings.generation`.
+Policy for building the Neo4j graph from extracted entities and relationships (ai4rag `SimpleKGPipeline`). No model fields. The extraction LLM is `settings.generation`. Vector patterns must not emit this object.
 
 | Field | Role |
 |-------|------|
-| `model_id` | MaaS foundation model for extraction |
-| `model_params.temperature` | Sampling for extraction |
-| `model_params.max_completion_tokens` | Completion cap for extraction |
-| `extraction_config.mode` | `constrained` (fixed entity/relation allow-list) or `free` |
-| `extraction_config.max_entities_per_chunk` | Required when `mode` is `free` |
-| `extraction_config.max_relationships_per_chunk` | Required when `mode` is `free` |
+| `mode` | `constrained` (fixed entity/relation allow-list) or `free` |
+| `max_entities_per_chunk` | Required when `mode` is `free` |
+| `max_relationships_per_chunk` | Required when `mode` is `free` |
 
 #### `settings.retrieval` Graph expansion
 
@@ -273,13 +270,15 @@ Ranker fields (`ranker_strategy`, `ranker_alpha`, `ranker_k`) apply only when `s
 
 #### Indexing parameter mapping
 
-`indexing.pipeline_spec.parameters` keeps the Vector keys and adds KG copies from `settings.knowledge_graph`. Pipeline param names stay as emitted by KFP.
+`foundation_model_id` and `foundation_model_params` are the **generic indexing LLM**, copied from `settings.generation`. Graph extraction uses them today; later indexing features (for example LLM-as-judge) can reuse the same fields. They are not Graph-only.
 
-| `settings.knowledge_graph` | `indexing.pipeline_spec.parameters` |
-|----------------------------|-------------------------------------|
-| `model_id` | `foundation_model_id` |
-| `model_params` | `foundation_model_params` |
-| `extraction_config` | `kg_extraction_config` |
+`graph_extraction_config` is Graph-only. Vector patterns must not emit it. Copy from `settings.graph_extraction`.
+
+| Source | `indexing.pipeline_spec.parameters` |
+|--------|-------------------------------------|
+| `settings.generation.model_id` | `foundation_model_id` |
+| `settings.generation` temperature / `max_completion_tokens` | `foundation_model_params` |
+| `settings.graph_extraction` | `graph_extraction_config` (Neo4j only) |
 
 ```json
 {
@@ -289,14 +288,7 @@ Ranker fields (`ranker_strategy`, `ranker_alpha`, `ranker_k`) apply only when `s
       "provider_type": "neo4j",
       "collection_name": "ai4rag_20261007105145_n3ddtlc1"
     },
-    "knowledge_graph": {
-      "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic",
-      "model_params": {
-        "temperature": 0.2,
-        "max_completion_tokens": 2048
-      },
-      "extraction_config": { "mode": "constrained" }
-    },
+    "graph_extraction": { "mode": "constrained" },
     "retrieval": {
       "method": "simple",
       "number_of_chunks": 10,
@@ -317,7 +309,7 @@ Ranker fields (`ranker_strategy`, `ranker_alpha`, `ranker_k`) apply only when `s
           "temperature": 0.2,
           "max_completion_tokens": 2048
         },
-        "kg_extraction_config": { "mode": "constrained" }
+        "graph_extraction_config": { "mode": "constrained" }
       }
     }
   }
@@ -394,7 +386,7 @@ Index building populates the production vector store via the managed **`document
 | `parameters` | Pre-filled from optimization run + pattern `settings` |
 | `overrides_allowed` | Keys the UI may expose for user override at submit time; implementations preserve consistency between the indexed corpus, selected pattern, and serving configuration |
 
-**Parameter sources:** optimization run → `maas_secret_name`, `db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Graph patterns also copy `settings.knowledge_graph` onto `foundation_model_id`, `foundation_model_params`, and `kg_extraction_config` ([Graph-only fields](#graph-only-fields)). Secret fields are **names only** (Kubernetes Secret references).
+**Parameter sources:** optimization run → `maas_secret_name`, `db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Indexing LLM → `foundation_model_id` / `foundation_model_params` from `settings.generation`. Graph patterns also copy `settings.graph_extraction` onto `graph_extraction_config` ([Graph-only fields](#graph-only-fields)). Secret fields are **names only** (Kubernetes Secret references).
 
 `parameters.input_data_keys` is the same **`list[str]`** as the optimization run (1–10 object keys or prefixes, same Connection/bucket). Production indexing uses that full list so the production corpus matches optimization. A one-element list is a single location. Corpus contract: [ODH-ADR-0002 — Corpus locations](./ODH-ADR-0002-experiment-settings.md#corpus-locations).
 
