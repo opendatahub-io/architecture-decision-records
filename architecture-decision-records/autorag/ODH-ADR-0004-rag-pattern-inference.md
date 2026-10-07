@@ -26,15 +26,15 @@ Optimized configurations must be portable across optimization, indexing, and inf
 * Document the inference notebook, parameterized starter-kit zip, Helm / BuildConfig deploy, and one-click Agent Sandbox
 * Document the AutoRAG BFF test endpoint (retrieve-and-generate from `pattern.json`; not the agent API)
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
+* Document Graph-only `pattern.json` fields (`knowledge_graph`, Graph retrieval expansion, KG indexing parameters)
 
 ## Non-Goals
 
 * Metric catalog and score computation (see ODH-ADR-0005)
-* Graph RAG pattern storage profiles beyond sketches in ODH-ADR-0003
 
 ## How
 
-The sections below define the artifact, inference, and indexing contracts for an optimized Simple RAG pattern. Graph RAG requires a separate end-to-end contract before it can use this production indexing and inference flow.
+The sections below define the artifact, inference, and indexing contracts. Patterns share this envelope and are distinguished by `template_id` (Simple vs Agentic, Vector vs Graph).
 
 ## Table of contents
 
@@ -42,6 +42,7 @@ The sections below define the artifact, inference, and indexing contracts for an
 - [Pattern artifacts](#pattern-artifacts)
 - [pattern.json](#patternjson)
   - [Example pattern.json](#example-patternjson)
+  - [Graph-only fields](#graph-only-fields)
 - [Retrieve and generation](#retrieve-and-generation)
   - [Inference notebook](#inference-notebook)
   - [Agentic Starter-kit](#agentic-starter-kit)
@@ -66,7 +67,7 @@ Canonical pattern and run artifact inventory. Sibling ADRs link here instead of 
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `inference`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
+| `pattern.json` | Authoritative record: `name`, `template_id`, `settings`, `indexing`, `inference`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
 | `starter_kit.zip` | One per optimization run. The [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) uses the best pattern as defaults and accepts Responses-compatible request overrides. |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks: full-corpus index vs retrieve-and-generate with a sample query |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
@@ -77,12 +78,15 @@ Canonical pattern and run artifact inventory. Sibling ADRs link here instead of 
 
 ```text
 pattern.json
-├── name, iteration, max_combinations, duration_seconds
+├── name, template_id, iteration, max_combinations, duration_seconds
 ├── settings
 │   ├── store_binding (provider_type, collection_name)
 │   ├── chunking (method, chunk_size, chunk_overlap, include_metadata)
 │   ├── embedding (model_id, embedding_params)
-│   ├── retrieval (method, number_of_chunks, search_mode, ranker_strategy, ranker_alpha)
+│   ├── knowledge_graph (Graph only)
+│   ├── retrieval (method, number_of_chunks, search_mode;
+│   │              hybrid: ranker_strategy, ranker_alpha, ranker_k;
+│   │              graph: include_entity_neighbors, entity_* / relationship_* limits)
 │   └── generation (model_id, temperature, max_completion_tokens,
 │                   context_template_text, user_message_text,
 │                   system_message_text, language)
@@ -106,11 +110,13 @@ pattern.json
 
 | Field                                                       | Description                                                                                                                                                                                                                                                                                                                                       |
 |-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time                                                                                                                                                                                                                                                                                     |
-| `settings`                                                  | Optimized RAG config: `store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`) |
+| `name`, `template_id`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity; blueprint ID (`simple_rag`, `agentic_rag`, `simple_graph_rag`, or `agentic_graph_rag`, [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)); GAM iteration; search-space size; wall time |
+| `settings`                                                  | Optimized RAG config: `store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`). Graph extras: [Graph-only fields](#graph-only-fields) |
 | `indexing.pipeline_spec`                                    | Managed indexing pipeline inputs — [Index building](#index-building)                                                                                                                                                                                                                                                                              |
 | `inference.runtime_spec`                                    | Agent deployment: `framework`, `protocol`, `image`, and credential `connections` — [One-click Deployment](#one-click-deployment)                                                                                                                                                                                                                  |
 | `evaluation`                                                | `metrics[]` aggregates. Catalog, evaluators, and GAM flag: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)                                                                                                                                                                                                                               |
+
+`template_id` is required. Catalog and `provider_type` compatibility: [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md).
 
 GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) ID. The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)).
 
@@ -121,6 +127,7 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
 ```json
 {
   "name": "Pattern1",
+  "template_id": "agentic_rag",
   "max_combinations": 90,
   "evaluation": {
     "metrics": [
@@ -232,6 +239,91 @@ GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](.
 }
 ```
 
+### Graph-only fields
+
+Present only when `template_id` is `simple_graph_rag` or `agentic_graph_rag` (`store_binding.provider_type: neo4j`). Vector patterns (`simple_rag`, `agentic_rag`) must not emit these keys. Shared envelope fields (`chunking`, `embedding`, `generation`, `evaluation`, `retrieval.method`, `retrieval.number_of_chunks`) stay as in the Vector example. Graph patterns set `search_mode` to `graph` ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#retrieval-methods)). For Neo4j, `collection_name` is the graph / index namespace.
+
+#### `settings.knowledge_graph`
+
+LLM used at index time to extract entities and relations (ai4rag `Neo4jGraphStore` / `SimpleKGPipeline`). Distinct from `settings.generation`.
+
+| Field | Role |
+|-------|------|
+| `model_id` | MaaS foundation model for extraction |
+| `model_params.temperature` | Sampling for extraction |
+| `model_params.max_completion_tokens` | Completion cap for extraction |
+| `extraction_config.mode` | `constrained` (fixed entity/relation allow-list) or `free` |
+| `extraction_config.max_entities_per_chunk` | Required when `mode` is `free` |
+| `extraction_config.max_relationships_per_chunk` | Required when `mode` is `free` |
+
+#### `settings.retrieval` Graph expansion
+
+Copied from ai4rag `Neo4jGraphRetrievalConfig`. Emitted only when `search_mode` is `graph`, the same way `ranker_*` is emitted only when `search_mode` is `hybrid`.
+
+| Field | Default | Role |
+|-------|---------|------|
+| `include_entity_neighbors` | `true` | Expand through `__Entity__` links |
+| `entity_neighbor_limit` | `5` | Max entity-linked neighbor chunks per seed |
+| `entity_pivot_limit` | `3` | Max entity pivots for relationship traversal |
+| `entity_relationship_hops` | `1` | Relationship hops from each pivot |
+| `relationship_neighbor_limit` | `5` | Max relationship-expanded chunks per seed |
+| `route_k` | omitted | Optional per-route candidate count; when set, a positive integer |
+
+Ranker fields (`ranker_strategy`, `ranker_alpha`, `ranker_k`) apply only when `search_mode` is `hybrid`. They are omitted on Graph patterns.
+
+#### Indexing parameter mapping
+
+`indexing.pipeline_spec.parameters` keeps the Vector keys and adds KG copies from `settings.knowledge_graph`. Pipeline param names stay as emitted by KFP.
+
+| `settings.knowledge_graph` | `indexing.pipeline_spec.parameters` |
+|----------------------------|-------------------------------------|
+| `model_id` | `foundation_model_id` |
+| `model_params` | `foundation_model_params` |
+| `extraction_config` | `kg_extraction_config` |
+
+```json
+{
+  "template_id": "agentic_graph_rag",
+  "settings": {
+    "store_binding": {
+      "provider_type": "neo4j",
+      "collection_name": "ai4rag_20261007105145_n3ddtlc1"
+    },
+    "knowledge_graph": {
+      "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic",
+      "model_params": {
+        "temperature": 0.2,
+        "max_completion_tokens": 2048
+      },
+      "extraction_config": { "mode": "constrained" }
+    },
+    "retrieval": {
+      "method": "simple",
+      "number_of_chunks": 10,
+      "search_mode": "graph",
+      "include_entity_neighbors": true,
+      "entity_neighbor_limit": 5,
+      "entity_pivot_limit": 3,
+      "entity_relationship_hops": 1,
+      "relationship_neighbor_limit": 5
+    }
+  },
+  "indexing": {
+    "pipeline_spec": {
+      "parameters": {
+        "provider_type": "neo4j",
+        "foundation_model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic",
+        "foundation_model_params": {
+          "temperature": 0.2,
+          "max_completion_tokens": 2048
+        },
+        "kg_extraction_config": { "mode": "constrained" }
+      }
+    }
+  }
+}
+```
+
 ---
 
 ## Retrieve and generation
@@ -302,7 +394,7 @@ Index building populates the production vector store via the managed **`document
 | `parameters` | Pre-filled from optimization run + pattern `settings` |
 | `overrides_allowed` | Keys the UI may expose for user override at submit time; implementations preserve consistency between the indexed corpus, selected pattern, and serving configuration |
 
-**Parameter sources:** optimization run → `maas_secret_name`, `db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Secret fields are **names only** (Kubernetes Secret references).
+**Parameter sources:** optimization run → `maas_secret_name`, `db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Graph patterns also copy `settings.knowledge_graph` onto `foundation_model_id`, `foundation_model_params`, and `kg_extraction_config` ([Graph-only fields](#graph-only-fields)). Secret fields are **names only** (Kubernetes Secret references).
 
 `parameters.input_data_keys` is the same **`list[str]`** as the optimization run (1–10 object keys or prefixes, same Connection/bucket). Production indexing uses that full list so the production corpus matches optimization. A one-element list is a single location. Corpus contract: [ODH-ADR-0002 — Corpus locations](./ODH-ADR-0002-experiment-settings.md#corpus-locations).
 

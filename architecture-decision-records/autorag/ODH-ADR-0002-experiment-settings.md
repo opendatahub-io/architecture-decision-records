@@ -24,7 +24,7 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 * Define the public parameter surface of `documents_rag_optimization_pipeline`
 * Document multi-location corpus ingest (`input_data_keys` as a list of up to 10 keys/prefixes) and benchmark document identity by object key
 * Document speed and balanced presets (Docling behavior, chunking envelope, inference concurrency)
-* Specify chunking methods (recursive, hybrid) and retrieval modes (vector, keyword, hybrid) used in the search space
+* Specify chunking methods (recursive, hybrid) and retrieval modes (vector, keyword, hybrid, graph) used in the search space
 * Specify HPO-time MaaS vs LangChain split (catalog discovery, embeddings, chat, Ragas vs vector-store upsert/search)
 
 ## Non-Goals
@@ -152,7 +152,7 @@ Trial-time path:
 chunks
   → embed (MaaS)
   → vector DB upsert (LangChain adapter)
-  → LangChain search (vector / keyword / hybrid)
+  → LangChain search (vector / keyword / hybrid) or Neo4j graph search
   → MaaS chat completion
   → evaluate metrics (Unitxt; Ragas LLM and embeddings via MaaS)
 ```
@@ -237,16 +237,19 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 | `vector` | Embedding similarity only |
 | `keyword` | BM25 only |
 | `hybrid` | Vector + BM25 fused using the strategy selected for the pattern |
+| `graph` | Neo4j vector hit plus entity / relationship expansion ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#graph-only-fields)) |
 
 | Parameter | Default | Role |
 |-----------|---------|------|
 | `method` | `simple` | Query-time retrieval strategy |
 | `number_of_chunks` | `5` | Top-k chunks (typical range 3–20) |
-| `search_mode` | `hybrid` | `vector`, `keyword`, or `hybrid` |
-| `ranker_strategy` | Pattern-selected | `rrf` or `weighted` (hybrid) |
+| `search_mode` | `hybrid` | `vector`, `keyword`, `hybrid`, or `graph` |
+| `ranker_strategy` | Pattern-selected | `rrf` or `weighted` (`hybrid` only) |
 | `ranker_k` | Pattern-selected | RRF constant, when the selected strategy is RRF |
 | `ranker_alpha` | Pattern-selected | Weighted-fusion balance, when the selected strategy is `weighted` |
 | `distance_metric` | `cosine` | Vector similarity metric |
+
+`ranker_*` is emitted only when `search_mode` is `hybrid`. Graph expansion fields (`include_entity_neighbors`, neighbor limits, hops, optional `route_k`) are emitted only when `search_mode` is `graph`. Vector templates (`simple_rag`, `agentic_rag`) use `vector`, `keyword`, or `hybrid`. Graph templates (`simple_graph_rag`, `agentic_graph_rag`) use `graph`.
 
 ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.
 

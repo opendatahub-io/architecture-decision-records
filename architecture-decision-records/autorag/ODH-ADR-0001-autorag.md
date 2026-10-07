@@ -49,7 +49,7 @@ AutoRAG automates this process, enabling users to:
 
 ## How
 
-AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **document sample**; pattern artifacts are designed for **full-corpus indexing** and production inference. The concrete indexing and inference path in this ADR set is Simple RAG; Graph RAG remains an extension until its end-to-end indexing and serving contract is defined.
+AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **document sample**; pattern artifacts are designed for **full-corpus indexing** and production inference. Vector and Graph patterns share the same artifact envelope, distinguished by `template_id` ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md), [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ### Architecture Components
 
@@ -103,9 +103,9 @@ flowchart LR
 4. **HPO loop** — Iteratively select configurations (GAM), execute RAG on the sample, evaluate against the benchmark, and emit ranked **patterns** until a pattern budget is reached
 5. **Finalize** — Store run artifacts, leaderboard, and optional MLflow experiment summary
 
-**Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the Simple RAG vector store referenced by that pattern.
+**Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the store referenced by that pattern.
 
-**Phase 3 — Infer** — Simple RAG consumers retrieve from the pattern's `store_binding` (query embeddings via MaaS) and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
+**Phase 3 — Infer** — Consumers retrieve from the pattern's `store_binding` (query embeddings via MaaS) and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ### Pipeline Inputs (categories)
 
