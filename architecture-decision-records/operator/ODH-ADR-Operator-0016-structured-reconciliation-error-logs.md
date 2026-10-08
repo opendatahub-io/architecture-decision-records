@@ -11,8 +11,7 @@
 | Tickets        | [RHAISTRAT-2417](https://redhat.atlassian.net/browse/RHAISTRAT-2417), [RHAI-411](https://redhat.atlassian.net/browse/RHAI-411), [RHAI-529](https://redhat.atlassian.net/browse/RHAI-529) |
 | Other docs     | Contributor convention embedded inline under [Convention](#convention) |
 
-This file is the in-repo copy of the convention specification. The
-organization ADR repository is the canonical publication target for external
+This ADR is the canonical convention specification, including for external
 operators (Loki Operator, Tempo Operator). Adoption by those operators is
 voluntary and is not a delivery dependency (platform policy: RHOAI does not
 install or control external operator dependencies).
