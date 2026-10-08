@@ -54,8 +54,8 @@ camelCase matches controller-runtime's existing keys (`name`, `namespace`,
 * Required identity fields for reconciliation errors: `name`, `namespace`
   (namespaced only), `resourceKind`.
 * Stable, identity-free message strings.
-* Cluster-scoped resources (`DataScienceCluster`, `DSCInitialization`) omit
-  `namespace`.
+* Cluster-scoped resources (`DataScienceCluster`, `DSCInitialization`) do not add
+  `namespace` themselves; the request logger's `"namespace": ""` is expected.
 * Do not duplicate controller-runtime request-logger keys.
 * Do not reuse `name` / `namespace` / `resourceKind` for child objects.
 * CI analyzer (`cmd/loglint`) prevents regressions.
@@ -97,13 +97,17 @@ Reconciliation error logs identify the reconciled object with camelCase keys:
 
 Do not invent aliases for these keys (`Request.Name`, `resource_kind`, `ns`,
 `DSCInitialization` as a namespace key). Extra keys for other objects
-(`component`, `module`, `deployment`, `path`) are allowed and encouraged.
+(`component`, `module`, `deployment` / `deploymentNamespace`,
+`child` / `childNamespace`, `configmap`, `webhook`, `path`) are allowed and
+encouraged.
 
 controller-runtime already injects `name`, `namespace`, and `controllerKind` on
 the logger taken from `logf.FromContext(ctx)` during `Reconcile`. Do not
 duplicate those keys. Add `resourceKind` only when it is not the same as
-`controllerKind` (watch mappers, child objects, or loggers that did not come
-from the request context).
+`controllerKind` (watch mappers, or loggers that did not come from the request
+context). `resourceKind` always describes the same object as `name`; a child
+object gets its own key, never `resourceKind` (see
+[Parent vs child identity](#parent-vs-child-identity)).
 
 ### Three problems this convention fixes
 
@@ -132,7 +136,8 @@ for `name=` missed DSCI.
 log.Error(err, "Failed to retrieve DSCInitialization resource.",
     "DSCInitialization Request.Name", req.Name)
 
-// After — cluster-scoped: omit namespace
+// After — cluster-scoped: don't add namespace yourself
+// (the request logger still emits "namespace": "", which is expected)
 log.Error(err, "Failed to retrieve resource.",
     "resourceKind", "DSCInitialization", "name", req.Name)
 ```
@@ -157,24 +162,55 @@ log.Error(err, "Failed to get AuthList", "resourceKind", "Auth")
 | Dedicated component / DSC / DSCI `Reconcile` using `logf.FromContext(ctx)` | Optional. `controllerKind` already identifies the reconciler; add it when the call bypasses that logger or you want the field present for queries. |
 | Service controllers, module controller / handlers, cloudmanager | Required. Kind is not implied by the controller name. |
 | Watch mappers and list handlers | Required. Set it to the watched kind (`Auth`, `GatewayConfig`), not the parent. |
-| Child object of the reconciled CR (component, module, Deployment) | Do not reuse `name` / `namespace` / `resourceKind`. Use a dedicated key; parent identity stays on the context logger. |
+| Child object of the reconciled CR (component, module, Deployment, ConfigMap, cloudmanager GC/cleanup target) | Leave `resourceKind` describing the parent (usually dropped because it equals `controllerKind`). Never put the child's kind in `resourceKind`. Give the child its own dedicated key (see [Parent vs child identity](#parent-vs-child-identity)). |
+
+### Parent vs child identity
+
+**`resourceKind` always describes the same object as `name`** — the reconciled
+(parent) object carried by the request logger. `name`, `namespace`, and
+`resourceKind` are one set and must never point at different objects.
+
+On a `Reconcile` path the request logger already carries the parent's `name` /
+`namespace` / `controllerKind`, so `resourceKind` equals `controllerKind` and is
+dropped as a duplicate. Reconcile code therefore touches *other* objects without
+ever reassigning the reserved keys:
+
+* A child or secondary object gets its **own dedicated key**, never
+  `resourceKind`: `component`, `module`, `deployment` / `deploymentNamespace`,
+  `child` / `childNamespace` (cloudmanager GC/cleanup), `configmap`, `webhook`,
+  `path`.
+* Do not log the child's kind in `resourceKind` next to the parent's `name`, and
+  do not reuse `name` / `namespace` for the child.
 
 ```go
-// Parent identity comes from the context logger; child uses its own key
+// Child component CR — parent identity stays on the context logger;
+// the child gets its own key. resourceKind is NOT set to the child's kind.
 log.Error(err, "failed to delete component CR", "component", handler.GetName())
 
 // Child Deployment — do not steal the reserved "name" / "namespace" keys
 log.Error(err, "failed to inject env vars into Deployment",
     "deployment", deploy.GetName(), "deploymentNamespace", deploy.GetNamespace())
+
+// Cloudmanager GC — the deleted child uses child / childNamespace
+log.Error(err, "cleanup delete failed",
+    "child", obj.GetName(), "childNamespace", obj.GetNamespace())
 ```
+
+If a log line is genuinely *about* the child (not the reconciled parent), log the
+child as the full set — `name` / `namespace` / `resourceKind` all describing the
+child — rather than mixing parent and child across those keys.
 
 ### Scoping
 
-Cluster-scoped resources (`DataScienceCluster`, `DSCInitialization`) do not emit
-`namespace` — omit the key rather than sending `req.Namespace`, which is empty or
-misleading. `name` and `resourceKind` still apply. Namespaced resources
-(component CRs, module CRs, service CRs, cloudmanager CRs) must include
-`namespace` when identity is logged explicitly.
+Cluster-scoped resources (`DataScienceCluster`, `DSCInitialization`) do not add
+`namespace` themselves — never pass `req.Namespace` explicitly, as it is empty or
+misleading. Note that on a `Reconcile` path controller-runtime's request logger
+always injects `namespace` from the request, so cluster-scoped errors logged
+through `logf.FromContext(ctx)` still carry `"namespace": ""`; that empty value is
+expected and should not be "fixed" by dropping the request logger. `name` and
+`resourceKind` still apply. Namespaced resources (component CRs, module CRs,
+service CRs, cloudmanager CRs) must include `namespace` when identity is logged
+explicitly.
 
 ### CI enforcement
 
