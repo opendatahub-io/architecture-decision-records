@@ -1,10 +1,10 @@
-# ODH-ADR-Operator-0016 Structured reconciliation error logs
+# ODH-ADR-Operator-0019 Structured reconciliation error logs
 
 |                | |
 | -------------- | --- |
 | Date           | 2026-09-10 |
 | Scope          | Open Data Hub operator (manager and cloudmanager) |
-| Status          | Draft — publish to [architecture-decision-records/operator](https://github.com/opendatahub-io/architecture-decision-records/tree/main/architecture-decision-records/operator) |
+| Status          | Draft |
 | Authors        | Heorhii Churhuliia |
 | Supersedes     | N/A |
 | Superseded by  | N/A |
@@ -51,8 +51,11 @@ camelCase matches controller-runtime's existing keys (`name`, `namespace`,
 
 ## Goals
 
-* Required identity fields for reconciliation errors: `name`, `namespace`
-  (namespaced only), `resourceKind`.
+* Identity fields for reconciliation errors: `name` (always), `namespace`
+  (namespaced only), and `resourceKind` — required whenever it is not already
+  carried as `controllerKind` by the request logger, and skipped when it would
+  duplicate `controllerKind` (see
+  [When to set resourceKind](#when-to-set-resourcekind)).
 * Stable, identity-free message strings.
 * Cluster-scoped resources (`DataScienceCluster`, `DSCInitialization`) do not add
   `namespace` themselves; the request logger's `"namespace": ""` is expected.
@@ -159,7 +162,7 @@ log.Error(err, "Failed to get AuthList", "resourceKind", "Auth")
 
 | Situation | `resourceKind` |
 | --- | --- |
-| Dedicated component / DSC / DSCI `Reconcile` using `logf.FromContext(ctx)` | Optional. `controllerKind` already identifies the reconciler; add it when the call bypasses that logger or you want the field present for queries. |
+| Dedicated component / DSC / DSCI `Reconcile` using `logf.FromContext(ctx)` | Skip. It would duplicate the `controllerKind` the request logger already carries. Add it only when the call does not go through that logger. |
 | Service controllers, module controller / handlers, cloudmanager | Required. Kind is not implied by the controller name. |
 | Watch mappers and list handlers | Required. Set it to the watched kind (`Auth`, `GatewayConfig`), not the parent. |
 | Child object of the reconciled CR (component, module, Deployment, ConfigMap, cloudmanager GC/cleanup target) | Leave `resourceKind` describing the parent (usually dropped because it equals `controllerKind`). Never put the child's kind in `resourceKind`. Give the child its own dedicated key (see [Parent vs child identity](#parent-vs-child-identity)). |
@@ -214,8 +217,15 @@ explicitly.
 
 ### CI enforcement
 
-`make lint` runs `go test ./cmd/loglint/…` and `go run ./cmd/loglint ./…`. The
-analyzer flags:
+`make lint` runs `go test ./cmd/loglint/…` and `go run ./cmd/loglint ./…`. To
+scan controller packages locally (will fail on call sites not yet converted by
+RHAI-525–528):
+
+```sh
+go run ./cmd/loglint ./internal/controller/... ./pkg/controller/...
+```
+
+The analyzer flags:
 
 * `log.Error()` message strings that embed identity (`in namespace`,
   `namespace %s`, `Request.Namespace`, `name %s`, `named %s`, `Request.Name`, …).
