@@ -51,7 +51,8 @@ camelCase matches controller-runtime's existing keys (`name`, `namespace`,
 
 ## Goals
 
-* Identity fields for reconciliation errors: `name` (always), `namespace`
+* Identity fields for reconciliation errors: `name` (always, except list-level
+  failures that have no single object identity), `namespace`
   (namespaced only), and `resourceKind` — required whenever it is not already
   carried as `controllerKind` by the request logger, and skipped when it would
   duplicate `controllerKind` (see
@@ -94,7 +95,7 @@ Reconciliation error logs identify the reconciled object with camelCase keys:
 
 | Key | Value | When |
 | --- | --- | --- |
-| `name` | object name | always |
+| `name` | object name | always, except list-level failures with no single object (e.g. a watch-mapper list error) |
 | `namespace` | object namespace | namespaced resources only |
 | `resourceKind` | Kubernetes kind (`DataScienceCluster`, `Auth`, `Dashboard`, …) | when kind is not already implied (see [When to set resourceKind](#when-to-set-resourcekind)) |
 
@@ -139,10 +140,15 @@ for `name=` missed DSCI.
 log.Error(err, "Failed to retrieve DSCInitialization resource.",
     "DSCInitialization Request.Name", req.Name)
 
-// After — cluster-scoped: don't add namespace yourself
-// (the request logger still emits "namespace": "", which is expected)
+// After — identity taken over explicitly (logger without request context).
+// Cluster-scoped: don't add namespace yourself; resourceKind is set here only
+// because controllerKind is not inherited on this logger.
 log.Error(err, "Failed to retrieve resource.",
     "resourceKind", "DSCInitialization", "name", req.Name)
+
+// After — on the request logger (the common Reconcile case): name/namespace and
+// controllerKind are already injected, so drop the custom keys entirely.
+log.Error(err, "Failed to retrieve resource.")
 ```
 
 **3. Missing `resourceKind`** — `name` and `namespace` are not enough to search
@@ -154,7 +160,9 @@ cloudmanager, which each touch more than one kind.
 // Before — cannot filter "all Auth list failures" without parsing the message
 log.Error(err, "Failed to get AuthList")
 
-// After — watch mapper logs the watched kind, not the parent reconciler
+// After — watch mapper logs the watched kind, not the parent reconciler.
+// A list failure has no single object, so "name" is omitted; "resourceKind"
+// still identifies which kind the list was for.
 log.Error(err, "Failed to get AuthList", "resourceKind", "Auth")
 ```
 
@@ -210,10 +218,14 @@ Cluster-scoped resources (`DataScienceCluster`, `DSCInitialization`) do not add
 misleading. Note that on a `Reconcile` path controller-runtime's request logger
 always injects `namespace` from the request, so cluster-scoped errors logged
 through `logf.FromContext(ctx)` still carry `"namespace": ""`; that empty value is
-expected and should not be "fixed" by dropping the request logger. `name` and
-`resourceKind` still apply. Namespaced resources (component CRs, module CRs,
-service CRs, cloudmanager CRs) must include `namespace` when identity is logged
-explicitly.
+expected and should not be "fixed" by dropping the request logger. When logging
+through that request logger, only `name` is explicit — `resourceKind` is skipped
+because it would duplicate the inherited `controllerKind` (per
+[When to set resourceKind](#when-to-set-resourcekind)); set `resourceKind`
+explicitly only when the request logger is unavailable (for example a watch
+mapper or a logger that did not come from the request context). Namespaced
+resources (component CRs, module CRs, service CRs, cloudmanager CRs) must include
+`namespace` when identity is logged explicitly.
 
 ### CI enforcement
 
