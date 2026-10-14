@@ -13,106 +13,78 @@
 
 ## What
 
-Integrate MLflow experiment tracking into the AutoML components and pipelines in [pipelines-components](https://github.com/opendatahub-io/pipelines-components).
+Integrate MLflow experiment tracking into AutoML pipelines and reusable components.
 
 ## Why
 
-MLflow provides the OpenShift AI-supported UI needed to compare AutoGluon models, trace parameters and metrics, and reproduce runs.
+MLflow provides the supported RHOAI experience for comparing AutoGluon models, inspecting their configuration and metrics, and navigating from a pipeline run to its tracked results.
 
 ## Goals
 
-* Track AutoML experiments with parent/child MLflow runs configured by KFP-injected `KFP_MLFLOW_CONFIG`.
-* Log existing training artifacts and expose MLflow discovery and deep-linking through `component_stage_map`.
+* Track enabled AutoML runs as a KFP parent run with nested model-level child runs.
+* Log configuration, aggregate metrics, model metrics, and references to pipeline artifacts.
+* Make the parent run discoverable by Dashboard without changing the AutoML artifact contract.
 
-## Non-Goals
+## Non-goals
 
-* Native AutoGluon MLflow autologging (no `mlflow.autogluon` module exists)
-* MLflow Model Registry integration (model registration is out of scope)
+* AutoGluon-native MLflow autologging.
+* MLflow Model Registry integration.
+* Defining the platform KFP-to-MLflow configuration schema or MLflow artifact layout.
 
 ## How
 
-### KFP MLflow integration mode
+## Enablement
 
-When MLflow is enabled on the pipeline server, KFP injects `KFP_MLFLOW_CONFIG` into every step pod. AutoML uses it for opt-in tracking.
+MLflow tracking is enabled only when the pipeline platform injects valid MLflow configuration into the run. It is best-effort: invalid or unavailable configuration must not prevent model training. AutoML does not add a public pipeline parameter to enable or disable MLflow.
 
-| Environment variable | Purpose | Notes |
-|----------------------|---------|-------|
-| `KFP_MLFLOW_CONFIG` | Platform MLflow config (JSON) | Absent, empty, invalid JSON, or missing `endpoint` disables tracking (best-effort; training still runs) |
+## Run mapping
 
-The JSON schema is a platform KFP-to-MLflow contract and is not defined here. Without a valid configuration, tracking is disabled; there is no pipeline parameter to turn logging off. With one, the stage-map publisher resolves the parent run and training components associate their model-level results with child runs.
+The tabular and time-series pipelines use the same hierarchy.
 
-### MLflow mapping model
+| MLflow concept | AutoML contract |
+| --- | --- |
+| Experiment | The KFP-managed experiment for the pipeline execution. |
+| Parent run | One KFP-associated run for the AutoML execution. It records pipeline identity, non-secret training configuration, and aggregate metrics. |
+| Child run | One nested run for each refitted model with a complete `model.json`, predictor, metrics, and predictor-notebook artifact set. The model name is the join key between the child run and these artifacts, enabling side-by-side comparison. |
+| Parent metrics | Best, worst, and mean score; number of trained models; and overall fit time when available. |
+| Child metrics | Task-appropriate metrics from the leaderboard and model metrics artifacts. |
+| Child artifacts | References to the model predictor, metrics, and notebook pipeline artifacts. Pipeline artifacts remain authoritative. |
 
-Tabular and timeseries pipelines use the same mapping.
+Non-secret parameters may include task type, evaluation metric, preset, `top_n`, and dataset identifiers or hashes. Credentials and other secret material must never be logged.
 
-| MLflow concept      | Proposed mapping |
-|---------------------|------------------|
-| **Experiment**      | KFP-managed experiment from `KFP_MLFLOW_CONFIG.experimentId`; if absent, the stage-map publisher creates or uses one named for the KFP run. |
-| **Parent run**      | KFP-managed parent from `KFP_MLFLOW_CONFIG.parentRunId`, or a parent created by the stage-map publisher before training begins. AutoML components add tags, params, and **aggregate metrics**. **Tags:** `pipeline_name`, `kfp_run_name`, `kfp_run_id`, `kfp_version`, `image`, `autogluon_version`. **Params:** `task_type` (`binary` \| `multiclass` \| `regression` \| `time_series`), `eval_metric`, `preset`, `top_n`, dataset **hashes or URIs** (non-secret). |
-| **Parent Metrics**  | `best_score`, `worst_score`, `mean_score`, `num_models_trained`, `total_fit_time_seconds`. |
-| **Child runs**      | **One child run per leaderboard row / refitted model** (each `name` in `model_names` or equivalent for timeseries), created as nested runs under the KFP parent. Enables side-by-side comparison in MLflow UI. Params: `model_type`, `stack_level`, `fit_time`, `predict_time`, `num_bag_folds` / `num_stack_levels` when exposed. |
-| **Child Metrics**   | Task-specific metrics from AutoGluon leaderboard / `metrics.json` (e.g., `accuracy`, `f1`, `roc_auc`, `rmse`, `mae`). |
-| **Child Artifacts** | References to the model's metrics, predictor, and notebook pipeline artifacts. Pipeline artifacts remain authoritative; the integration does not require a particular MLflow model flavor or artifact layout. |
+## Dashboard discovery
 
-### Implementation approach
+The existing component-stage map remains the Dashboard join artifact. When tracking is active, it exposes the resolved MLflow experiment and parent-run reference, including the information needed to link to the MLflow UI. The MLflow tracking endpoint is for in-cluster service communication only; any browser link must use the browser-accessible MLflow UI base from the injected configuration (for example, `mlflowBaseURL`), not the tracking endpoint. The exact configuration parsing and stage-map representation are implementation details of the pipeline integration.
 
-MLflow integration uses the pipeline's parent/child run hierarchy to publish configuration, aggregate metrics, and references to pipeline artifacts. Component-level logging mechanics, including any model flavor or artifact representation, remain implementation details.
+When tracking is active, the top-level `mlflow` object in `component_stage_map.json` contains:
 
-### Alignment with AutoGluon-native logging
+| Field | Purpose |
+| --- | --- |
+| `tracking_uri` | In-cluster MLflow tracking endpoint used by pipeline components; not a browser URL. |
+| `experiment_id` | Resolved MLflow experiment for this pipeline execution. |
+| `run_id` | Resolved parent MLflow run for this pipeline execution. |
+| `workspace` | OpenShift AI project or namespace when MLflow workspaces are enabled. |
+| `run_url` | Browser-accessible link to the parent run, derived from the injected MLflow UI base (for example, `mlflowBaseURL`), not `tracking_uri`. |
 
-Revisit native AutoGluon callbacks for incremental logging as models complete.
+## Artifact and model boundaries
 
-### Extending `component_stage_map.json`
-
-`publish_component_stage_map`, the first pipeline task, resolves the MLflow experiment and parent run, then writes `component_stage_map.json`. When `KFP_MLFLOW_CONFIG` has a valid `endpoint`, it adds the following top-level `mlflow` object; existing fields remain unchanged.
-
-| `mlflow` field | Type | Source (`KFP_MLFLOW_CONFIG`) | Description |
-|----------------|------|------------------------------|-------------|
-| `tracking_uri` | string | `endpoint` | MLflow tracking server endpoint (omitted when disabled) |
-| `experiment_id` | string | `experimentId` or publisher-created experiment | MLflow experiment for this pipeline |
-| `run_id` | string | `parentRunId` or publisher-created parent run | Parent run for this execution |
-| `workspace` | string | `workspace` (when `workspacesEnabled`) | OpenShift AI project / namespace |
-| `run_url` | string | Computed from `tracking_uri`, `experiment_id`, `run_id` | Deep-link to MLflow UI parent run |
-
-The publisher populates this block at pipeline start after resolving the parent run. No new output parameter or task is needed: `component_stage_map` remains the dashboard join artifact, and training components use its resolved run ID for nested child runs.
+MLflow records references to pipeline artifacts; it does not replace the predictor, metrics, or notebook contracts in [ODH-ADR-0003](./ODH-ADR-0003-model-insights.md). The integration does not require an MLflow model flavor or duplicate the model artifact layout.
 
 ## Alternatives
 
-### 1. KFP automatic MLflow logging
-
-**Discarded:** It cannot represent AutoGluon's complex artifacts, ensemble hierarchy, nested model metrics, or required parent/child structure.
-
-### 2. Custom experiment tracking solution
-
-**Discarded:** It would duplicate the RHOAI-supported MLflow UI, workspace isolation, Kubernetes-auth RBAC, and familiar data-scientist interface.
+KFP's generic automatic MLflow logging cannot represent the required model-level hierarchy and AutoGluon artifacts. A custom tracking system would duplicate the supported MLflow UI and platform integration. Explicit AutoML integration with the parent/child mapping above is therefore selected.
 
 ## Risks
 
-* **No native AutoGluon support:** explicit API calls increase maintenance. *Mitigation:* follow MLflow scikit-learn/XGBoost patterns; use `mlflow.pyfunc` for predictor logging.
-* **Configuration dependency:** `KFP_MLFLOW_CONFIG` must be valid. *Mitigation:* gracefully disable tracking when it is unset, invalid, or lacks `endpoint`; the stage map reflects the actual state.
-
-## Stakeholder Impacts
-
-| Group                         | Key Contacts     | Date       | Impacted? |
-| ----------------------------- | ---------------- | ---------- | --------- |
-| AutoML team                   |                  |            | Yes |
-| Data Science Pipelines        |                  |            | Yes |
-| MLflow integration (RHOAI)    | Matt Prahl, Humair Khan |  | Yes |
-| AutoML Dashboard              |                  |            | Yes |
+The integration has a platform-configuration dependency and requires explicit logging because AutoGluon has no native MLflow autologging module. Best-effort enablement and references to authoritative pipeline artifacts limit the impact of either concern.
 
 ## References
 
-* Component stage map publisher: [opendatahub-io/pipelines-components — `component_stage_map_publisher`](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl/component_stage_map_publisher)
-* Upstream AutoML components: [opendatahub-io/pipelines-components — `components/training/automl`](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl)
-* Upstream AutoML pipelines: [opendatahub-io/pipelines-components — `pipelines/training/automl`](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/automl)
-* End-user examples (RH): [red-hat-ai-examples — `examples/automl`](https://github.com/red-hat-data-services/red-hat-ai-examples/tree/main/examples/automl)
-* Sample notebook (mocked MLflow data): [mlflow_mocks.ipynb](https://github.com/LukaszCmielowski/prototypes/blob/main/AutoML/mlflow_integration/mlflow_mocks.ipynb)
-* MLflow on RHOAI Integration Guide (internal): Contact Matt Prahl or Humair Khan in `#wg-openshift-ai-mlflow-integration`
-* MLflow Operator: [opendatahub-io/mlflow-operator](https://github.com/opendatahub-io/mlflow-operator)
-* MLflow Workspaces documentation: [MLflow 3.10 release notes](https://github.com/mlflow/mlflow/releases/tag/v3.10.0)
-* MLflow RBAC authorization plugin: [Kubernetes auth plugin documentation](https://mlflow.org/docs/latest/auth/index.html#kubernetes-authorization)
-* MLflow Python Function (custom models): [MLflow pyfunc documentation](https://mlflow.org/docs/latest/python_api/mlflow.pyfunc.html#creating-custom-pyfunc-models)
-* MLflow Tracking: [MLflow Tracking documentation](https://mlflow.org/docs/latest/tracking.html)
+* [AutoML architecture](./ODH-ADR-0001-automl.md)
+* [Model insights and artifact contract](./ODH-ADR-0003-model-insights.md)
+* [AutoML components](https://github.com/opendatahub-io/pipelines-components/tree/main/components/training/automl)
+* [AutoML pipelines](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/automl)
+* [MLflow Tracking](https://mlflow.org/docs/latest/tracking.html)
 
 ## Reviews
 

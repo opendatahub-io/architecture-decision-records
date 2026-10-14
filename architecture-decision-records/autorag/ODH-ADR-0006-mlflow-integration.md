@@ -21,39 +21,23 @@ AutoRAG needs a unified way to compare RAG patterns and trace individual benchma
 
 ## Goals
 
-* Use KFP-injected `KFP_MLFLOW_CONFIG` for opt-in tracking with parent/child MLflow runs.
+* Use platform-provided KFP MLflow context for opt-in tracking with parent/child MLflow runs.
 * Log one child run per RAG pattern, its settings, aggregate metrics, and KFP artifact pointers.
 * Create one trace per benchmark request with retrieval, generation, and evaluation spans.
 
 ## Non-Goals
 
-* Copying `evaluation_results.json` content into MLflow (KFP remains the source of truth)
+* Copying row-level evaluation or diagnostic artifacts into MLflow (KFP remains the source of truth)
 * OTel Collector integration, `mlflow.genai.evaluate()` on traces, `log_expectation` / `log_feedback`, `mlflow.log_input()` on parent run
 * MLflow Model Registry integration
 
 ## How
 
-### KFP MLflow integration mode
+### Tracking mode
 
-When MLflow is enabled on the pipeline server, KFP injects `KFP_MLFLOW_CONFIG` into every step pod. AutoRAG uses this JSON blob for opt-in tracking; absent, empty, invalid, or endpoint-less configuration disables tracking without failing optimization.
+When MLflow is enabled for the KFP pipeline server, AutoRAG uses the platform-provided tracking context. Absent or unusable context disables tracking without failing optimization.
 
-| Environment variable | Purpose |
-|----------------------|---------|
-| `KFP_MLFLOW_CONFIG` | Platform MLflow configuration JSON; the only injected MLflow configuration variable consumed by AutoRAG. |
-
-The JSON schema is a platform KFP-to-MLflow contract and is not defined here. With valid configuration, components resume or create the parent run, create nested pattern runs, and explicitly call `mlflow.log_params()`, `mlflow.log_metrics()`, `mlflow.set_tags()`, and `mlflow.log_artifact()`.
-
-### KFP artifacts produced by the pipeline
-
-MLflow logs pointers—not copies—to the [per-pattern files](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts).
-
-| Artifact / path role | Producing step | Layout and role |
-|---------------------|----------------|-----------------|
-| **Test data** | `test_data_loader` | Benchmark JSON on disk (input to search prep + optimization). |
-| **Discovered documents** | `documents_discovery` | Descriptor of corpus objects for extraction. |
-| **Extracted text** | `text_extraction` | Extracted document text (for example, via **docling**) for AutoRAG. |
-| **`search_space_prep_report`** | `search_space_preparation` | YAML-serialized **search space** after phase-one validation. |
-| **`rag_patterns`** (directory artifact) | `rag_templates_optimization` | One subdirectory per pattern. Contents: [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). |
+MLflow records references to KFP and per-pattern artifacts; it does not duplicate their contents. The artifact layout and source of truth are defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts).
 
 ### MLflow mapping model
 
@@ -61,18 +45,18 @@ One parent run represents a KFP execution; each RAG pattern has one nested child
 
 | MLflow concept | Proposed mapping |
 |----------------|------------------|
-| **Experiment** | KFP-managed experiment from `KFP_MLFLOW_CONFIG.experimentId`; otherwise `autorag_documents_rag_optimization` with an optional suffix. |
-| **Parent run** | KFP-managed parent from `KFP_MLFLOW_CONFIG.parentRunId` (resume when set; create when unset). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `db_secret_name`, `image`, `kfp_version`, `autorag_version`. |
+| **Experiment** | The KFP-managed MLflow experiment for the AutoRAG execution. |
+| **Parent run** | The KFP execution. It records nonsecret run identity, data references, and optimization context. |
 | **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of Unitxt / Ragas / custom metrics and chunking / retrieval / model choices. |
 | **Traces** | When tracing is enabled, request-level observability is associated with the pattern child run. The per-request source is `evaluation_results.json`; P patterns × N benchmark rows can yield P × N traces. |
 | **Spans** | Implementations may record retrieval, generation, and evaluation observability within a trace. Span names, types, and instrumentation are implementation details. |
-| **Params (child)** | From `pattern.json` `settings`: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id` / prompt fields, `store_binding` (`provider_type`, `collection_name`). |
-| **Metrics (child)** | Aggregate scores from `pattern.json` `evaluation.metrics[]`. Keying: [Metrics logged](#metrics-logged-child-runs). |
-| **Child Artifacts** | Pointers (URIs/paths) to the per-pattern files in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Not copied into MLflow. |
+| **Params (child)** | Selected nonsecret pattern settings from `pattern.json`. |
+| **Metrics (child)** | Aggregate evaluator-qualified scores from `pattern.json` `evaluation.metrics[]`. Keying: [Metrics logged](#metrics-logged-child-runs). |
+| **Child Artifacts** | References to the per-pattern artifacts defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Contents are not copied into MLflow. |
 
 ### Implementation approach
 
-`rag_templates_optimization` reads the platform MLflow configuration, resumes or creates the parent run, and opens one nested run per pattern to log its configuration, aggregates, and artifact references. When tracing is enabled, request-level data is sourced from `evaluation_results.json`; `pattern.json` remains the selected-configuration and aggregate record. Instrumentation mechanics remain implementation details.
+AutoRAG resumes or creates the parent run, then opens one nested run per pattern to log its selected configuration, aggregates, and artifact references. When tracing is enabled, request-level data is sourced from `evaluation_results.json`; `pattern.json` remains the selected-configuration and aggregate record. Instrumentation mechanics remain implementation details.
 
 ### Metrics logged (child runs)
 
@@ -80,9 +64,9 @@ AutoRAG computes Unitxt and Ragas metrics during optimization. Log **aggregates 
 
 | Source field | MLflow |
 |--------------|--------|
-| Objective metric `scores.mean` | `log_metric("final_score", ...)` from the `metrics[]` entry with `optimization_metric: true` (resolved `optimization_metric` + evaluator) |
-| `metrics[].name` + `metrics[].evaluator` | `log_metric("{name}.{evaluator}", scores.mean)` for each entry in `evaluation.metrics` (e.g. `faithfulness.unitxt`, `faithfulness.ragas`, `overall_score.custom`) |
-| `duration_seconds` | `log_metric("duration_seconds", ...)` |
+| Objective metric `scores.mean` | `final_score`, from the `metrics[]` entry marked `optimization_metric: true` |
+| `metrics[].name` + `metrics[].evaluator` | `{name}.{evaluator}` for each aggregate metric (for example, `faithfulness.unitxt`, `faithfulness.ragas`, `overall_score.custom`) |
+| `duration_seconds` | `duration_seconds` |
 
 Per-question rows stay in KFP `evaluation_results.json`.
 
@@ -90,7 +74,7 @@ Per-question rows stay in KFP `evaluation_results.json`.
 
 When enabled by the platform configuration, tracing associates request-level observability with the relevant pattern child run. `evaluation_results.json` remains the source for those request-level records; tracing complements rather than replaces the pipeline artifacts.
 
-The exact trace count, span structure, instrumentation library, and MLflow version support are implementation details. Implementations should retain the parent-run / pattern-child-run relationship so operators can navigate from aggregate experiment results to request-level observability.
+Span structure and instrumentation are implementation details. Implementations retain the parent-run / pattern-child-run relationship so operators can navigate from aggregate experiment results to request-level observability.
 
 ## Alternatives
 

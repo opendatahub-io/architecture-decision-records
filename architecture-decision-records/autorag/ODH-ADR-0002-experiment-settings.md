@@ -65,14 +65,14 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
 | `input_data_keys` | `list[str]` | (required; non-empty) | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
 | `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and Ragas evaluation. |
-| `db_secret_name` | `str` | (required) | Database Connection selected by the active template: `MILVUS_*` or `PGVECTOR_*` for simple RAG, `NEO4J_*` for Graph RAG ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). |
+| `db_secret_name` | `str` | (required) | Database Connection. AutoRAG derives the template from exactly one required backend key: `MILVUS_URI` or `PGVECTOR_HOST` for Agentic Vector RAG, or `NEO4J_URI` for Agentic Graph RAG ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
 | `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
 | `optimization_metric` | `str` | `custom:overall_score` | Evaluator-qualified GAM objective ID (for example, `unitxt:faithfulness` or `ragas:context_precision`). Valid IDs depend on the preset: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
 | `optimization_max_rag_patterns` | `int` | `5` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 
-`db_secret_name` is required. Its keys must match the selected template: simple RAG uses a vector backend; Graph RAG uses Neo4j, which provides graph, vector, and full-text storage.
+`db_secret_name` is required. AutoRAG selects the template from the backend discriminator key and validates the rest of that backend's required keys. A secret with no discriminator or more than one discriminator is rejected; a Neo4j secret cannot silently select a Vector template, and vice versa.
 
 ---
 
@@ -144,7 +144,7 @@ HPO uses **MaaS** for model discovery, embeddings, chat completions, and Ragas e
 | Chat completion | **MaaS** | Generation during trials |
 | Embeddings | **MaaS** | Embedding calls during trials |
 | Ragas evaluation | **MaaS** | LLM and embedding calls ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#ragas-runtime)) |
-| Vector upsert / search | LangChain adapters | Milvus or PGVector for simple RAG, configured by `db_secret_name` |
+| Vector upsert / search | LangChain adapters | Milvus or PGVector for Agentic Vector RAG, configured by `db_secret_name` |
 
 Trial-time path:
 
@@ -168,15 +168,19 @@ Mounted on `search_space_preparation`, `models_pre_selector`, and `rag_templates
 
 **Database** (`db_secret_name`)
 
-The active template selects the backend from keys in this secret, mounted on `rag_templates_optimization`:
+AutoRAG derives the active template from exactly one required backend discriminator key in this secret. The database secret is mounted on both `search_space_preparation` and `rag_templates_optimization`:
 
 | Backend | Keys | Selection |
 |---------|------|-----------|
-| Milvus | `MILVUS_URI` (required), `MILVUS_TOKEN`, `MILVUS_SERVER_CERT` | Any `MILVUS*` env var |
-| PGVector | `PGVECTOR_HOST`, `PGVECTOR_PORT`, `PGVECTOR_DB`, `PGVECTOR_USER`, `PGVECTOR_PASSWORD` | Else any `PGVECTOR*` env var |
-| Neo4j | `NEO4J_URI` (required; `neo4j://` or `bolt://`), `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (optional; default `neo4j`) | Any `NEO4J*` env var |
+| Milvus | `MILVUS_URI` (required), `MILVUS_TOKEN`, `MILVUS_SERVER_CERT` | `MILVUS_URI` |
+| PGVector | `PGVECTOR_HOST`, `PGVECTOR_PORT`, `PGVECTOR_DB`, `PGVECTOR_USER`, `PGVECTOR_PASSWORD` | `PGVECTOR_HOST` |
+| Neo4j | `NEO4J_URI` (required), `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (optional; default `neo4j`), `NEO4J_CA_CERT` (required when the remote server uses a private CA) | `NEO4J_URI` |
 
-For simple RAG, missing Milvus and PGVector keys fails validation. Graph RAG requires Neo4j; a missing or non-Neo4j secret fails validation.
+Remote Neo4j endpoints must use `neo4j+s://` or `bolt+s://`. `neo4j://` and `bolt://` are limited to local or in-cluster endpoints protected by the cluster network boundary. For a remote endpoint using a private certificate authority, `NEO4J_CA_CERT` supplies the trusted CA material; it is not needed when the certificate chains to a public trusted CA.
+
+For Agentic Vector RAG, missing the selected backend's required keys fails validation. Agentic Graph RAG requires Neo4j; a missing or non-Neo4j secret fails validation.
+
+`NEO4J_CA_CERT` is injected only into the pipeline steps that initialize Neo4j, including the managed documents indexing pipeline. It is a secret value: it is never copied into `pattern.json`, MLflow parameters, or generated notebooks.
 
 **Object storage** (`test_data_secret_name`, `input_data_secret_name`)
 
@@ -249,7 +253,7 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 | `ranker_alpha` | Pattern-selected | Weighted-fusion balance, when the selected strategy is `weighted` |
 | `distance_metric` | `cosine` | Vector similarity metric |
 
-`ranker_*` is emitted only when `search_mode` is `hybrid`. Graph expansion fields (`include_entity_neighbors`, neighbor limits, hops, optional `route_k`) are emitted only when `search_mode` is `graph`. Vector templates (`simple_rag`, `agentic_rag`) use `vector`, `keyword`, or `hybrid`. Graph templates (`simple_graph_rag`, `agentic_graph_rag`) use `graph`.
+`ranker_*` is emitted only when `search_mode` is `hybrid`. Graph expansion fields (`include_entity_neighbors`, neighbor limits, hops, optional `route_k`) are emitted only when `search_mode` is `graph`. Agentic Vector RAG (`agentic_rag`) uses `vector`, `keyword`, or `hybrid`. Agentic Graph RAG (`agentic_graph_rag`) uses `graph`.
 
 ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.
 
@@ -257,7 +261,7 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 ## Related
 
-- [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple and Neo4j Graph RAG templates
+- [RAG templates](./ODH-ADR-0003-rag-templates.md) — Agentic Vector and Agentic Graph RAG templates
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metric catalog, preset-valid evaluator-qualified `optimization_metric`, and `evaluation_results.json` `document_key`; benchmark field is defined above
 - [documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)
