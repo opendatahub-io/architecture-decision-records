@@ -105,13 +105,12 @@ Do not invent aliases for these keys (`Request.Name`, `resource_kind`, `ns`,
 `child` / `childNamespace`, `configmap`, `webhook`, `path`) are allowed and
 encouraged.
 
-controller-runtime already injects `name`, `namespace`, and `controllerKind` on
-the logger taken from `logf.FromContext(ctx)` during `Reconcile`. Do not
-duplicate those keys. Add `resourceKind` only when it is not the same as
-`controllerKind` (watch mappers, or loggers that did not come from the request
-context). `resourceKind` always describes the same object as `name`; a child
-object gets its own key, never `resourceKind` (see
-[Parent vs child identity](#parent-vs-child-identity)).
+The keys name, namespace, and resourceKind form an indivisible identity triad and must always describe the exact same object.
+- **On a standard Reconcile path: logf.FromContext(ctx) already carries name, namespace, and controllerKind. Do not pass resourceKind, as it duplicates controllerKind.
+- **On secondary/child resources: Never overwrite or pass name, namespace, or resourceKind to identify a child object. Use dedicated keys instead (see Parent vs child identity).
+- **On loggers without request context: Supply the full triad explicitly.
+
+
 
 ### Three problems this convention fixes
 
@@ -140,15 +139,16 @@ for `name=` missed DSCI.
 log.Error(err, "Failed to retrieve DSCInitialization resource.",
     "DSCInitialization Request.Name", req.Name)
 
-// After — identity taken over explicitly (logger without request context).
-// Cluster-scoped: don't add namespace yourself; resourceKind is set here only
-// because controllerKind is not inherited on this logger.
-log.Error(err, "Failed to retrieve resource.",
-    "resourceKind", "DSCInitialization", "name", req.Name)
+// After — Case A: Logger from request context (standard Reconcile path)
+// controller-runtime already injects name, namespace, and controllerKind.
+log := logf.FromContext(ctx)
+log.Error(err, "Failed to retrieve resource")
 
-// After — on the request logger (the common Reconcile case): name/namespace and
-// controllerKind are already injected, so drop the custom keys entirely.
-log.Error(err, "Failed to retrieve resource.")
+// After — Case B: Logger without request context (e.g., ctrl.Log in helper functions)
+// Cluster-scoped: omit namespace. Explicitly supply name and resourceKind.
+ctrl.Log.Error(err, "Failed to retrieve resource",
+    "resourceKind", "DSCInitialization",
+    "name", req.Name)
 ```
 
 **3. Missing `resourceKind`** — `name` and `namespace` are not enough to search
@@ -177,22 +177,14 @@ log.Error(err, "Failed to get AuthList", "resourceKind", "Auth")
 
 ### Parent vs child identity
 
-**`resourceKind` always describes the same object as `name`** — the reconciled
-(parent) object carried by the request logger. `name`, `namespace`, and
-`resourceKind` are one set and must never point at different objects.
+**name, namespace, and resourceKind always describe the same object. They represent a single identity triad and must never be split across different resources.
+On a Reconcile path, the request logger (logf.FromContext(ctx)) binds name, namespace, and controllerKind to the parent CR. Reconcile code operating on secondary or child objects must never reassign or shadow these reserved keys:
 
-On a `Reconcile` path the request logger already carries the parent's `name` /
-`namespace` / `controllerKind`, so `resourceKind` equals `controllerKind` and is
-dropped as a duplicate. Reconcile code therefore touches *other* objects without
-ever reassigning the reserved keys:
 
-* A child or secondary object gets its **own dedicated key**, never
-  `resourceKind`: `component`, `module`, `deployment` / `deploymentNamespace`,
+* A child or secondary object gets its **own dedicated key**`component`, `module`, `deployment` / `deploymentNamespace`,
   `child` / `childNamespace` (cloudmanager GC/cleanup), `configmap`, `webhook`,
   `path`.
-* Do not log the child's kind in `resourceKind` next to the parent's `name`, and
-  do not reuse `name` / `namespace` for the child.
-
+* Never log a child's kind in resourceKind next to the parent's name and namespace.
 ```go
 // Child component CR — parent identity stays on the context logger;
 // the child gets its own key. resourceKind is NOT set to the child's kind.
