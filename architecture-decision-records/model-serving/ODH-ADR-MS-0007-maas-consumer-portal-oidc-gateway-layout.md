@@ -43,6 +43,7 @@ The selected layout also positions MaaS for a native Praxis OIDC mechanism. Port
 * Define the owner, update path, namespace, and scaling model for `kube-auth-proxy`.
 * Define the `AITenant` CRD fields needed for OIDC client secret references and token refresh settings.
 * Define the mutually exclusive `oidc` and `openshift` authentication modes on `AITenant`.
+* Separate DSC-controlled UI and BFF deployment from `AITenant`-controlled portal exposure.
 * Define TLS and Gateway API permissions for cross-namespace traffic.
 * Define the routing model and redirect URIs for OIDC callbacks.
 * Record the migration path from the odh-dashboard gateway to the MaaS gateway.
@@ -205,6 +206,21 @@ The tenant creates the OIDC client Secret in the tenant namespace. The `AITenant
 
 This configuration model keeps tenant OIDC settings and Gateway resources in one reconciliation path.
 
+### Consumer portal enablement
+
+Two settings control the consumer portal:
+
+* The RHAI DSC managed option controls whether the UI and BFF Deployment are installed.
+* The `AITenant` CRD defines `consumerPortal.enabled`. This field controls whether the MaaS controller reconciles the portal `HTTPRoute`, `AuthPolicy`, and `kube-auth-proxy` for that tenant.
+
+A tenant receives the consumer portal only when both settings are enabled. The DSC option is the install gate. The `AITenant` field is the tenant gate.
+
+The `AITenant` field is optional for the AI Grid MVP and defaults to `true`. AI Grid has one Gateway and requires the consumer portal. In non-AI Grid deployments, an administrator can set the field to `false` to avoid unnecessary tenant-specific gateway infrastructure.
+
+When `consumerPortal.enabled` is `false`, the MaaS controller does not create the tenant-specific portal `HTTPRoute`, `AuthPolicy`, or `kube-auth-proxy`, and removes those resources if it previously created them. The setting does not control the UI or BFF Deployment.
+
+The default MaaS Gateway is always enabled. When the DSC option installs the UI and BFF Deployment, the default Gateway receives the consumer portal route. This preserves the out-of-the-box experience. The default Gateway is not removed or disabled by `consumerPortal.enabled`.
+
 ### `kube-auth-proxy` deployment
 
 `kube-auth-proxy` runs as a standalone Deployment and Service in `redhat-ai-gateway-infra`. It is not a container in the `maas-controller` Deployment.
@@ -240,7 +256,6 @@ OpenShift OAuth remains available when `AITenant` sets the authentication mode t
 ## Open Questions
 
 * Should the existing portal remain the default portal for a fresh installation, attached only to the default MaaS gateway, and serve as the consumer portal for users with Kubernetes accounts? This would provide an out-of-the-box experience without OIDC setup for use cases outside AI Grid.
-* The RHAI DSC currently has a managed option for the consumer portal. What should that option mean in this deployment architecture?
 
 ## Alternatives
 
