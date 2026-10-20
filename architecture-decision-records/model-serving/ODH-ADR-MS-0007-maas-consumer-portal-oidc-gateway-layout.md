@@ -13,27 +13,30 @@
 
 ## What
 
-Serve the AI consumer UI from the MaaS gateway. Use a route-specific Gateway API `HTTPRoute` for the UI. Run `kube-auth-proxy` as an extension of the `maas-controller` deployment, not as a separate operand. Keep the proxy lifecycle independent of `GatewayConfig`. Allow one UI BFF service to serve multiple Gateways when tenant context and authenticated identity are preserved.
+Serve the AI consumer UI from the MaaS gateway. Use a route-specific Gateway API `HTTPRoute` for the UI. Run `kube-auth-proxy` as a standalone data-plane Deployment and Service in `redhat-ai-gateway-infra`, not as an extension of the `maas-controller` Deployment. Keep the proxy lifecycle independent of the RHAI platform-wide `GatewayConfig`. Allow one UI BFF service to serve multiple Gateways when trusted tenant context and authenticated identity are preserved.
 
 ## Why
 
-OIDC is an explicit business requirement for the AI consumer UI. Serving the UI from the MaaS gateway keeps portal traffic, model traffic, and authentication policy under one gateway owner. Running `kube-auth-proxy` inside the `maas-controller` deployment avoids another standalone operand and keeps the proxy aligned with the controller's release and scaling model.
+OIDC is an explicit business requirement for the AI consumer UI. Serving the UI from the MaaS gateway keeps portal traffic, model traffic, and authentication policy under one gateway owner. Running `kube-auth-proxy` as a standalone data-plane service keeps browser-session traffic out of the `maas-controller` control-plane pod and lets the proxy scale independently.
 
 This layout also aligns the consumer portal with the general MaaS architecture, where each `AITenant` has a separate Gateway. AI Grid is the exception: it uses one shared Gateway. The portal uses the same Gateway boundary as model traffic instead of introducing a second gateway owner.
 
-In non-AI Grid deployments, each `AITenant` has a separate Gateway. A single UI BFF can serve those Gateways, reducing duplicate deployments while preserving the Gateway boundary. AI Grid uses a single Gateway, so it does not require this multi-Gateway BFF capability in the MVP.
+In non-AI Grid deployments, each `AITenant` has a separate Gateway. This support is in scope because non-AI Grid deployments ship in the same release. A single UI BFF can serve those Gateways, reducing duplicate deployments while preserving the Gateway boundary. AI Grid uses a single Gateway, so it does not require this multi-Gateway BFF capability in the MVP.
 
-Keeping `kube-auth-proxy` separate from `GatewayConfig` also avoids coupling a UI authentication concern to the Gateway configuration lifecycle. This lets the UI and MaaS teams release independently.
+MaaS owns the portal `HTTPRoute`, `AuthPolicy`, and proxy resources because they depend on Gateway topology, policy integration, and optional payload-processing bypass. The UI team owns the portal and BFF code.
+
+The selected layout also positions MaaS for a native Praxis OIDC mechanism. Portal traffic and identity already pass through the Gateway policy layer, so MaaS can replace the current proxy and policy integration without moving the public route or changing the BFF contract.
 
 ## Goals
 
 * Serve the AI consumer UI from the MaaS gateway.
 * Align the consumer portal with the general MaaS Gateway architecture and preserve the AI Grid single-Gateway MVP.
+* Support non-AI Grid deployments in the same release.
 * Allow one UI BFF service to serve multiple MaaS Gateways in non-AI Grid deployments.
 * Use a route-specific Gateway API `HTTPRoute` for the consumer UI.
-* Run `kube-auth-proxy` as an extension of the `maas-controller` deployment.
-* Manage `kube-auth-proxy` independently of `GatewayConfig`.
-* Define the owner, update path, and scaling model for `kube-auth-proxy`.
+* Run `kube-auth-proxy` as a standalone data-plane Deployment and Service in `redhat-ai-gateway-infra`.
+* Define the owner, update path, namespace, and scaling model for `kube-auth-proxy`.
+* Define the `AITenant` CRD fields needed for OIDC client secret references and token refresh settings.
 * Define the routing model and redirect URIs for OIDC callbacks.
 * Record the migration path from the odh-dashboard gateway to the MaaS gateway.
 * Keep OpenShift OAuth available for deployments that do not use OIDC.
@@ -42,7 +45,7 @@ Keeping `kube-auth-proxy` separate from `GatewayConfig` also avoids coupling a U
 
 * Define the authentication chain or Envoy filter order.
 * Define the identity-header contract.
-* Define session scope, lifetime, refresh, or logout.
+* Define session scope, lifetime, refresh, or logout behavior.
 * Define broker outage behavior.
 * Define programmatic access through SSO and API keys.
 * Deploy or federate the broker.
@@ -68,9 +71,12 @@ flowchart LR
     gateway["Container: API Gateway<br/>Envoy Gateway"]
   end
 
+  subgraph ns_infra["Namespace: redhat-ai-gateway-infra"]
+    auth_proxy["Container: OIDC Auth Proxy<br/>kube-auth-proxy<br/>standalone data-plane service"]
+  end
+
   subgraph ns_apps["Namespace: redhat-ods-application"]
     portal["Container: Consumer Portal<br/>Web app and BFF<br/>ODH dashboard service"]
-    auth_proxy["Container: OIDC Auth Proxy<br/>kube-auth-proxy<br/>maas-controller extension"]
   end
 
   subgraph ns_kuadrant["Namespace: kuadrant-system"]
@@ -103,7 +109,8 @@ sequenceDiagram
   participant Keycloak as Identity Provider
 
   Note over Gateway: Namespace: openshift-ingress
-  Note over Portal,Proxy: Namespace: redhat-ods-application
+  Note over Portal: Namespace: redhat-ods-application
+  Note over Proxy: Namespace: redhat-ai-gateway-infra
   Note over Authorino: Namespace: kuadrant-system
   Note over Keycloak: External identity provider
   Note over API: Existing dependency outside this deployment bundle
@@ -147,7 +154,7 @@ The MaaS gateway exposes the portal on a stable public hostname and path. A rout
 
 A second route-specific `HTTPRoute` matches `/oauth2`. It forwards sign-in, callback, and logout requests to `kube-auth-proxy` on port 4180. The proxy uses the OIDC authorization-code flow. The BFF receives the verified access token through the trusted header contract defined by RHAI-10604.
 
-The [proof of concept](https://github.com/lphiri/maas-portal-integration-poc) runs `kube-auth-proxy` as a standalone Deployment and Service. This ADR proposes moving that container into the `maas-controller` Deployment. The route, policy, and backend contract stay the same; only the proxy's owner and scaling model change.
+The [proof of concept](https://github.com/lphiri/maas-portal-integration-poc) validates the route, policy, and backend contract. This ADR keeps `kube-auth-proxy` as a standalone Deployment and Service and moves it to `redhat-ai-gateway-infra`. The proxy is not added to the `maas-controller` Deployment.
 
 A backend TLS policy enables HTTPS from the gateway to the portal service. A `NetworkPolicy` allows only the gateway and Authorino to reach the proxy on TCP port 4180.
 
@@ -155,17 +162,27 @@ A backend TLS policy enables HTTPS from the gateway to the portal service. A `Ne
 
 General MaaS deployments give each `AITenant` a separate MaaS Gateway. AI Grid uses a single shared MaaS Gateway. A route-specific Gateway API `HTTPRoute` attaches the UI path to the relevant Gateway and routes traffic to the consumer UI service.
 
-A single UI BFF service can serve multiple Gateways in non-AI Grid deployments. For the AI Grid MVP, the BFF serves the single AI Grid Gateway. Each request carries the tenant identifier and the authenticated identity. The BFF uses both values to enforce tenant isolation.
+A single UI BFF service can serve multiple Gateways in non-AI Grid deployments. The Gateway derives the tenant context from its trusted hostname or an equivalent gateway-injected value. It rejects a missing or mismatched tenant identifier before authorization. The BFF does not trust a client-supplied tenant key. For the AI Grid MVP, the BFF serves the single AI Grid Gateway.
 
-The MaaS and Gateway team owns the `HTTPRoute`, its Gateway attachment, and its backend references. The UI team owns the UI service and coordinates endpoint changes with the MaaS and Gateway team.
+The MaaS controller owns the portal `HTTPRoute`, its Gateway attachment, its backend references, the `AuthPolicy`, and the `kube-auth-proxy` resources. These resources require Gateway topology and policy details, including any payload-processing bypass configuration. The UI team owns the UI and BFF Services and coordinates endpoint changes with the MaaS and Gateway team.
+
+### OIDC configuration
+
+The `AITenant` CRD must expose the OIDC parameters that `kube-auth-proxy` needs. These parameters include the OIDC client secret reference and token refresh settings. The MVP keeps this list to the minimum needed.
+
+The CRD stores a reference to a Kubernetes Secret. The referenced Secret stores the client secret value. The MaaS controller resolves the reference and configures `kube-auth-proxy`.
+
+This configuration model gives the MaaS controller the tenant OIDC settings, Gateway topology, and policy details in one reconciliation path. It is another reason for MaaS to own the portal `HTTPRoute`, `AuthPolicy`, and `kube-auth-proxy` resources.
 
 ### `kube-auth-proxy` deployment
 
-`kube-auth-proxy` runs as an extension of the `maas-controller` deployment. It is not a separate operand.
+`kube-auth-proxy` runs as a standalone Deployment and Service in `redhat-ai-gateway-infra`. It is not a container in the `maas-controller` Deployment.
 
-The MaaS team owns `kube-auth-proxy` updates. The proxy scales with the `maas-controller` deployment. Its resource requests, limits, and replica count are managed as part of that deployment.
+The MaaS controller reconciles the proxy Deployment, Service, ServiceAccount, and `NetworkPolicy`. The proxy scales independently from the `maas-controller` Deployment. Its resource requests, limits, and replica count are managed as part of the MaaS Gateway integration.
 
 `GatewayConfig` does not manage `kube-auth-proxy`. This keeps UI authentication independent from gateway configuration changes.
+
+For non-AI Grid deployments, the MaaS controller creates one proxy instance for each MaaS Gateway that requires OIDC. The AI Grid MVP has one Gateway and therefore one proxy instance.
 
 ### Routing and redirect URIs
 
@@ -173,21 +190,26 @@ The consumer UI uses a stable HTTPS hostname and path. The `HTTPRoute` forwards 
 
 OIDC callback redirect URIs are based on that hostname and path. The UI registers the callback URI with the OIDC client. The gateway forwards callback requests to `kube-auth-proxy`.
 
+### Future Praxis migration
+
+The selected layout keeps a migration path to a native Praxis OIDC mechanism. Because the Gateway already owns routing, authentication, and identity injection, a future migration can replace the current integration while preserving the public hostname, redirect URIs, and trusted-header contract.
+
+The referenced Praxis change is still open. This ADR records the migration path only and does not commit to a release.
+
 ### Migration path
 
 The current AI consumer UI is served from the odh-dashboard gateway. The migration moves the UI route to the MaaS gateway.
 
-The rollout keeps the old route available until the new route is validated. The existing portal remains the default out-of-the-box portal, attached only to the default MaaS gateway.
+The rollout keeps the old route available until the new route is validated. Whether the existing portal remains the default out-of-the-box portal after validation is an open question.
 
 ### OpenShift OAuth compatibility
 
-OpenShift OAuth remains available for deployments that do not use OIDC. Deployments can select OpenShift OAuth instead of OIDC without changing the UI service or the `maas-controller` deployment layout.
+OpenShift OAuth remains available for deployments that do not use OIDC. Deployments can select OpenShift OAuth instead of OIDC without changing the UI service or the proxy deployment layout.
 
 ## Open Questions
 
 * Should the existing portal remain the default portal for a fresh installation, attached only to the default MaaS gateway, and serve as the consumer portal for users with Kubernetes accounts? This would provide an out-of-the-box experience without OIDC setup for use cases outside AI Grid.
 * The RHAI DSC currently has a managed option for the consumer portal. What should that option mean in this deployment architecture?
-* Where should `kube-auth-proxy` run: `redhat-ai-gateway-infra` or `redhat-ods-application`?
 
 ## Alternatives
 
@@ -195,17 +217,17 @@ OpenShift OAuth remains available for deployments that do not use OIDC. Deployme
 
 This option keeps the current deployment, but it leaves UI traffic outside the MaaS gateway. It also splits authentication policy between two gateway owners and makes the MaaS and UI teams coordinate across two release trains.
 
-It also requires each portal user to have a Kubernetes identity. That conflicts with the no-Kubernetes-identity requirement in the AI Grid identity contract.
+It also requires each portal user to have a Kubernetes identity. That conflicts with the no-Kubernetes-identity requirement in the AI Grid identity contract. Consumer portal access without Kubernetes access is also a requirement for the general use case.
 
-### Run `kube-auth-proxy` as a separate operand
+### Run `kube-auth-proxy` inside the `maas-controller` Deployment
 
-This option separates the proxy lifecycle from `maas-controller`, but it adds another operand, service, and deployment to operate. It also duplicates scaling and upgrade work that the controller deployment already provides.
+This option avoids a separate proxy Deployment and Service, but it mixes control-plane and data-plane traffic in one pod. Browser-session load then affects controller scaling, and a proxy update can restart the MaaS controller. It also makes the controller pod host a data-plane workload that belongs to the MaaS Gateway integration.
 
 ### Use one standalone auth-proxy Deployment per Gateway
 
 This option keeps normal UI traffic on supported Gateway API and Kuadrant resources. It allows a shared UI service and a shared BFF service when tenant styling is selected by hostname, path, or runtime configuration.
 
-It still adds one auth-proxy Deployment and Service per Gateway. That duplicates proxy lifecycle, scaling, and update work. This ADR instead runs the proxy as an extension of the `maas-controller` deployment.
+It still adds one auth-proxy Deployment and Service per Gateway. That duplicates proxy lifecycle, scaling, and update work when every Gateway uses the same OIDC configuration. This ADR accepts that cost for non-AI Grid deployments because each `AITenant` can require a different OIDC configuration.
 
 ### Use an `EnvoyFilter` without Kuadrant
 
@@ -219,22 +241,23 @@ This option runs the auth proxy in the same pod as a tenant-specific UI Deployme
 
 It still requires an `EnvoyFilter`, couples the UI and proxy lifecycles, and multiplies UI Deployments. Use this option only when a tenant requires a separate UI Deployment and accepts the extra operational cost.
 
-### Use `GatewayConfig` to manage `kube-auth-proxy`
+### Use RHAI Platform `GatewayConfig` to manage `kube-auth-proxy`
 
 This option centralizes gateway-related configuration, but it couples UI authentication to gateway configuration. A `GatewayConfig` change could then affect UI sign-in even when the gateway itself is unchanged.
 
 ## Security and Privacy Considerations
 
 * Apply the route-specific `HTTPRoute` only to the intended UI path.
-* When a BFF serves multiple Gateways, use the tenant identifier and authenticated identity to enforce tenant isolation.
+* When a BFF serves multiple Gateways, use the gateway-derived tenant context and authenticated identity to enforce tenant isolation.
 * Keep OpenShift OAuth available for deployments that do not use OIDC.
-* Keep `kube-auth-proxy` updates and scaling under the MaaS team's control.
+* Keep `kube-auth-proxy` updates and scaling under the MaaS Gateway integration's control.
+* Restrict direct access to `kube-auth-proxy`, the BFF, and the MaaS API with `NetworkPolicy`, mTLS, or equivalent controls.
 * Do not expose the OIDC callback URI beyond the intended UI route.
 
 ## Risks
 
 * Moving the UI route can break existing bookmarks and redirect URIs.
-* Running `kube-auth-proxy` with `maas-controller` couples proxy scaling to controller scaling.
+* Running `kube-auth-proxy` as a standalone service adds one Deployment and Service to operate.
 * A misconfigured `HTTPRoute` can send UI traffic to the wrong backend.
 * A BFF that serves multiple Gateways increases the impact of an isolation bug.
 * The migration must preserve OpenShift OAuth deployments.
@@ -249,7 +272,7 @@ This option centralizes gateway-related configuration, but it couples UI authent
 
 **Notes:**
 
-* The MaaS and Gateway team owns the gateway layout, `HTTPRoute`, and `kube-auth-proxy` deployment.
+* The MaaS and Gateway team owns the portal `HTTPRoute`, `AuthPolicy`, and `kube-auth-proxy` resources.
 * The UI team owns the consumer UI service and coordinates route changes.
 * The platform networking team owns Gateway API and Kuadrant support.
 
@@ -259,6 +282,7 @@ This option centralizes gateway-related configuration, but it couples UI authent
 * [AI Gateway tenancy ADR](./ODH-ADR-MS-0003-ai-gateway-tenancy.md).
 * [MaaS subscription architecture ADR](./ODH-ADR-MS-0003-maas-subscription-architecture.md).
 * [MaaS portal integration proof of concept](https://github.com/lphiri/maas-portal-integration-poc).
+* [Praxis native OIDC forward-auth mechanism](https://github.com/praxis-proxy/policy/pull/154).
 * [RHAI-10605](https://redhat.atlassian.net/browse/RHAI-10605).
 
 ## Reviews
