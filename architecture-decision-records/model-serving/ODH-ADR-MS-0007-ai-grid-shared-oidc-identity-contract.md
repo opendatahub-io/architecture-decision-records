@@ -145,13 +145,13 @@ RHAI-10605 defines the gateway layout that injects these headers.
 
 SSO requests use the verified OIDC identity. Existing MaaS APIs remain usable with SSO-based access, subject to the organization-scoped authorization rules described in this ADR.
 
-For the browser SSO flow, the client presents the proxy session cookie. The gateway validates the OIDC access token, removes the client-supplied `Authorization` header, and forwards the verified token through `x-forwarded-access-token`. The BFF calls the MaaS API through the validating gateway.
+For the browser SSO flow, the client presents the proxy session cookie. When the request does not also present an API key, the gateway validates the OIDC access token, removes the client-supplied `Authorization` header, and forwards the verified token through `x-forwarded-access-token`. The BFF calls the MaaS API through the validating gateway.
 
-API keys remain the supported path for scripts and tools. A user signs in with SSO and creates an API key through the entitled subscription. API-key requests use the existing `x-api-key` header.
+API keys remain the supported path for scripts and tools. A user signs in with SSO and creates an API key through the entitled subscription. The existing API-key transport is `Authorization: Bearer sk-oai-*`. The gateway also accepts `x-api-key` only when the target IPP `ExternalModel` uses `apiFormat: messages`. AI Grid does not enable `x-api-key` unconditionally.
 
-Outside the UI path, an API-key request uses only `x-api-key`. The gateway ignores the proxy session cookie and SSO-derived identity headers, removes any client-supplied `Authorization` header, and rejects an invalid API key.
+Outside the UI path, an API-key request uses the existing `Authorization: Bearer sk-oai-*` transport. If the target model uses `apiFormat: messages`, the request may also use `x-api-key`. The gateway ignores the proxy session cookie and SSO-derived identity headers. It rejects an invalid API key and does not remove a recognized API-key `Authorization` header.
 
-On the UI path, the proxy session cookie must be present. If `x-api-key` is also present, the gateway validates both the session and the API key. API-key requests do not inherit SSO admin claims. Admin authority applies only to the SSO path.
+On the UI path, the proxy session cookie must be present. If an API key is also present, the gateway validates both the session and the API key. If the API key is supplied through `Authorization`, the gateway preserves and validates that header. If the API key is supplied through `x-api-key`, the gateway validates it only when the target model uses `apiFormat: messages`. API-key requests do not inherit SSO admin claims. Admin authority applies only to the SSO path.
 
 ### No Kubernetes identity
 
@@ -182,9 +182,10 @@ This option avoids OIDC entirely, but it does not meet the explicit OIDC busines
 * The gateway accepts tokens only from the configured shared OIDC issuer.
 * The gateway validates the token signature, audience, issuer, and expiry.
 * The gateway strips client-supplied identity headers before it injects trusted values.
-* The SSO flow strips client-supplied `Authorization` and identity headers before it injects trusted values.
-* Outside the UI path, the API-key flow uses only `x-api-key`, ignores the proxy session cookie and SSO-derived identity headers, and removes any client-supplied `Authorization` header.
-* On the UI path, the API-key flow validates `x-api-key` only when the proxy session cookie is also present.
+* The SSO flow strips client-supplied identity headers and non-API-key `Authorization` headers before it injects trusted values.
+* Outside the UI path, the API-key flow uses `Authorization: Bearer sk-oai-*` and may use `x-api-key` only when the target IPP `ExternalModel` uses `apiFormat: messages`.
+* Outside the UI path, the API-key flow ignores the proxy session cookie and SSO-derived identity headers and preserves a recognized API-key `Authorization` header.
+* On the UI path, the API-key flow validates the API key only when the proxy session cookie is also present.
 * Gateway-to-MaaS and gateway-to-BFF traffic uses an authenticated in-cluster channel, and direct client access is denied.
 * Authorization applies groups and roles only within the requested organization.
 * API-key requests do not inherit SSO admin claims.
@@ -217,8 +218,7 @@ This option avoids OIDC entirely, but it does not meet the explicit OIDC busines
 
 ## References
 
-* [AI Gateway tenancy ADR](./ODH-ADR-MS-0003-ai-gateway-tenancy.md).
-* [MaaS subscription architecture ADR](./ODH-ADR-MS-0003-maas-subscription-architecture.md).
+* [AI Gateway tenancy ADR](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0003-ai-gateway-tenancy.md).
 * [RHAI-10604](https://redhat.atlassian.net/browse/RHAI-10604).
 
 ## Reviews
