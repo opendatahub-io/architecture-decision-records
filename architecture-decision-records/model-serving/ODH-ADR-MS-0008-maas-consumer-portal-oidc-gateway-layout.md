@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-10-19 |
 | Scope          | model-serving, MaaS consumer portal OIDC gateway layout |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | Lindani Phiri|
 | Supersedes     | N/A |
 | Superseded by: | N/A |
