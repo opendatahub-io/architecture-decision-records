@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-10-19 |
 | Scope          | model-serving, AI Grid identity contract |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | Lindani Phiri, Pierangelo Di Pilato |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
