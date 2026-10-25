@@ -36,6 +36,7 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 ## Goals
 
 * Use the authenticated session on the consumer portal entry point.
+* Support CLI and non-dashboard API clients that send a valid bearer token.
 * Keep authentication validation at the gateway that terminates the consumer portal route.
 * Reuse the existing RHOAI Dashboard gateway mount for the MVP OpenShift identity path.
 * Model usage at the AITenant, organization, and user levels.
@@ -58,7 +59,7 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Allow Tenant Admins to narrow an organization-wide query by one user.
 * Return HTTP 403 when a user requests Tenant Admin data without the `admins` role.
 * Keep the dashboard free of Kubernetes `TokenReview` and `SubjectAccessReview`.
-* Keep the dashboard free of API-key authentication.
+* Keep the browser dashboard free of API-key authentication.
 
 ## Non-Goals
 
@@ -67,6 +68,7 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Implement the metering pipeline.
 * Implement the dashboard components.
 * Build the Provider Admin observability dashboards.
+* Remove existing CLI or non-dashboard API access.
 * Deploy or federate the identity provider.
 * Add a second identity provider.
 * Automatically create Kubernetes identities for tenant users.
@@ -190,6 +192,12 @@ sequenceDiagram
   Perses-->>UI: Return dashboard data
   UI-->>User: Show usage dashboard
 ```
+
+### CLI and non-dashboard API access
+
+CLI and non-dashboard clients do not use Perses. They continue to call the supported MaaS usage API surface with `Authorization: Bearer <token>`.
+
+The API ingress validates the token and derives the same AITenant, organization, role, and user identity used by the dashboard path. The same authorization and label-scoping rules apply. This path does not require an API key.
 
 ### Perses datasource layout
 
@@ -478,6 +486,8 @@ This option is rejected because the dashboard must show data for the signed-in O
 
 Only the authenticated gateway may inject trusted identity headers. The gateway removes client-supplied copies before it injects verified values. Perses must be reachable only through that gateway, and the usage proxy must be reachable only from Perses.
 
+CLI and non-dashboard API requests must present a valid bearer token. The API ingress validates that token before it derives identity or applies query scoping. Client-supplied identity headers remain untrusted on this path.
+
 The usage proxy must validate the forwarded access token and reject any mismatch between its claims and the trusted headers. It must parse LogQL and PromQL with a supported parser and must not concatenate untrusted query strings.
 
 The proxy must not expose the access token, trusted identity headers, or usage data to the browser. Usage responses contain user activity, so the UI must render only the fields required by each role.
@@ -496,6 +506,7 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 | Organization onboarding does not update the static tenant and role binding. | Reconcile the LokiStack tenant, role, and role binding from the organization resource. |
 | The optional OpenShift mode is enabled for the AI Grid tenant. | Reject the configuration and test that the AI Grid tenant uses shared OIDC at the portal and mTLS to LokiStack. |
 | The MVP OpenShift mode is confused with LokiStack `openshift-logging`. | Keep OpenShift OAuth at the portal and keep LokiStack behind the MaaS usage proxy. |
+| CLI requests send an invalid or wrong-audience bearer token. | Validate the issuer and audience at the API ingress and return HTTP 401. |
 | LogQL rewriting is incomplete. | Use the supported Loki parser and test selectors, pipelines, and aggregation expressions. |
 | The `user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
 | `prom-label-proxy` enforces only one label. | Add `maas_tenant_id` and `user_id` in the MaaS usage proxy before `prom-label-proxy` adds `organization_id`. |
