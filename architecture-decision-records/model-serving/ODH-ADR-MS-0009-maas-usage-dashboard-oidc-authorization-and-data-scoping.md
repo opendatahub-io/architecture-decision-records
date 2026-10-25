@@ -15,13 +15,13 @@
 
 Serve the MaaS usage dashboard from Perses datasources. Keep the authenticated gateway that terminates the consumer portal route as the authentication boundary. Use LokiStack `static` mode with one Loki tenant per organization boundary. Put a MaaS usage proxy between Perses and the usage data sources. The proxy validates the gateway identity, rewrites the query, and forwards the request to LokiStack or `prom-label-proxy`.
 
-MaaS has three usage levels: AITenant, organization, and user. `maas_tenant_id` identifies the AITenant. `organization_id` identifies the organization boundary inside that AITenant. `user_id` identifies the user. In AI Grid, the organization is an AI Grid organization. In a non-AI Grid deployment, the AITenant is the authorization boundary; `organization_id` still identifies an organization when one exists, and otherwise it is set to the AITenant identifier.
+MaaS has three usage levels: AITenant, organization, and user. `maas_tenant_id` identifies the AITenant. `organization_id` identifies the organization boundary inside that AITenant. `user_id` identifies the user. In AI Grid, the organization is an AI Grid organization and producers must emit `organization_id`. In a non-AI Grid deployment, the AITenant is the authorization boundary and `organization_id` is optional.
 
 This keeps a consistent three-level model even when the organization level is not subdivided.
 
 For the MVP, the OpenShift identity path reuses the existing consumer portal mount on the main RHOAI Dashboard gateway. The MaaS Gateway does not expose a separate OpenShift-authenticated portal route.
 
-LokiStack static OPA rules grant read access to the organization tenant. The MaaS usage proxy adds the AITenant and organization labels for Tenant Admins. It adds the AITenant, organization, and user labels for Tenant Users. Static OPA does not rewrite LogQL, so the usage proxy owns label filtering.
+LokiStack static OPA rules grant read access to the organization tenant. The MaaS usage proxy adds the AITenant label and, when an organization boundary exists, the organization label for Tenant Admins. It adds the AITenant label, the organization label when present, and the user label for Tenant Users. Static OPA does not rewrite LogQL, so the usage proxy owns label filtering.
 
 This design bypasses `maas-api` for usage and metrics queries. `maas-api` remains the owner of quota and subscription business state unless that state is materialized into the usage data source.
 
@@ -45,8 +45,8 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Run a MaaS usage proxy as the server-side authorization and query-rewriting boundary.
 * Use LokiStack `static` mode with mTLS service authentication and in-process OPA authorization.
 * Use one LokiStack tenant per organization boundary.
-* Enforce `maas_tenant_id` and `organization_id` for Tenant Admin queries.
-* Enforce `maas_tenant_id`, `organization_id`, and `user_id` for Tenant User queries.
+* Enforce `maas_tenant_id` and, when an organization boundary exists, `organization_id` for Tenant Admin queries.
+* Enforce `maas_tenant_id`, `user_id`, and, when an organization boundary exists, `organization_id` for Tenant User queries.
 * Show usage by AITenant, organization, and user.
 * Preserve `prom-label-proxy` as the Prometheus label-enforcement component.
 * Use the `iss` and `sub` claim pair as the stable user identity.
@@ -84,7 +84,7 @@ The usage data uses these labels:
 | Level | Label | Meaning |
 | ----- | ----- | ------- |
 | AITenant | `maas_tenant_id` | The top-level MaaS tenant identifier. |
-| Organization | `organization_id` | The selected organization boundary inside the AITenant. |
+| Organization | `organization_id` | The selected organization boundary inside the AITenant. Required for AI Grid; optional for non-AI Grid. |
 | User | `user_id` | The stable user identifier derived from `iss` and `sub`. |
 
 Dashboards may group and filter usage by `maas_tenant_id`, `organization_id`, and `user_id`. The usage proxy enforces the labels that the selected persona requires.
@@ -243,6 +243,8 @@ The proxy applies these filters:
 
 `maas_tenant_id` is the AITenant identifier. `organization_id` is the selected organization boundary. `user_id` is a stable, non-email identifier derived from the canonical `iss` and `sub` pair. A role from one organization never grants authority in another organization.
 
+In a non-AI Grid deployment that does not emit `organization_id`, the usage proxy uses `maas_tenant_id` as the organization boundary and does not require the optional label.
+
 The proxy rewrites selectors to these forms:
 
 ```text
@@ -359,9 +361,29 @@ In this mode, the consumer portal uses `AITenant.spec.authentication.mode: opens
 
 LokiStack remains in `static` mode. The MaaS usage proxy authenticates to LokiStack with its own mTLS identity, and OPA grants that service identity read access to the organization tenant. The end-user OpenShift identity is used only by the proxy for label rewriting; it is not used as the LokiStack authorization subject.
 
-This avoids `openshift-logging` namespace-based RBAC. The authenticated gateway first maps the verified OpenShift identity to the selected organization and MaaS role. The usage proxy then enforces `maas_tenant_id` and `organization_id`, and for Tenant Users it also enforces `user_id`.
+This avoids `openshift-logging` namespace-based RBAC. The authenticated gateway first maps the verified OpenShift identity to the selected organization and MaaS role. The usage proxy then enforces `maas_tenant_id`, and when an organization boundary exists it also enforces `organization_id`; for Tenant Users it also enforces `user_id`.
 
 This optional mode does not create Kubernetes identities. It only uses identities that already exist. It is not valid for the AI Grid shared-OIDC tenant because that tenant must not create Kubernetes users, groups, or role bindings.
+
+### Upgrade and compatibility
+
+Current AI Grid deployments expose existing proxy Loki query routes and a scoped metrics adapter. These tenancy and dashboard features are being developed concurrently, and no legacy `grid_tenant_id` label is in use today. The repository does not record whether customers use log-based usage or Prometheus metrics more often. Treat that split as unknown until query telemetry or support data confirms it.
+
+The upgrade must:
+
+1. Deploy the MaaS usage proxy and Perses datasources beside the existing query routes.
+2. Keep the existing Loki proxy routes and scoped metrics adapter until the new path is validated.
+3. Preserve existing dashboards, bookmarks, and OpenShift OAuth deployments.
+4. Use `organization_id` in every new AI Grid producer from the start.
+5. Remove the old paths only after query parity and authorization tests pass.
+
+No `grid_tenant_id` to `organization_id` migration is required. Only AI Grid producers must emit `organization_id` before the dashboard is enabled.
+
+### Cloud Provider Admin compatibility
+
+The Cloud Provider Admin persona is outside this ADR. The existing AI Grid contract gives that persona vanilla ACM admin access, and `RHAISTRAT-2883` owns the Provider Admin observability dashboards.
+
+The MaaS usage proxy must not replace or gate standard OpenShift dashboards. Standard OpenShift and ACM dashboards remain on their existing routes and use their existing authorization model. During the upgrade, preserve those routes and do not route them through the MaaS usage proxy.
 
 ### Quota position
 
@@ -391,6 +413,10 @@ When LokiStack, Thanos, or `prom-label-proxy` fails, the dashboard shows an erro
 * Does the first release need user-level metrics, or are user-level usage logs sufficient?
 * Should Perses be embedded in the Consumer UI or linked as a standalone dashboard?
 * Where is the quota read model materialized?
+* What proportion of current customers uses log-based usage queries rather than Prometheus metrics?
+* Which existing dashboards and query routes must remain available during the upgrade?
+* Which standard OpenShift dashboards does the Cloud Provider Admin require?
+* Does the Cloud Provider Admin continue to use the OpenShift Console or ACM, or is a separate Perses project required?
 
 ## Alternatives
 
@@ -474,6 +500,9 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 | The `user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
 | `prom-label-proxy` enforces only one label. | Add `maas_tenant_id` and `user_id` in the MaaS usage proxy before `prom-label-proxy` adds `organization_id`. |
 | Tenant Admin data is overexposed. | Enforce the `admins` role and the AITenant and organization scope in the usage proxy, not only in the UI. |
+| Existing query routes are removed before the new path reaches parity. | Keep the old routes until query parity and authorization tests pass. |
+| Concurrent AI Grid producer work emits inconsistent organization labels. | Contract-test `organization_id` on every AI Grid producer before the dashboard is enabled. |
+| Standard OpenShift dashboards are routed through the MaaS usage proxy. | Keep the Cloud Provider Admin on the existing OpenShift Console or ACM routes. |
 | Quota data and usage data use different identities. | Use one canonical user identity and contract-test both data paths. |
 | Expired sessions show stale dashboard data. | Do not cache usage responses and redirect expired sessions to SSO. |
 
@@ -486,17 +515,20 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 | Dashboard | Arik Hadas | 2026-10-24 | Yes |
 | Observability | Kevin Howell | 2026-10-24 | Maybe |
 | AI Grid | RHAISTRAT-2875 owners | 2026-10-24 | Maybe |
+| Cloud Provider Admin | RHAISTRAT-2883 owners | 2026-10-24 | Maybe |
 
 * **Model-as-a-Service**: owns the usage proxy, query rewriting, and backend mode selection.
 * **Consumer Portal**: owns the Perses integration and the consumer UI session.
 * **Dashboard**: owns the Tenant User and Tenant Admin usage views.
 * **Observability**: owns LokiStack, Thanos, and the supported product authorization modes.
 * **AI Grid**: owns the multi-site usage aggregation contract and site attribution data.
+* **Cloud Provider Admin**: owns the standard OpenShift and ACM dashboard access path.
 
 ## References
 
 * [RHAI-10635](https://redhat.atlassian.net/browse/RHAI-10635)
 * [RHAI-8074](https://redhat.atlassian.net/browse/RHAI-8074?focusedCommentId=19101141)
+* [RHAISTRAT-2883](https://redhat.atlassian.net/browse/RHAISTRAT-2883)
 * [ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md](https://github.com/lphiri/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
 * [ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md](https://github.com/lphiri/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
 * [Perses datasource proxy](https://perses.dev/perses/docs/concepts/proxy/)
