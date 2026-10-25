@@ -25,7 +25,7 @@ This design bypasses `maas-api` for usage and metrics queries. `maas-api` remain
 
 Tenant users need personal usage, quota position, and token metrics. Tenant admins need organization-wide usage by user, model, and site. Perses provides the dashboard and datasource model, while LokiStack and `prom-label-proxy` provide the existing observability access controls.
 
-The consumer portal already has an OIDC session and a trusted gateway identity contract. LokiStack `static` mode can use the same OIDC issuer and group claims. This avoids a second identity provider and keeps tenant users off Kubernetes RBAC. A server-side usage proxy lets Perses use standard Loki and Prometheus datasources without exposing raw backend access to the browser.
+The consumer portal already has an OIDC session and a trusted gateway identity contract. The MaaS usage proxy uses one mTLS service identity for LokiStack, so the portal identity mode does not change the LokiStack configuration. This keeps tenant users off Kubernetes RBAC. A server-side usage proxy lets Perses use standard Loki and Prometheus datasources without exposing raw backend access to the browser.
 
 The main RHOAI Dashboard gateway already supports OpenShift authentication. Reusing that mount for the MVP avoids a second authentication path and keeps the usage proxy behind one trusted ingress.
 
@@ -38,7 +38,7 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Support an optional OpenShift identity mode for tenants that already have Kubernetes identities.
 * Use Perses project datasources and the Perses HTTP datasource proxy.
 * Run a MaaS usage proxy as the server-side authorization and query-rewriting boundary.
-* Use LokiStack `static` mode with OIDC tenant authentication and in-process OPA authorization.
+* Use LokiStack `static` mode with mTLS service authentication and in-process OPA authorization.
 * Use one LokiStack tenant per AI Grid organization.
 * Enforce `grid_tenant_id` for Tenant Admin queries.
 * Enforce `grid_tenant_id` and `grid_user_id` for Tenant User queries.
@@ -65,6 +65,7 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Automatically create Kubernetes identities for tenant users.
 * Change the trusted identity-header contract.
 * Change the consumer portal gateway layout.
+* Authenticate end users directly to LokiStack.
 * Support the LokiStack `openshift-logging`, `dynamic`, `passthrough`, or `openshift-network` modes.
 
 ## How
@@ -237,9 +238,9 @@ The user filter is a query refinement. It does not grant access and does not rep
 
 ### LokiStack integration
 
-LokiStack runs in `static` mode. In the AI Grid default, each organization gets one Loki tenant. The tenant ID is the organization ID. The tenant uses OIDC authentication with the AI Grid issuer, `sub` as the username claim, and `groups` as the group claim.
+LokiStack runs in `static` mode. Each organization gets one Loki tenant. The tenant ID is the organization ID. The MaaS usage proxy is the only component that calls LokiStack. It authenticates with its own mTLS service identity, and OPA grants that service identity read access to the organization tenant.
 
-In the MVP OpenShift path, the MaaS usage proxy authenticates to LokiStack with its own mTLS service identity. OPA grants that service identity read access to the organization tenant.
+LokiStack `static` mode supports OIDC or mTLS authentication per tenant, and a tenant uses one mechanism rather than both. This design uses mTLS because the usage proxy already validates the portal identity and rewrites the query. LokiStack does not need to know whether the portal used shared OIDC or OpenShift OAuth.
 
 The following example shows the static policy for one organization:
 
@@ -249,12 +250,9 @@ tenants:
   authentication:
     - tenantName: grid-usage-42c3e46f
       tenantId: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
-      oidc:
-        issuerURL: https://identity.example.com/
-        usernameClaim: sub
-        groupClaim: groups
-        secret:
-          name: grid-usage-oidc
+      mTLS:
+        ca:
+          caName: maas-usage-proxy-ca
   authorization:
     roles:
       - name: grid-usage-reader
@@ -269,10 +267,8 @@ tenants:
         roles:
           - grid-usage-reader
         subjects:
-          - kind: group
-            name: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa/ai-grid-users
-          - kind: group
-            name: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa/ai-grid-admins
+          - kind: user
+            name: maas-usage-proxy
 ```
 
 The following example shows the Tenant Admin RBAC configuration:
@@ -327,7 +323,7 @@ prom-label-proxy
 
 ### Optional OpenShift portal identity mode
 
-The default AI Grid path uses the shared OIDC issuer and LokiStack `static` mode. For the MVP, a tenant with existing Kubernetes identities uses the existing consumer portal mount on the main RHOAI Dashboard gateway. That gateway already performs OpenShift authentication. The MaaS Gateway route is not enabled for this mode.
+The default AI Grid path uses shared OIDC at the portal and LokiStack `static` mode with mTLS from the usage proxy. For the MVP, a tenant with existing Kubernetes identities uses the existing consumer portal mount on the main RHOAI Dashboard gateway. That gateway already performs OpenShift authentication. The MaaS Gateway route is not enabled for this mode.
 
 | Mode | Portal authentication | LokiStack mode | Identity source |
 | ---- | --------------------- | -------------- | --------------- |
@@ -363,7 +359,6 @@ When LokiStack, Thanos, or `prom-label-proxy` fails, the dashboard shows an erro
 
 * What is the exact encoding of `grid_user_id` from the `iss` and `sub` pair?
 * Does the productized OpenShift Logging release support LokiStack `static` mode?
-* Does the LokiStack OIDC client accept the AI Grid token audience?
 * Does the first release need the optional Kubernetes identity mode?
 * How do OpenShift groups map to MaaS organization roles in the optional mode?
 * Does the first release need user-level metrics, or are user-level usage logs sufficient?
@@ -386,7 +381,7 @@ This option is rejected because LokiStack static OPA cannot rewrite LogQL. The M
 
 ### Connect Perses directly to LokiStack
 
-Perses would use a Loki datasource that points directly to the static LokiStack gateway. This can authenticate with the AI Grid OIDC issuer, but it bypasses the required organization and username query rewriting.
+Perses would use a Loki datasource that points directly to the static LokiStack gateway. This would require a separate service identity, but it bypasses the required organization and username query rewriting.
 
 This option is rejected because OPA tenant access alone does not enforce the `grid_tenant_id` and `grid_user_id` label matchers.
 
@@ -432,9 +427,9 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 | ---- | ---------- |
 | JWT claims and trusted headers disagree. | Reject the request and test claim-to-header mapping at the gateway. |
 | Productized OpenShift Logging does not support LokiStack `static` mode. | Confirm support before implementation and keep the LokiStack integration isolated behind the usage proxy. |
-| The LokiStack OIDC client rejects the AI Grid token audience. | Agree on one audience or use a supported token-exchange path before rollout. |
+| The LokiStack mTLS certificate or CA is misconfigured. | Automate certificate rotation and test the proxy-to-LokiStack trust chain before rollout. |
 | Organization onboarding does not update the static tenant and role binding. | Reconcile the LokiStack tenant, role, and role binding from the organization resource. |
-| The optional OpenShift mode is enabled for the AI Grid tenant. | Reject the configuration and test that the AI Grid tenant remains on shared OIDC and LokiStack `static` mode. |
+| The optional OpenShift mode is enabled for the AI Grid tenant. | Reject the configuration and test that the AI Grid tenant uses shared OIDC at the portal and mTLS to LokiStack. |
 | The MVP OpenShift mode is confused with LokiStack `openshift-logging`. | Keep OpenShift OAuth at the portal and keep LokiStack behind the MaaS usage proxy. |
 | LogQL rewriting is incomplete. | Use the supported Loki parser and test selectors, pipelines, and aggregation expressions. |
 | The `grid_user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
