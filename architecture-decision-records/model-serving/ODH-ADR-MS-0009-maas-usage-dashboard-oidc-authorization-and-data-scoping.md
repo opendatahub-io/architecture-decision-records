@@ -8,22 +8,26 @@
 | Authors        | Lindani Phiri |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | RHAI-10635 |
+| Tickets        | RHAI-10635, RHAI-8074 |
 | Other docs:    | ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md, ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md |
 
 ## What
 
-Serve the MaaS usage dashboard from Perses datasources. Keep the authenticated gateway that terminates the consumer portal route as the authentication boundary. Use LokiStack `static` mode with one Loki tenant per AI Grid organization. Put a MaaS usage proxy between Perses and the usage data sources. The proxy validates the gateway identity, rewrites the query, and forwards the request to LokiStack or `prom-label-proxy`.
+Serve the MaaS usage dashboard from Perses datasources. Keep the authenticated gateway that terminates the consumer portal route as the authentication boundary. Use LokiStack `static` mode with one Loki tenant per organization boundary. Put a MaaS usage proxy between Perses and the usage data sources. The proxy validates the gateway identity, rewrites the query, and forwards the request to LokiStack or `prom-label-proxy`.
+
+MaaS has three usage levels: AITenant, organization, and user. `maas_tenant_id` identifies the AITenant. `organization_id` identifies the organization boundary inside that AITenant. `user_id` identifies the user. In AI Grid, the organization is an AI Grid organization. In a non-AI Grid deployment, the AITenant is the authorization boundary; `organization_id` still identifies an organization when one exists, and otherwise it is set to the AITenant identifier.
+
+This keeps a consistent three-level model even when the organization level is not subdivided.
 
 For the MVP, the OpenShift identity path reuses the existing consumer portal mount on the main RHOAI Dashboard gateway. The MaaS Gateway does not expose a separate OpenShift-authenticated portal route.
 
-LokiStack static OPA rules grant read access to the organization tenant. The MaaS usage proxy adds the organization label for Tenant Admins. It adds the organization and username labels for Tenant Users. Static OPA does not rewrite LogQL, so the usage proxy owns label filtering.
+LokiStack static OPA rules grant read access to the organization tenant. The MaaS usage proxy adds the AITenant and organization labels for Tenant Admins. It adds the AITenant, organization, and user labels for Tenant Users. Static OPA does not rewrite LogQL, so the usage proxy owns label filtering.
 
 This design bypasses `maas-api` for usage and metrics queries. `maas-api` remains the owner of quota and subscription business state unless that state is materialized into the usage data source.
 
 ## Why
 
-Tenant users need personal usage, quota position, and token metrics. Tenant admins need organization-wide usage by user, model, and site. Perses provides the dashboard and datasource model, while LokiStack and `prom-label-proxy` provide the existing observability access controls.
+Tenant users need personal usage, quota position, and token metrics. Tenant admins need usage by AITenant, organization, user, model, and site. Perses provides the dashboard and datasource model, while LokiStack and `prom-label-proxy` provide the existing observability access controls.
 
 The consumer portal already has an OIDC session and a trusted gateway identity contract. The MaaS usage proxy uses one mTLS service identity for LokiStack, so the portal identity mode does not change the LokiStack configuration. This keeps tenant users off Kubernetes RBAC. A server-side usage proxy lets Perses use standard Loki and Prometheus datasources without exposing raw backend access to the browser.
 
@@ -34,20 +38,23 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Use the authenticated session on the consumer portal entry point.
 * Keep authentication validation at the gateway that terminates the consumer portal route.
 * Reuse the existing RHOAI Dashboard gateway mount for the MVP OpenShift identity path.
+* Model usage at the AITenant, organization, and user levels.
 * Keep AI Grid organization users free of Kubernetes identities.
 * Support an optional OpenShift identity mode for tenants that already have Kubernetes identities.
 * Use Perses project datasources and the Perses HTTP datasource proxy.
 * Run a MaaS usage proxy as the server-side authorization and query-rewriting boundary.
 * Use LokiStack `static` mode with mTLS service authentication and in-process OPA authorization.
-* Use one LokiStack tenant per AI Grid organization.
-* Enforce `grid_tenant_id` for Tenant Admin queries.
-* Enforce `grid_tenant_id` and `grid_user_id` for Tenant User queries.
+* Use one LokiStack tenant per organization boundary.
+* Enforce `maas_tenant_id` and `organization_id` for Tenant Admin queries.
+* Enforce `maas_tenant_id`, `organization_id`, and `user_id` for Tenant User queries.
+* Show usage by AITenant, organization, and user.
 * Preserve `prom-label-proxy` as the Prometheus label-enforcement component.
 * Use the `iss` and `sub` claim pair as the stable user identity.
-* Use the selected organization claim entry as the tenant scope.
+* Use the AITenant identifier as the AITenant scope.
+* Use the selected organization claim entry as the organization scope.
 * Use the `admins` role to identify a Tenant Admin for the selected organization.
 * Show Tenant Users their personal usage and token metrics.
-* Show Tenant Admins organization-wide usage by user, model, and site.
+* Show Tenant Admins organization-wide usage by AITenant, organization, user, model, and site.
 * Allow Tenant Admins to narrow an organization-wide query by one user.
 * Return HTTP 403 when a user requests Tenant Admin data without the `admins` role.
 * Keep the dashboard free of Kubernetes `TokenReview` and `SubjectAccessReview`.
@@ -70,7 +77,17 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 
 ## How
 
-In this ADR, a tenant is one selected AI Grid organization. A Tenant Admin is a user with the `admins` role for that organization. A Tenant User is any other valid organization member.
+In this ADR, an AITenant is the top-level MaaS tenant boundary. An organization is a boundary inside an AITenant. In AI Grid, an organization is an AI Grid organization. In a non-AI Grid deployment, the AITenant is the authorization boundary, and an organization may still exist inside it. A Tenant Admin is a user with the `admins` role for the selected organization. A Tenant User is any other valid organization member.
+
+The usage data uses these labels:
+
+| Level | Label | Meaning |
+| ----- | ----- | ------- |
+| AITenant | `maas_tenant_id` | The top-level MaaS tenant identifier. |
+| Organization | `organization_id` | The selected organization boundary inside the AITenant. |
+| User | `user_id` | The stable user identifier derived from `iss` and `sub`. |
+
+Dashboards may group and filter usage by `maas_tenant_id`, `organization_id`, and `user_id`. The usage proxy enforces the labels that the selected persona requires.
 
 ```mermaid
 flowchart LR
@@ -115,18 +132,18 @@ sequenceDiagram
   Gateway->>Gateway: Validate OIDC token
   Gateway->>Perses: Forward trusted identity headers
   Perses->>Usage: Send datasource query
-  Usage->>Usage: Validate token and derive organization and role
+  Usage->>Usage: Validate token and derive AITenant, organization, and role
 
   alt Tenant Admin
-    Usage->>Usage: Rewrite query with grid_tenant_id
+    Usage->>Usage: Rewrite query with maas_tenant_id and organization_id
   else Tenant User
-    Usage->>Usage: Rewrite query with grid_tenant_id and grid_user_id
+    Usage->>Usage: Rewrite query with maas_tenant_id, organization_id, and user_id
   end
 
   Usage->>Loki: Query logs with service identity
   Loki-->>Usage: Return scoped logs
   Usage->>Label: Send metrics query
-  Label->>Label: Enforce grid_tenant_id
+  Label->>Label: Enforce organization_id
   Label->>Thanos: Query metrics
   Thanos-->>Label: Return scoped metrics
   Label-->>Usage: Return scoped metrics
@@ -154,18 +171,18 @@ sequenceDiagram
   Gateway->>Gateway: Validate OpenShift OAuth session
   Gateway->>Perses: Forward trusted identity headers
   Perses->>Usage: Send datasource query
-  Usage->>Usage: Validate token and derive organization and role
+  Usage->>Usage: Validate token and derive AITenant, organization, and role
 
   alt Tenant Admin
-    Usage->>Usage: Rewrite query with grid_tenant_id
+    Usage->>Usage: Rewrite query with maas_tenant_id and organization_id
   else Tenant User
-    Usage->>Usage: Rewrite query with grid_tenant_id and grid_user_id
+    Usage->>Usage: Rewrite query with maas_tenant_id, organization_id, and user_id
   end
 
   Usage->>Loki: Query logs with service identity
   Loki-->>Usage: Return scoped logs
   Usage->>Label: Send metrics query
-  Label->>Label: Enforce grid_tenant_id
+  Label->>Label: Enforce organization_id
   Label->>Thanos: Query metrics
   Thanos-->>Label: Return scoped metrics
   Label-->>Usage: Return scoped metrics
@@ -198,47 +215,53 @@ Perses must use `allowHeaders`, not `dropHeaders`. This prevents unlisted browse
 
 The MaaS usage proxy is the authorization and query-rewriting boundary. It is not a simple reverse proxy.
 
+RHAI-8074 proposed a read-only Loki proxy in `maas-api` and later discussed an Observatorium API fork. This ADR consolidates that work into the MaaS usage proxy. The proxy may reuse the proven LogQL parser and label-matcher enforcement approach from Observatorium API, but it is not exposed as a `maas-api` endpoint.
+
+RHAI-8074 and this ADR both use `organization_id` as the organization label.
+
+This ADR does not depend on an ACM OPA endpoint. The authenticated gateway supplies the verified identity and organization claims, and the usage proxy enforces the required matchers.
+
 For each request, the proxy:
 
 1. Validates the forwarded access token.
 2. Compares the token claims with the trusted gateway headers.
 3. Rejects the request if the claims and headers disagree.
-4. Derives the user identity, organization, roles, and groups.
+4. Derives the AITenant, user identity, organization, roles, and groups.
 5. Checks the requested dashboard role against the `admins` role.
 6. Rewrites the Loki or Prometheus query with the required label matchers.
 7. Selects the organization's LokiStack tenant.
 8. Calls the backend with the proxy's authenticated service identity.
 
-The proxy never trusts a client-supplied `X-Scope-OrgID` header. It derives that value from the verified organization claim.
+The proxy never trusts a client-supplied `X-Scope-OrgID` header. It derives that value from the verified organization claim. It also derives `maas_tenant_id` from the verified AITenant context and does not accept that value from the browser.
 
 The proxy applies these filters:
 
 | Persona | LokiStack tenant | Required labels |
 | ------- | ---------------- | --------------- |
-| Tenant Admin | Organization ID | `grid_tenant_id` |
-| Tenant User | Organization ID | `grid_tenant_id` and `grid_user_id` |
+| Tenant Admin | Organization ID | `maas_tenant_id` and `organization_id` |
+| Tenant User | Organization ID | `maas_tenant_id`, `organization_id`, and `user_id` |
 
-`grid_tenant_id` is the selected organization ID. `grid_user_id` is a stable, non-email identifier derived from the canonical `iss` and `sub` pair. A role from one organization never grants authority in another organization.
+`maas_tenant_id` is the AITenant identifier. `organization_id` is the selected organization boundary. `user_id` is a stable, non-email identifier derived from the canonical `iss` and `sub` pair. A role from one organization never grants authority in another organization.
 
 The proxy rewrites selectors to these forms:
 
 ```text
-Tenant Admin LogQL: {grid_tenant_id="<organization-id>"}
-Tenant User LogQL:  {grid_tenant_id="<organization-id>", grid_user_id="<user-id>"}
+Tenant Admin LogQL: {maas_tenant_id="<maas-tenant-id>", organization_id="<organization-id>"}
+Tenant User LogQL:  {maas_tenant_id="<maas-tenant-id>", organization_id="<organization-id>", user_id="<user-id>"}
 
-Tenant Admin PromQL: {grid_tenant_id="<organization-id>"}
-Tenant User PromQL:  {grid_tenant_id="<organization-id>", grid_user_id="<user-id>"}
+Tenant Admin PromQL: {maas_tenant_id="<maas-tenant-id>", organization_id="<organization-id>"}
+Tenant User PromQL:  {maas_tenant_id="<maas-tenant-id>", organization_id="<organization-id>", user_id="<user-id>"}
 ```
 
-The proxy replaces any client-supplied matcher for these two labels. It rejects a query that tries to broaden the enforced scope.
+The proxy replaces any client-supplied matcher for these labels. It rejects a query that tries to broaden the enforced scope.
 
-A Tenant Admin may narrow the organization-wide query by user. The UI passes one selected user ID to the usage proxy. The proxy then rewrites the query to use both `grid_tenant_id` and exactly one `grid_user_id` matcher. If no user is selected, the proxy keeps only the organization filter.
+A Tenant Admin may narrow the organization-wide query by user. The UI passes one selected user ID to the usage proxy. The proxy then rewrites the query to use `maas_tenant_id`, `organization_id`, and exactly one `user_id` matcher. If no user is selected, the proxy keeps the AITenant and organization filters.
 
-The user filter is a query refinement. It does not grant access and does not replace the organization scope. The proxy rejects a client-supplied regular expression, multiple user values, or a user matcher that conflicts with the selected value.
+The user filter is a query refinement. It does not grant access and does not replace the AITenant and organization scope. The proxy rejects a client-supplied regular expression, multiple user values, or a user matcher that conflicts with the selected value.
 
 ### LokiStack integration
 
-LokiStack runs in `static` mode. Each organization gets one Loki tenant. The tenant ID is the organization ID. The MaaS usage proxy is the only component that calls LokiStack. It authenticates with its own mTLS service identity, and OPA grants that service identity read access to the organization tenant.
+LokiStack runs in `static` mode. Each organization boundary gets one Loki tenant. The tenant ID is the `organization_id`. The MaaS usage proxy is the only component that calls LokiStack. It authenticates with its own mTLS service identity, and OPA grants that service identity read access to the organization tenant.
 
 LokiStack `static` mode supports OIDC or mTLS authentication per tenant, and a tenant uses one mechanism rather than both. This design uses mTLS because the usage proxy already validates the portal identity and rewrites the query. LokiStack does not need to know whether the portal used shared OIDC or OpenShift OAuth.
 
@@ -248,14 +271,14 @@ The following example shows the static policy for one organization:
 tenants:
   mode: static
   authentication:
-    - tenantName: grid-usage-42c3e46f
+    - tenantName: maas-usage-42c3e46f
       tenantId: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
       mTLS:
         ca:
           caName: maas-usage-proxy-ca
   authorization:
     roles:
-      - name: grid-usage-reader
+      - name: maas-usage-reader
         resources:
           - logs
         tenants:
@@ -263,9 +286,9 @@ tenants:
         permissions:
           - read
     roleBindings:
-      - name: grid-usage-42c3e46f-readers
+      - name: maas-usage-42c3e46f-readers
         roles:
-          - grid-usage-reader
+          - maas-usage-reader
         subjects:
           - kind: user
             name: maas-usage-proxy
@@ -278,7 +301,7 @@ tenants:
   mode: static
   authorization:
     roles:
-      - name: grid-usage-admin
+      - name: maas-usage-admin
         resources:
           - logs
         tenants:
@@ -286,21 +309,21 @@ tenants:
         permissions:
           - read
     roleBindings:
-      - name: grid-usage-42c3e46f-admins
+      - name: maas-usage-42c3e46f-admins
         roles:
-          - grid-usage-admin
+          - maas-usage-admin
         subjects:
           - kind: group
             name: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa/ai-grid-admins
 ```
 
-The `grid-usage-admin` role grants read access to the organization's Loki tenant. It does not broaden the query scope by itself. The MaaS usage proxy checks the `admins` organization role and applies `grid_tenant_id`. It adds `grid_user_id` only when the Tenant Admin selects one user.
+The `maas-usage-admin` role grants read access to the organization's Loki tenant. It does not broaden the query scope by itself. The MaaS usage proxy checks the `admins` organization role and applies `maas_tenant_id` and `organization_id`. It adds `user_id` only when the Tenant Admin selects one user.
 
-The static OPA rule grants the `read` permission on the organization tenant when the verified token contains one of the bound organization groups. It does not inspect LogQL label matchers and cannot return a filter. This is a LokiStack static-mode constraint, not a MaaS limitation.
+The static OPA rule grants the `read` permission on the organization tenant to the MaaS usage proxy service identity. It does not inspect LogQL label matchers and cannot return a filter. This is a LokiStack static-mode constraint, not a MaaS limitation.
 
 The MaaS usage proxy calls the organization tenant at `/api/logs/v1/<organization-id>/loki/api/v1/query_range`. It authenticates with its own mTLS service identity. LokiStack validates that identity and applies the static OPA rule. The usage proxy has already rewritten the LogQL selector with the required labels.
 
-Tenant Admin authority comes from the `admins` role in the MaaS organization claim. It does not come from the LokiStack role name. LokiStack grants both Tenant Users and Tenant Admins read access to the same organization tenant; the usage proxy decides whether to add `grid_user_id`.
+Tenant Admin authority comes from the `admins` role in the MaaS organization claim. It does not come from the LokiStack role name. LokiStack grants the MaaS usage proxy read access to the organization tenant; the usage proxy decides whether to add `user_id`.
 
 ### Prometheus and `prom-label-proxy`
 
@@ -311,15 +334,17 @@ Run `prom-label-proxy` with:
 ```text
 prom-label-proxy
   -header-name X-Scope-OrgID
-  -label grid_tenant_id
+  -label organization_id
   -upstream https://thanos-query.example.com
   -enable-label-apis
   -error-on-replace
 ```
 
-`prom-label-proxy` enforces the `grid_tenant_id` label in PromQL and Prometheus API requests. It does not authenticate or authorize the caller. The MaaS usage proxy performs that work before it calls `prom-label-proxy`.
+`prom-label-proxy` enforces the `organization_id` label in PromQL and Prometheus API requests. It does not authenticate or authorize the caller. The MaaS usage proxy performs that work before it calls `prom-label-proxy`.
 
-`prom-label-proxy` enforces one label. The MaaS usage proxy therefore adds `grid_user_id` to Tenant User PromQL before it calls `prom-label-proxy`. `prom-label-proxy` then adds `grid_tenant_id`. Tenant Admin PromQL contains only `grid_tenant_id` from `prom-label-proxy`.
+`prom-label-proxy` enforces one label. The MaaS usage proxy therefore adds `maas_tenant_id` to every PromQL request and `user_id` to Tenant User PromQL before it calls `prom-label-proxy`. `prom-label-proxy` then adds `organization_id`.
+
+The PromQL examples above show the final query after `prom-label-proxy` adds `organization_id`. The MaaS usage proxy does not add `organization_id` before `prom-label-proxy` when `-error-on-replace` is enabled.
 
 ### Optional OpenShift portal identity mode
 
@@ -334,7 +359,7 @@ In this mode, the consumer portal uses `AITenant.spec.authentication.mode: opens
 
 LokiStack remains in `static` mode. The MaaS usage proxy authenticates to LokiStack with its own mTLS identity, and OPA grants that service identity read access to the organization tenant. The end-user OpenShift identity is used only by the proxy for label rewriting; it is not used as the LokiStack authorization subject.
 
-This avoids `openshift-logging` namespace-based RBAC. The authenticated gateway first maps the verified OpenShift identity to the selected organization and MaaS role. The usage proxy then enforces `grid_tenant_id` and, for Tenant Users, `grid_user_id`.
+This avoids `openshift-logging` namespace-based RBAC. The authenticated gateway first maps the verified OpenShift identity to the selected organization and MaaS role. The usage proxy then enforces `maas_tenant_id` and `organization_id`, and for Tenant Users it also enforces `user_id`.
 
 This optional mode does not create Kubernetes identities. It only uses identities that already exist. It is not valid for the AI Grid shared-OIDC tenant because that tenant must not create Kubernetes users, groups, or role bindings.
 
@@ -345,19 +370,21 @@ Quota and subscription state is business state, not observability data. The dash
 * The MaaS usage proxy reads a materialized quota view from the usage data source.
 * The consumer portal BFF calls `maas-api` for quota and renders it beside the Perses panels.
 
-The dashboard must not calculate quota from metrics. The quota source must remain scoped to the same verified user and organization.
+The dashboard must not calculate quota from metrics. The quota source must remain scoped to the same verified AITenant, organization, and user.
 
 ### Session expiry and errors
 
 When the OIDC session is missing or expired, the gateway redirects the browser to SSO. The dashboard does not render partial usage data.
 
-When a valid user requests data outside the selected organization, the usage proxy returns HTTP 403. When a user without the `admins` role requests Tenant Admin data, the usage proxy returns HTTP 403.
+When a valid user requests data outside the selected AITenant or organization, the usage proxy returns HTTP 403. When a user without the `admins` role requests Tenant Admin data, the usage proxy returns HTTP 403.
 
 When LokiStack, Thanos, or `prom-label-proxy` fails, the dashboard shows an error state and does not change the authorization scope.
 
 ## Open Questions
 
-* What is the exact encoding of `grid_user_id` from the `iss` and `sub` pair?
+* What is the exact encoding of `user_id` from the `iss` and `sub` pair?
+* How is `maas_tenant_id` derived and propagated for each AITenant?
+* What value does a non-AI Grid AITenant use for `organization_id` when it has no finer organization boundary?
 * Does the productized OpenShift Logging release support LokiStack `static` mode?
 * Does the first release need the optional Kubernetes identity mode?
 * How do OpenShift groups map to MaaS organization roles in the optional mode?
@@ -373,9 +400,21 @@ The consumer portal BFF would call `maas-api`, and `maas-api` would query the us
 
 This option remains useful for quota and subscription state. It is not the primary path for usage and metrics queries.
 
+### Reuse RHAI-8074’s `GET /v1/logs`
+
+This option would expose a read-only Loki proxy through `maas-api`, inject an organization matcher, and defer user-level scoping to a follow-up story. It reuses existing API routing and a proven LogQL parser.
+
+This option is rejected as the dashboard data path because it couples dashboard queries to `maas-api`, does not cover Prometheus metrics, and leaves Tenant User scoping incomplete. The MaaS usage proxy absorbs the parser and matcher-enforcement work.
+
+### Authorize the original query without rewriting it
+
+This option would classify a query as admin-scoped or user-scoped, ask an OPA service for an allow or deny decision, and forward the original query unchanged.
+
+This option is rejected because a Tenant User query that omits `user_id` would still be organization-wide. Query-shape classification also cannot prove that every selector is scoped. Enforced matchers are stronger than intent checks.
+
 ### Use static OPA to rewrite label matchers
 
-The LokiStack static OPA policy would inspect the LogQL query and add `grid_tenant_id` and `grid_user_id`. This option keeps filtering in one policy engine, but the static OPA contract returns only allow or deny. It receives the subject, groups, resource, permission, and tenant; it does not receive the query or return matchers.
+The LokiStack static OPA policy would inspect the LogQL query and add `organization_id` and `user_id`. This option keeps filtering in one policy engine, but the static OPA contract returns only allow or deny. It receives the subject, groups, resource, permission, and tenant; it does not receive the query or return matchers.
 
 This option is rejected because LokiStack static OPA cannot rewrite LogQL. The MaaS usage proxy performs that work after OPA grants tenant access.
 
@@ -383,11 +422,11 @@ This option is rejected because LokiStack static OPA cannot rewrite LogQL. The M
 
 Perses would use a Loki datasource that points directly to the static LokiStack gateway. This would require a separate service identity, but it bypasses the required organization and username query rewriting.
 
-This option is rejected because OPA tenant access alone does not enforce the `grid_tenant_id` and `grid_user_id` label matchers.
+This option is rejected because OPA tenant access alone does not enforce the `organization_id` and `user_id` label matchers.
 
 ### Connect Perses directly to `prom-label-proxy`
 
-Perses would forward `x-maas-orgid` to `prom-label-proxy`, which would enforce `grid_tenant_id`. This option adds one less proxy, but it relies on network isolation and does not validate the OIDC token immediately before setting the scope header.
+Perses would forward `x-maas-orgid` to `prom-label-proxy`, which would enforce `organization_id`. This option adds one less proxy, but it relies on network isolation and does not validate the OIDC token immediately before setting the scope header.
 
 This option is rejected because `prom-label-proxy` performs no authentication or authorization.
 
@@ -401,7 +440,7 @@ This option is rejected because organization tenancy plus server-side LogQL rewr
 
 LokiStack would use `openshift-logging` and authorize log access through OpenShift RBAC. This mode is designed for application, infrastructure, and audit logs with namespace-scoped permissions.
 
-This option is rejected for the usage dashboard because it cannot enforce the custom `grid_tenant_id` and `grid_user_id` label scope. The optional OpenShift identity mode therefore stays at the portal, while LokiStack remains behind the MaaS usage proxy.
+This option is rejected for the usage dashboard because it cannot enforce the custom `maas_tenant_id`, `organization_id`, and `user_id` label scope. The optional OpenShift identity mode therefore stays at the portal, while LokiStack remains behind the MaaS usage proxy.
 
 ### Use API keys for the dashboard
 
@@ -417,7 +456,7 @@ The usage proxy must validate the forwarded access token and reject any mismatch
 
 The proxy must not expose the access token, trusted identity headers, or usage data to the browser. Usage responses contain user activity, so the UI must render only the fields required by each role.
 
-Tenant User data is personal usage data. Tenant Admin data can contain usage by user for the selected organization. Access to these responses must remain scoped to the selected organization.
+Tenant User data is personal usage data. Tenant Admin data can contain usage by AITenant, organization, and user. Access to these responses must remain scoped to the selected AITenant and organization.
 
 The dashboard does not create Kubernetes identities. It does not call `TokenReview` or `SubjectAccessReview`. In the MVP OpenShift mode, the authenticated gateway validates the browser session and the usage proxy enforces the label scope.
 
@@ -432,9 +471,9 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 | The optional OpenShift mode is enabled for the AI Grid tenant. | Reject the configuration and test that the AI Grid tenant uses shared OIDC at the portal and mTLS to LokiStack. |
 | The MVP OpenShift mode is confused with LokiStack `openshift-logging`. | Keep OpenShift OAuth at the portal and keep LokiStack behind the MaaS usage proxy. |
 | LogQL rewriting is incomplete. | Use the supported Loki parser and test selectors, pipelines, and aggregation expressions. |
-| The `grid_user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
-| `prom-label-proxy` enforces only one label. | Add `grid_user_id` in the MaaS usage proxy before `prom-label-proxy` adds `grid_tenant_id`. |
-| Tenant Admin data is overexposed. | Enforce the `admins` role and organization scope in the usage proxy, not only in the UI. |
+| The `user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
+| `prom-label-proxy` enforces only one label. | Add `maas_tenant_id` and `user_id` in the MaaS usage proxy before `prom-label-proxy` adds `organization_id`. |
+| Tenant Admin data is overexposed. | Enforce the `admins` role and the AITenant and organization scope in the usage proxy, not only in the UI. |
 | Quota data and usage data use different identities. | Use one canonical user identity and contract-test both data paths. |
 | Expired sessions show stale dashboard data. | Do not cache usage responses and redirect expired sessions to SSO. |
 
@@ -457,11 +496,13 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 ## References
 
 * [RHAI-10635](https://redhat.atlassian.net/browse/RHAI-10635)
+* [RHAI-8074](https://redhat.atlassian.net/browse/RHAI-8074?focusedCommentId=19101141)
 * [ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md](https://github.com/lphiri/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
 * [ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md](https://github.com/lphiri/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
 * [Perses datasource proxy](https://perses.dev/perses/docs/concepts/proxy/)
 * [LokiStack tenancy modes](https://github.com/grafana/loki/blob/main/operator/docs/user-guides/tenancy-modes.md)
 * [prom-label-proxy](https://github.com/prometheus-community/prom-label-proxy)
+* [Observatorium API](https://github.com/observatorium/api)
 
 ## Reviews
 
