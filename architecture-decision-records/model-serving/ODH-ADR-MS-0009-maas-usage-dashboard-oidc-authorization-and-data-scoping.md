@@ -58,10 +58,11 @@ The main RHOAI Dashboard gateway already supports OpenShift authentication. Reus
 * Use the `admins` role to identify a Tenant Admin for the selected organization.
 * Show Tenant Users their personal usage and token usage logs.
 * Show Tenant Admins organization-wide usage by AITenant, organization, user, model, and site.
+* Let Kubernetes-authorized Super Admins request one organization tenant at a time.
 * Resolve API-key-authenticated inference requests to the organization boundary through their bound subscription.
 * Allow Tenant Admins to narrow an organization-wide query by one user.
 * Return HTTP 403 when a user requests Tenant Admin data without the `admins` role.
-* Keep the dashboard free of Kubernetes `TokenReview` and `SubjectAccessReview`.
+* Keep Tenant User and Tenant Admin paths free of Kubernetes `TokenReview` and `SubjectAccessReview`.
 * Keep the browser dashboard free of API-key authentication.
 
 ## Non-Goals
@@ -131,7 +132,7 @@ sequenceDiagram
   participant Loki as LokiStack
 
   User->>UI: Open usage dashboard
-  UI->>Gateway: Send Perses datasource query with usage_scope
+  UI->>Gateway: Send query to /api/maas/usage/loki/api/v1/query_range
   Gateway->>Gateway: Exchange OIDC session for user token
   Gateway->>Usage: Forward query and trusted identity headers
   Usage->>Usage: Validate user token, claims, and requested usage_scope
@@ -161,7 +162,7 @@ sequenceDiagram
   participant Loki as LokiStack
 
   User->>UI: Open usage dashboard
-  UI->>Gateway: Send Perses datasource query with usage_scope
+  UI->>Gateway: Send query to /api/maas/usage/loki/api/v1/query_range
   Gateway->>Gateway: Exchange OpenShift OAuth session for user token
   Gateway->>Usage: Forward query and trusted identity headers
   Usage->>Usage: Validate user token, claims, and requested usage_scope
@@ -185,15 +186,26 @@ CLI and non-dashboard clients do not use Perses. They continue to call the suppo
 
 CLI and non-dashboard clients present the bearer token directly to the MaaS usage proxy. The gateway is not required on this path. The usage proxy routes every usage log query to LokiStack. Direct access to the Loki usage instance is not supported.
 
+Use the public MaaS usage proxy route and the same `/api/maas/usage` path prefix. For example, send the bearer token to `https://maas-usage.example.com/api/maas/usage/loki/api/v1/query_range`. The browser path uses the gateway host; the CLI path uses the public usage proxy host. Both paths reach the same MaaS usage proxy.
+
 The usage proxy validates the token and derives the same AITenant, organization, role, and user identity used by the dashboard path. The same authorization and label-scoping rules apply. This path does not require an API key.
 
 ### Perses datasource layout
 
-Run the embedded Perses dashboard inside the Consumer UI. Its datasource requests go through the same authenticated gateway route as the consumer portal. In the AI Grid default, this is the MaaS Gateway. In the MVP OpenShift path, this is the existing RHOAI Dashboard gateway and portal mount. The gateway validates the session, removes client-supplied identity headers, and injects the trusted identity headers defined by ODH-ADR-MS-0007.
+Run the embedded Perses dashboard inside the Consumer UI. Its datasource requests use a gateway-relative URL, so the browser sends them to the gateway origin. In the AI Grid default, this is the MaaS Gateway. In the MVP OpenShift path, this is the existing RHOAI Dashboard gateway and portal mount. The gateway validates the session, removes client-supplied identity headers, and injects the trusted identity headers defined by ODH-ADR-MS-0007.
 
-Create project-scoped Perses datasources. Do not set `directUrl`. The datasource target is the gateway route that fronts the MaaS usage proxy.
+Create project-scoped Perses datasources. Do not set `directUrl`; a direct URL would expose the internal MaaS usage proxy hostname to the browser. Configure the embedded dashboard's `DatasourceApi.buildProxyUrl()` method to return a gateway-relative path such as `/api/maas/usage`. The Perses Loki plugin appends the standard `/loki/api/v1/...` API path.
 
-The Loki datasource uses `LokiDatasource` and points to the MaaS usage proxy.
+| Item | Value |
+| ---- | ----- |
+| Browser origin | The consumer portal or RHOAI Dashboard origin. |
+| Browser-visible datasource URL | `/api/maas/usage` |
+| Gateway route | `/api/maas/usage/*` |
+| Internal upstream | The MaaS usage proxy service URL. |
+
+The gateway reverse-proxies that route to the internal MaaS usage proxy. The browser resolves the relative URL against the gateway origin, so the different hostname of the MaaS usage proxy does not cause cross-origin requests. CORS is therefore not required on the browser path.
+
+The Loki datasource uses `LokiDatasource`. Its server-side proxy target is the MaaS usage proxy, and its browser-visible proxy URL is the gateway route above.
 
 The datasource forwards only the headers it needs:
 
@@ -207,6 +219,8 @@ The datasource forwards only the headers it needs:
 
 Perses must use `allowHeaders`, not `dropHeaders`. This prevents unlisted browser headers from reaching the usage proxy. The datasource must also use `allowedEndpoints` and allow only read-only query endpoints.
 
+The internal MaaS usage proxy hostname is not published to the browser. The gateway route is the only browser-visible address for usage queries.
+
 ### MaaS usage proxy
 
 The MaaS usage proxy is the authorization and query-rewriting boundary. It is not a simple reverse proxy.
@@ -217,7 +231,7 @@ RHAI-8074 and this ADR both use `organization_id` as the organization label.
 
 This ADR does not depend on an ACM OPA endpoint. On the browser path, the authenticated gateway supplies the verified identity and organization claims. On the direct API path, the usage proxy derives them from the validated bearer token. The usage proxy enforces the required matchers on both paths.
 
-Each query carries an explicit `usage_scope` request parameter. Valid values are `user` and `organization`. The parameter is request intent, not authorization. The proxy validates the requested scope against the verified organization role. `user` is available to every authenticated organization member and always adds the caller's `user_id`. `organization` requires the `admins` role and adds only the AITenant and organization labels unless the Tenant Admin selects one exact user.
+Each query carries an explicit `usage_scope` request parameter. Valid values are `user`, `organization`, and `platform`. The parameter is request intent, not authorization. The proxy validates the requested scope against the verified identity and role. `user` is available to every authenticated organization member and always adds the caller's `user_id`. `organization` requires the organization `admins` role and adds only the AITenant and organization labels unless the Tenant Admin selects one exact user. `platform` requires a verified Kubernetes identity, an allowed `SubjectAccessReview` result, and exactly one selected organization tenant.
 
 An administrator may request either scope. Requesting `user` does not use the administrator role and does not expose another user's data.
 
@@ -241,6 +255,7 @@ The proxy applies these filters:
 | ------- | ---------------- | --------------- |
 | Tenant Admin | Organization ID | `maas_tenant_id` and `organization_id` |
 | Tenant User | Organization ID | `maas_tenant_id`, `organization_id`, and `user_id` |
+| Kubernetes Super Admin | One selected organization tenant | `maas_tenant_id` and `organization_id` |
 
 `maas_tenant_id` is the AITenant identifier. `organization_id` is the selected organization boundary. `user_id` is a stable, non-email identifier derived from the canonical `iss` and `sub` pair. A role from one organization never grants authority in another organization.
 
@@ -258,6 +273,55 @@ The proxy replaces any client-supplied matcher for these labels. It rejects a qu
 A Tenant Admin may narrow the organization-wide query by user. The UI passes one selected user ID to the usage proxy. The proxy then rewrites the query to use `maas_tenant_id`, `organization_id`, and exactly one `user_id` matcher. If no user is selected, the proxy keeps the AITenant and organization filters.
 
 The user filter is a query refinement. It does not grant access and does not replace the AITenant and organization scope. The proxy rejects a client-supplied regular expression, multiple user values, or a user matcher that conflicts with the selected value.
+
+### Super Admin access
+
+Super Admin access is Kubernetes-only. An external OIDC identity cannot request `usage_scope=platform`. The organization `admins` role also cannot request it.
+
+A Super Admin must not receive a LokiStack identity that bypasses tenant selection. The usage proxy remains the only LokiStack client.
+
+For `usage_scope=platform`, the proxy:
+
+1. Validates the Kubernetes bearer token with `TokenReview`.
+2. Checks Super Admin authority with `SubjectAccessReview`.
+3. Resolves the one selected `organization_id` through a trusted MaaS tenancy catalog.
+4. Rejects a missing, unknown, or multi-valued organization selection.
+5. Adds the exact `maas_tenant_id` and `organization_id` matchers.
+6. Queries only that organization's LokiStack tenant.
+
+The `SubjectAccessReview` checks the `get` verb on the `/api/maas/usage/loki` non-resource URL. The proxy does not accept a client-supplied tenant list. The selected `organization_id` names the target tenant but does not authorize the request. Optional AITenant and user filters narrow the query; they never broaden it.
+
+Super Admin requests do not query multiple tenants at once. A Super Admin changes the selected organization to view another tenant. The query results retain `maas_tenant_id` and `organization_id`.
+
+The browser Super Admin path must use the OpenShift-authenticated RHOAI Dashboard gateway. The direct CLI path sends the Kubernetes bearer token to the usage proxy. The MaaS Gateway OIDC path returns HTTP 403 for `usage_scope=platform`.
+
+The following example grants the Super Admin permission to the usage route. Bind an existing OpenShift group to the role; do not create identities for external OIDC users:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: maas-usage-super-admin
+rules:
+  - nonResourceURLs:
+      - /api/maas/usage/loki
+      - /api/maas/usage/loki/*
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: maas-usage-super-admins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: maas-usage-super-admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: maas-usage-super-admins
+```
 
 ### LokiStack integration
 
@@ -323,6 +387,8 @@ The `maas-usage-admin` role grants the usage proxy read access to the organizati
 
 The static OPA rule grants the `read` permission on the organization tenant to the MaaS usage proxy service identity. It does not inspect LogQL label matchers and cannot return a filter. This is a LokiStack static-mode constraint, not a MaaS limitation.
 
+In a deployment that enables Super Admin access, the proxy service identity receives read access to every usage tenant. This does not grant every user cross-tenant access. The usage proxy validates the end-user token, requires an allowed Kubernetes authorization result, and allows only one selected tenant per request.
+
 The MaaS usage proxy calls the organization tenant at `/api/logs/v1/<organization-id>/loki/api/v1/query_range`. It authenticates with its own mTLS service identity. LokiStack validates that identity and applies the static OPA rule. The usage proxy has already rewritten the LogQL selector with the required labels.
 
 Tenant Admin authority comes from the `admins` role in the MaaS organization claim. It does not come from the LokiStack role name. LokiStack grants the MaaS usage proxy read access to the organization tenant; the usage proxy decides whether to add `user_id`.
@@ -386,6 +452,7 @@ When LokiStack fails, the dashboard shows an error state and does not change the
 ## Open Questions
 
 * What is the exact encoding of `user_id` from the `iss` and `sub` pair?
+* Which existing OpenShift group owns the `maas-usage-super-admins` binding?
 * How is `maas_tenant_id` derived and propagated for each AITenant?
 * What value does a non-AI Grid AITenant use for `organization_id` when it has no finer organization boundary?
 * Does the productized OpenShift Logging release support LokiStack `static` mode?
@@ -452,6 +519,8 @@ This option is rejected because the dashboard must show data for the signed-in O
 
 On the browser path, only the authenticated gateway may inject trusted identity headers. The gateway removes client-supplied copies before it injects verified values. Perses must be reachable only through that gateway, and browser traffic must reach the usage proxy only through that gateway.
 
+The browser-visible datasource URL is relative to the gateway origin. The browser does not learn the internal MaaS usage proxy hostname, and the request stays same-origin.
+
 CLI and non-dashboard API requests must present a valid bearer token to the usage proxy. The usage proxy validates that token before it derives identity or applies query scoping. Client-supplied identity headers remain untrusted on this path.
 
 The usage proxy must validate every user access token. On the browser path, it must also reject any mismatch between token claims and trusted gateway headers. It must parse LogQL with a supported parser and must not concatenate untrusted query strings.
@@ -460,7 +529,9 @@ The proxy must not expose the access token, trusted identity headers, or usage d
 
 Tenant User data is personal usage data. Tenant Admin data can contain usage by AITenant, organization, and user. Access to these responses must remain scoped to the selected AITenant and organization.
 
-The dashboard does not create Kubernetes identities. It does not call `TokenReview` or `SubjectAccessReview`. In the MVP OpenShift mode, the authenticated gateway validates the browser session and the usage proxy enforces the label scope.
+The dashboard does not create Kubernetes identities. Tenant User and Tenant Admin paths do not call `TokenReview` or `SubjectAccessReview`. Only the optional Super Admin path uses these checks. In the MVP OpenShift mode, the authenticated gateway validates the browser session and the usage proxy enforces the label scope.
+
+The MaaS usage proxy ServiceAccount needs permission to create `TokenReview` and `SubjectAccessReview` objects. These permissions let the proxy ask the Kubernetes API server to authenticate and authorize a Super Admin. They do not grant usage data access by themselves.
 
 ## Risks
 
@@ -476,6 +547,8 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 | LogQL rewriting is incomplete. | Use the supported Loki parser and test selectors, pipelines, and aggregation expressions. |
 | The `user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
 | Tenant Admin data is overexposed. | Enforce the `admins` role and the AITenant and organization scope in the usage proxy, not only in the UI. |
+| Super Admin data is overexposed. | Use Kubernetes RBAC, reject organization-admin escalation, and keep the tenant list server-owned. |
+| A Super Admin request names an invalid tenant. | Resolve the organization through the trusted MaaS tenancy catalog and return HTTP 400 or HTTP 404. |
 | Existing query routes are removed before the new path reaches parity. | Keep the old routes until query parity and authorization tests pass. |
 | Concurrent AI Grid producer work emits inconsistent organization labels. | Contract-test `organization_id` on every AI Grid producer before the dashboard is enabled. |
 | Standard OpenShift dashboards are routed through the MaaS usage proxy. | Keep the Cloud Provider Admin on the existing OpenShift Console or ACM routes. |
@@ -486,15 +559,13 @@ The dashboard does not create Kubernetes identities. It does not call `TokenRevi
 
 | Group | Key Contacts | Date | Impacted? |
 | ----- | ------------ | ---- | --------- |
-| Model-as-a-Service | Lindani Phiri | 2026-10-24 | Yes |
-| Consumer Portal | Pierangelo Di Pilato | 2026-10-24 | Yes |
-| Dashboard | Arik Hadas | 2026-10-24 | Yes |
-| Observability | Kevin Howell | 2026-10-24 | Maybe |
+| Model-as-a-Service | Marius Danciu | 2026-10-24 | Yes |
+| Dashboard | Andrew Ballantyne | 2026-10-24 | Yes |
+| Observability | Kevin Howell, Arik Hadas | 2026-10-24 | Maybe |
 | AI Grid | RHAISTRAT-2875 owners | 2026-10-24 | Maybe |
 | Cloud Provider Admin | RHAISTRAT-2883 owners | 2026-10-24 | Maybe |
 
 * **Model-as-a-Service**: owns the usage proxy, query rewriting, and backend mode selection.
-* **Consumer Portal**: owns the Perses integration and the consumer UI session.
 * **Dashboard**: owns the Tenant User and Tenant Admin usage views.
 * **Observability**: owns LokiStack and the supported product log authorization modes.
 * **AI Grid**: owns the multi-site usage aggregation contract and site attribution data.
