@@ -194,14 +194,44 @@ log.Error(err, "failed to delete component CR", "component", handler.GetName())
 log.Error(err, "failed to inject env vars into Deployment",
     "deployment", deploy.GetName(), "deploymentNamespace", deploy.GetNamespace())
 
-// Cloudmanager GC — the deleted child uses child / childNamespace
+// Cloudmanager GC — still the parent's reconcile. The request logger keeps
+// the parent; the deleted object uses child / childNamespace, not the triad.
 log.Error(err, "cleanup delete failed",
     "child", obj.GetName(), "childNamespace", obj.GetNamespace())
 ```
 
-If a log line is genuinely *about* the child (not the reconciled parent), log the
-child as the full set — `name` / `namespace` / `resourceKind` all describing the
-child — rather than mixing parent and child across those keys.
+Cloudmanager GC is inside the parent's reconcile, so it is not a case for
+putting the child in `name` / `namespace` / `resourceKind`. A reconcile loop is
+about one object: the parent. The child gets a dedicated key.
+
+The full triad belongs to a log that has no reconcile request logger, so there
+is no parent identity to preserve. Watch mappers are the in-tree case. A list
+has no single name, so only `resourceKind` is set, and it is the listed kind:
+
+```go
+log.Error(err, "Failed to get AuthList", "resourceKind", "Auth")
+```
+
+A single object outside reconcile takes the whole set, because nothing else is
+mixed in:
+
+```go
+log.Error(err, "failed to get Dashboard",
+    "name", dashboard.Name,
+    "namespace", dashboard.Namespace,
+    "resourceKind", "Dashboard")
+```
+
+Inside `Reconcile`, do not stamp the child's kind onto the parent's identity.
+The request logger already has the DataScienceCluster name and namespace:
+
+```go
+// Wrong — parent name/namespace plus the child's kind.
+log.Error(err, "failed to delete component CR", "resourceKind", "Dashboard")
+
+// Right — parent identity stays; the child has its own key.
+log.Error(err, "failed to delete component CR", "component", handler.GetName())
+```
 
 ### Scoping
 
