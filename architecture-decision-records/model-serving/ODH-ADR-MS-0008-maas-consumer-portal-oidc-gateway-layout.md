@@ -15,11 +15,13 @@
 
 Serve the AI consumer UI from the MaaS gateway. Use a route-specific Gateway API `HTTPRoute` for the UI. Run `kube-auth-proxy` as a standalone data-plane Deployment and Service in `redhat-ai-gateway-infra`, not as an extension of a controller Deployment. Keep the proxy lifecycle independent of the RHOAI Platform `GatewayConfig`. For the MVP, serve the portal only on the default `AITenant` Gateway. A future release may allow one UI BFF service to serve multiple Gateways when trusted tenant context and authenticated identity are preserved.
 
+The required authentication mode for the consumer portal is OIDC with an external identity provider. Portal users must not require Kubernetes identities. OpenShift OAuth is an optional compatibility mode, not the required identity model.
+
 The RHOAI Platform `GatewayConfig` is the platform-wide configuration for the main RHOAI dashboard gateway. It is not the MaaS Gateway configuration.
 
 ## Why
 
-OIDC is an explicit business requirement for the AI consumer UI. Serving the UI from the MaaS gateway keeps portal traffic, model traffic, and authentication policy under one gateway owner. Running `kube-auth-proxy` as a standalone data-plane service keeps browser-session traffic out of a controller pod and lets the proxy scale independently.
+OIDC with an external identity provider is an explicit business requirement for the AI consumer UI. The portal must serve users who have no Kubernetes account, `User`, `Group`, or `ServiceAccount`. Serving the UI from the MaaS gateway keeps portal traffic, model traffic, and authentication policy under one gateway owner. Running `kube-auth-proxy` as a standalone data-plane service keeps browser-session traffic out of a controller pod and lets the proxy scale independently.
 
 This layout also aligns the consumer portal with the general MaaS architecture, where each `AITenant` has a separate Gateway. AI Grid is the exception: it uses one shared Gateway. The portal uses the same Gateway boundary as model traffic instead of introducing a second gateway owner.
 
@@ -46,11 +48,13 @@ The selected layout also positions MaaS for a native Praxis OIDC mechanism. Port
 * Define the owner, update path, namespace, and scaling model for `kube-auth-proxy`.
 * Define the `AITenant` CRD fields needed for OIDC client secret references and token refresh settings.
 * Define the mutually exclusive `oidc` and `openshift` authentication modes on `AITenant`.
+* Require `oidc` mode with an external identity provider for the consumer portal identity contract.
+* Do not require portal users to have Kubernetes identities.
 * Separate DSC-controlled UI and BFF deployment from `AITenant`-controlled portal exposure.
 * Define TLS and Gateway API permissions for cross-namespace traffic.
 * Define the routing model and redirect URIs for OIDC callbacks.
 * Record the migration path from the odh-dashboard gateway to the MaaS gateway.
-* Keep OpenShift OAuth available for tenants that select the `openshift` mode.
+* Treat OpenShift OAuth as an optional compatibility mode, not as a substitute for the external-OIDC requirement.
 
 ## Non-Goals
 
@@ -207,7 +211,9 @@ This ownership makes sense because the MaaS implementation:
 
 The `AITenant` CRD must expose the OIDC parameters that `kube-auth-proxy` needs. These parameters include the OIDC client secret reference and token refresh settings. The MVP keeps this list to the minimum needed.
 
-The `AITenant` CRD also defines a mutually exclusive authentication mode. The supported values are `oidc` and `openshift`. The MaaS implementation reconciles the proxy and its Gateway resources in both modes. In `oidc` mode, the proxy uses the tenant OIDC provider. In `openshift` mode, the proxy uses OpenShift OAuth. The tenant OIDC client Secret is not used in `openshift` mode.
+The `AITenant` CRD also defines a mutually exclusive authentication mode. The supported values are `oidc` and `openshift`. The required consumer-portal identity contract uses `oidc` mode with an external identity provider. In `openshift` mode, the proxy uses OpenShift OAuth for compatibility only. The tenant OIDC client Secret is not used in `openshift` mode.
+
+AI Grid must use `oidc` mode. The implementation must reject `openshift` mode for an AI Grid `AITenant` because that mode depends on Kubernetes-based identities.
 
 The tenant creates the OIDC client Secret in the tenant namespace. The `AITenant` CRD names that Secret and its data key. The MaaS implementation validates the reference, copies or projects the Secret into `redhat-ai-gateway-infra`, and reconciles the copy when the source Secret changes. The implementation uses namespace-scoped RBAC for both namespaces.
 
@@ -262,11 +268,13 @@ The rollout keeps the old route available until the new route is validated. Whet
 
 ### OpenShift OAuth compatibility
 
-OpenShift OAuth remains available when `AITenant` sets the authentication mode to `openshift`. The MaaS implementation still reconciles `kube-auth-proxy` and the portal Gateway resources for that tenant. It configures the proxy to use OpenShift OAuth instead of the tenant OIDC provider. The UI service and BFF contract remain unchanged.
+OpenShift OAuth remains available as an optional compatibility mode when a non-AI Grid `AITenant` sets the authentication mode to `openshift`. The MaaS implementation still reconciles `kube-auth-proxy` and the portal Gateway resources for that tenant. It configures the proxy to use OpenShift OAuth instead of the tenant OIDC provider. The UI service and BFF contract remain unchanged.
+
+This mode does not satisfy the external-OIDC requirement. It is valid only for tenants that already accept Kubernetes-based identities. It must not become the default mode for the AI Grid consumer portal.
 
 ## Open Questions
 
-* Should the existing portal remain the default portal for a fresh installation, attached only to the default MaaS gateway, and serve as the consumer portal for users with Kubernetes accounts? This would provide an out-of-the-box experience without OIDC setup for use cases outside AI Grid.
+* Should OpenShift OAuth remain an optional compatibility mode for non-AI Grid tenants that already use Kubernetes-based identities? It must not replace external OIDC as the required consumer-portal identity model.
 
 ## Alternatives
 
@@ -306,7 +314,8 @@ This option centralizes gateway-related configuration, but it couples UI authent
 
 * Apply the route-specific `HTTPRoute` only to the intended UI path.
 * When a future BFF serves multiple Gateways, use the gateway-derived tenant context and authenticated identity to enforce tenant isolation.
-* Keep OpenShift OAuth available for tenants that select the `openshift` mode.
+* Keep OpenShift OAuth available only as the optional compatibility mode for non-AI Grid tenants that select `openshift`.
+* Validate that AI Grid uses `oidc` mode and reject an AI Grid `AITenant` that selects `openshift` mode.
 * Keep `kube-auth-proxy` updates and scaling under the MaaS Gateway integration's control.
 * Restrict direct access to `kube-auth-proxy`, the BFF, and the MaaS API with `NetworkPolicy`, mTLS, or equivalent controls.
 * Do not expose the OIDC callback URI beyond the intended UI route.
@@ -317,7 +326,8 @@ This option centralizes gateway-related configuration, but it couples UI authent
 * Running `kube-auth-proxy` as a standalone service adds one Deployment and Service to operate.
 * A misconfigured `HTTPRoute` can send UI traffic to the wrong backend.
 * Extending the portal beyond the default `AITenant` requires multi-Gateway routing logic in the BFF.
-* The migration must preserve OpenShift OAuth deployments.
+* The migration must preserve optional OpenShift OAuth deployments without making them the default identity model.
+* A tenant can select OpenShift OAuth where external OIDC is required. Validate the `AITenant` mode and reject invalid combinations.
 
 ## Stakeholder Impacts
 
