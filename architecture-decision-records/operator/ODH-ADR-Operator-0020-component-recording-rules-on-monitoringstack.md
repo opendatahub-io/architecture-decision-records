@@ -95,7 +95,11 @@ The Target Allocator discovers `ServiceMonitor` and `PodMonitor` CRs carrying th
 
 ### Authoring constraints
 
-* Rule and alert names share a namespace across all components. Prefix recording rules with the component, for example `maas:auth_deny_ratio:rate5m`.
+* Rule and alert names share a flat namespace across all components, so names must be chosen deliberately. Two patterns are in use and both are correct:
+  * **Shared framework names, disambiguated by label.** The SLO burn-rate rules (`probe_success:burnrate5m` and siblings) are defined identically by eleven components and separated by the `instance` label. Do not prefix these; prefixing would break the shared SLO expressions that query them.
+  * **Component-prefixed names for component-specific rules**, for example `maas:auth_deny_ratio:rate5m` or `maas_controller:reconcile_total:rate5m`.
+* Alert names follow the same rule and in practice carry a component prefix, for example `MaaS Controller Probe Success Burn Rate`. Repeating one alert name across burn-rate windows within a component is expected; repeating it across components is not.
+* The operator runs `promtool check rules` and `promtool test rules` against each component's rule file and its paired `*-alerting.unit-tests.yaml`. These validate syntax and rule behaviour, not cross-component naming, which remains a review responsibility.
 * Templates are rendered as Go templates. PromQL label references must be escaped: ``{{`{{`}}$labels.instance{{`}}`}}``.
 * Ratio expressions should carry an explicit zero fallback (`or on() vector(0)`) so dashboards distinguish "zero" from "no data".
 * Alerts should carry `severity`, and `component` matching the DSC component name.
@@ -143,7 +147,7 @@ Alert routing is handled by the MonitoringStack Alertmanager. Teams moving alert
 
 * **Label schema drift.** Series arriving through the OTel collector may not carry the same labels as direct UWM scraping. Expressions grouping on labels such as `authconfig` or `namespace` must be re-verified on cluster after migration, not assumed.
 * **Migration window.** Between moving the dashboard and moving the rules, panels are empty. Components should move the monitor, rules, and dashboard together.
-* **Name collisions.** A shared rule namespace across fifteen-plus components will eventually collide without the prefix convention.
+* **Name collisions.** A flat rule namespace across fifteen-plus components will eventually collide. The risk is sharpened by the SLO burn-rate rules, where sharing a name is deliberate, so a genuine collision cannot be detected by name alone and review must distinguish the two cases.
 * **Cardinality.** Consolidating component rules onto one MonitoringStack concentrates evaluation cost that was previously spread across UWM.
 * **Documentation drift.** ODH-ADR-Operator-0010's selector names already disagree with the shipped configuration, which is partly why this gap went unnoticed.
 
