@@ -101,7 +101,9 @@ The Target Allocator discovers `ServiceMonitor` and `PodMonitor` CRs carrying th
 * Alert names follow the same rule and in practice carry a component prefix, for example `MaaS Controller Probe Success Burn Rate`. Repeating one alert name across burn-rate windows within a component is expected; repeating it across components is not.
 * The operator runs `promtool check rules` and `promtool test rules` against each component's rule file and its paired `*-alerting.unit-tests.yaml`. These validate syntax and rule behaviour, not cross-component naming, which remains a review responsibility.
 * Templates are rendered as Go templates. PromQL label references must be escaped: ``{{`{{`}}$labels.instance{{`}}`}}``.
-* Ratio expressions should carry an explicit zero fallback (`or on() vector(0)`) so dashboards distinguish "zero" from "no data".
+* `or on() vector(0)` on a ratio maps an empty result to zero. It does not distinguish zero from no data; it removes that distinction. Use it only where absence genuinely means zero, such as a deny ratio whose numerator is empty because nothing was denied.
+* Where absence can instead mean "not scraped" or "not running", that mapping is misleading, and the rule needs a separate availability signal rather than the fallback. The MaaS reconcile alerts pair the ratio with a traffic guard (`and sum by (controller) (rate(...)) > 0`) for exactly this reason.
+* An unlabelled `vector(0)` also drops the grouping labels. Where a dashboard groups on them, use a label-preserving fallback such as `or 0 * group by (<labels>) (...)`.
 * Alerts should carry `severity`, and `component` matching the DSC component name.
 
 ### Transition
