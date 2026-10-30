@@ -171,11 +171,13 @@ Alert routing is handled by the MonitoringStack Alertmanager. Teams moving alert
 
 ## References
 
-* ODH-ADR-Operator-0009 - Observability tracing strategy
-* ODH-ADR-Operator-0010 - RHOAI component metrics scraping guidelines
-* ODH-ADR-Operator-0011 - Perses dashboard guidelines
-* ODH-ADR-Operator-0011 - RHOAI component metrics-based autoscaling (Thanos querier endpoint)
+* `ODH-ADR-Operator-0009-observability-tracing-strategy.md` - Observability tracing strategy
+* `ODH-ADR-Operator-0010-Observability-component metrics scraping.md` - RHOAI component metrics scraping guidelines
+* `ODH-ADR-Operator-0011-Perses-dashboard-guidelines.md` - Perses dashboard guidelines
+* `ODH-ADR-Operator-0011-observability-metrics-autoscaling.md` - RHOAI component metrics-based autoscaling, source of the Thanos querier endpoint cited above
 * [models-as-a-service#1363](https://github.com/opendatahub-io/models-as-a-service/pull/1363) - datasource direction discussion
+
+Two of the references above share the number 0011. That is a pre-existing condition in this directory rather than a typo here, so these references are given by filename to stay unambiguous.
 
 ## Reviews
 
