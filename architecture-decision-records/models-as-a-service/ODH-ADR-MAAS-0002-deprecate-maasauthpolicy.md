@@ -50,7 +50,7 @@ This dual-source design leads to:
 
 The singleton `maas-gateway-auth` Kuadrant AuthPolicy targets the **Gateway object** itself, so the authentication pipeline (API key, OIDC, K8s TokenReview) and anti-spoofing rules apply to all routes through the gateway — including management endpoints like `/maas-api/v1/api-keys` and `/maas-api/v1/subscriptions`. However, the model-specific authorization checks (subscription validity, group membership) have a `when` guard that skips them for paths starting with `/v1/` or `/maas-api/`. These gateway-wide authn and anti-spoofing rules are infrastructure plumbing and will be preserved unchanged in the subscription-driven AuthPolicy.
 
-The only non-inference endpoint with a MaaSAuthPolicy-specific dependency is **`GET /v1/models`**: it calls `accessChecker.AuthorizedModels()` to filter the model list based on MaaSAuthPolicy CRs. This filtering must migrate to subscription-based ownership (Phase 1, step 3).
+The non-inference endpoints with a MaaSAuthPolicy-specific dependency are **`GET /v1/models`** (calls `accessChecker.AuthorizedModels()` to filter the model list) and the **admin inventory API** (calls `authpolicy.Checker.ModelAccessSubjects()` to list subjects per model). Both must migrate to subscription-based ownership (Phase 1, steps 3 and 4).
 
 ### Phase 1: Prepare MaaSSubscription as the authorization source (v3.x)
 
@@ -68,7 +68,7 @@ The only non-inference endpoint with a MaaSAuthPolicy-specific dependency is **`
 
 A MaaSAuthPolicy without a corresponding MaaSSubscription provides no usable access today — the subscription selector already rejects requests with no matching subscription. There is no scenario where a user has a MaaSAuthPolicy but no MaaSSubscription and can actually reach a model. Therefore, no dual-source fallback is needed.
 
-1. **Mark MaaSAuthPolicy as deprecated** via CRD printer column, documentation, and controller log warnings.
+1. **Mark MaaSAuthPolicy as deprecated** via CRD version metadata (`spec.versions[*].deprecated` and `deprecationWarning`), printer column, documentation, and controller log warnings.
 
 2. **Webhook update**: Change the MaaSAuthPolicy validating webhook to emit an admission warning (not rejection) on create, informing users the resource is deprecated and will be removed in the next release.
 
@@ -76,12 +76,12 @@ A MaaSAuthPolicy without a corresponding MaaSSubscription provides no usable acc
 
 ### Phase 3: Remove MaaSAuthPolicy (v3.x+2)
 
-1. **Remove the MaaSAuthPolicy CRD** from generated manifests and kustomize bases.
+1. **Cleanup existing MaaSAuthPolicy CRs**: Provide a migration note advising administrators to delete existing MaaSAuthPolicy resources (which are no longer reconciled) while the CRD API is still available.
 2. **Remove the MaaSAuthPolicy controller**, webhook, `authpolicy.Checker`, and all associated tests.
 3. **Remove the maas-api `authpolicy` package** and the `accessChecker` dependency from the subscription selector.
 4. **Remove the CRD from downstream consumers** (PriceTag already does not use it; update ai-gateway-operator and opendatahub-operator RBAC).
 5. **Update E2E tests**: ~18 test files reference MaaSAuthPolicy; update to use MaaSSubscription for access control assertions.
-6. **Cleanup existing MaaSAuthPolicy CRs**: Provide a migration note advising administrators to delete existing MaaSAuthPolicy resources, which are no longer reconciled.
+6. **Remove the MaaSAuthPolicy CRD** from generated manifests and kustomize bases.
 
 ### Affected components
 
