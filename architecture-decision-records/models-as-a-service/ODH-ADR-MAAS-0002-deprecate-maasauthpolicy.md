@@ -64,6 +64,10 @@ The non-inference endpoints with a MaaSAuthPolicy-specific dependency are **`GET
 
 5. **Absorb `MeteringMetadata` into `TokenMetadata`.** MaaSAuthPolicy's `MeteringMetadata` (organizationId, costCenter, labels) overlaps with MaaSSubscription's `TokenMetadata`. MaaSSubscription already has `TokenMetadata` with the same fields, plus the `Organization` field. Verify all consumers use subscription-sourced metadata and drop the MaaSAuthPolicy copy. Note: MaaSAuthPolicy `MeteringMetadata` is not referenced anywhere in the codebase today — the response headers (`x-maas-organization-id`, `X-MaaS-Cost-Center`) are already sourced from `subscription-info`, not from MaaSAuthPolicy.
 
+### Pre-migration validation
+
+Before switching the authorization source, audit existing clusters for divergence between MaaSAuthPolicy `subjects` and MaaSSubscription `owner` fields. Today, access is the intersection of both — the subscription selector checks MaaSAuthPolicy via `accessAllowed`. Removing that check means access is determined by subscription ownership alone. If any subscription has a broader `owner` than the corresponding MaaSAuthPolicy `subjects`, the switch would expand access for those users/groups. Run a comparison of `(subject, model)` pairs from both sources and resolve any mismatches before proceeding to Phase 2.
+
 ### Phase 2: Deprecate and Remove MaaSAuthPolicy (v3.x+1)
 
 A MaaSAuthPolicy without a corresponding MaaSSubscription provides no usable access today — the subscription selector already rejects requests with no matching subscription. There is no scenario where a user has a MaaSAuthPolicy but no MaaSSubscription and can actually reach a model. Therefore, no dual-source fallback is needed.
