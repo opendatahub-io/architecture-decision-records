@@ -133,7 +133,8 @@ but it must not use them to authorize operations.
 
 Authorization is subscription-scoped. The service selects only subscriptions whose
 organization ID matches `org_id` and whose subject groups match at least one group
-from the token. Roles do not broaden inference eligibility.
+from the token, compared in the same qualified `org_id/group_name` form described in
+the Group claim section. Roles do not broaden inference eligibility.
 
 ### Group claim
 
