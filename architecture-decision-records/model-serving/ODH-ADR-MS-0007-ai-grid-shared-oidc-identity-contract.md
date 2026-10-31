@@ -47,6 +47,7 @@ can be used.
 * Use the `org_id`, `org_name`, and `roles` claims to carry organization membership and roles.
 * Use plain group names on the wire. Qualify them internally to `org_id/group_name` for comparison.
 * Make the broker mint the organization identity. No upstream identity provider sets it.
+* Support a claim mapping option as an optional goal, for a later implementation.
 * Authorize each request only in the organization that the request names.
 * Validate OIDC tokens at the gateway before MaaS receives the request.
 * Inject trusted identity headers only after the gateway validates the token.
@@ -176,6 +177,37 @@ administrator records roles in the broker, through the MaaS portal or a broker
 delegated-admin console. The broker then mints the `roles` claim from broker state.
 This future option will support a provider that emits no roles.
 
+### Claim mapping
+
+The contract defines a claim mapping option, modeled on the structured
+authentication configuration in Kubernetes. This option is optional for the MVP, and
+a later release can implement it. The mapping lets a deployment set which upstream
+claim fills each MaaS identity field. A deployment configures the mapping per issuer,
+in the AITenant OIDC configuration.
+
+A field maps in one of two ways. A field maps from a named claim, with an optional
+prefix. A field maps from a CEL (Common Expression Language) expression over the
+token claims. The two ways are mutually exclusive for one field.
+
+The mapping covers these fields:
+
+* `sub`: the subject identifier.
+* `email`: the optional email identity.
+* `groups`: the access group names.
+* `roles`: the organization roles.
+* `org_id`: the organization identifier.
+* `org_name`: the optional organization display name.
+
+The mapping also supports validation rules. A claim validation rule is a CEL
+expression over the token claims. A user validation rule is a CEL expression over
+the mapped identity. Each rule must return true. The gateway rejects a token that
+fails a rule.
+
+The gateway applies the mapping after it validates the token signature. The broker
+still mints `org_id`, so the mapping can not let an upstream claim set the
+organization. When a deployment sets no mapping, the default claim names stay
+`sub`, `email`, `groups`, `roles`, `org_id`, and `org_name`.
+
 ### Gateway validation and headers
 
 The gateway validates the OIDC token before it forwards a request to MaaS. After
@@ -296,6 +328,7 @@ harder.
 * Gateway-to-MaaS and gateway-to-BFF traffic uses an authenticated in-cluster channel, and direct client access is denied.
 * Authorization applies groups and roles only within the requested organization.
 * Upstream-mapped roles affect only the organization that owns the identity provider.
+* The deployment owns the claim mapping, and the broker still mints `org_id`.
 * API-key requests do not inherit SSO admin claims.
 * Organization users do not receive Kubernetes identities.
 * Email is optional and is not used as the stable user identifier.
