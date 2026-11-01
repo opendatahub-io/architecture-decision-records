@@ -16,14 +16,15 @@
 * 2026-10-31: Flattened the identity claims. Replaced the
   `https://redhat.com/maas/orgs` array of objects with the flat claims `org_id`,
   `org_name`, and `roles`. Made the group claim plain on the wire. Clarified that the broker mints the organization identity.
+* 2026-11-01: Made the AI Grid organization claims separate from vanilla RHOAI.
 
 ## What
 
 Define the shared-OIDC identity contract for AI Grid users on MaaS. One OIDC
 issuer and one MaaS `AITenant` serve multiple AI Grid organizations. Authorization
 uses flat, organization-scoped OIDC claims. The broker mints the organization
-identity. The gateway validates the broker-signed token, injects trusted identity
-headers, and creates no Kubernetes identity for organization users.
+identity. The gateway makes sure that the broker-signed token is valid. It injects
+trusted identity headers and creates no Kubernetes identity for organization users.
 
 ## Why
 
@@ -50,7 +51,7 @@ can be used.
 * Support a claim mapping option as an optional goal, for a later implementation.
 * Authorize each request only in the organization that the request names.
 * Validate OIDC tokens at the gateway before MaaS receives the request.
-* Inject trusted identity headers only after the gateway validates the token.
+* Inject trusted identity headers only after the gateway makes sure that the token is valid.
 * Strip client-supplied identity headers before the gateway injects trusted values.
 * Preserve API-key authentication and existing SSO-based MaaS APIs.
 * Create no Kubernetes identity for AI Grid organization users.
@@ -114,6 +115,13 @@ organization. The single `org_id` value makes this structural.
 The broker mints `org_id` from the upstream identity provider binding. No upstream
 identity provider sets `org_id`. This stops a tenant from faking an organization.
 
+### AI Grid claim scope
+
+The `org_id`, `org_name`, and `roles` claims apply only to AI Grid configuration.
+Vanilla RHOAI has no AI Grid organizations. It operates at the `AITenant` level.
+It must not consume these claims. In vanilla RHOAI, access decisions continue to
+use only the `groups` claim.
+
 ### Organization claim
 
 Each token carries one organization:
@@ -132,9 +140,10 @@ administrative authority. MaaS can retain unknown roles for forward compatibilit
 but it must not use them to authorize operations.
 
 Authorization is subscription-scoped. The service selects only subscriptions whose
-organization ID matches `org_id` and whose subject groups match at least one group
-from the token, compared in the same qualified `org_id/group_name` form described in
-the Group claim section. Roles do not broaden inference eligibility.
+organization ID matches `org_id`. A subscription must also have a subject group that
+matches one token group. The service compares groups in the qualified
+`org_id/group_name` form described in the Group claim section. Roles do not broaden
+inference eligibility.
 
 ### Group claim
 
@@ -148,7 +157,7 @@ organization `42c3e46f-2477-44d7-a85b-d3b43f6b31fa` compares as
 group-name collisions between AI Grid organizations.
 
 Each group name is an opaque, case-sensitive, non-empty string. MaaS compares the
-qualified string exactly and performs no trimming, case folding, or other
+qualified string exactly. It performs no trimming, case folding, or other
 normalization. It rejects tokens that contain an empty group name or a duplicate
 group name.
 
@@ -169,9 +178,9 @@ model access, or modify a subscription.
 
 For the MVP, roles come from the upstream identity provider. The broker maps an
 upstream role or group claim into the `roles` claim. The mapping stays scoped to
-the organization, because the broker still mints `org_id`. A customer can grant a
-role only inside its own organization. In the MVP, an upstream provider that emits
-no role or group claim can not grant the `admins` role.
+the organization. The broker still mints `org_id`. A customer can grant a role only
+inside its own organization. In the MVP, an upstream provider that emits no role or
+group claim can not grant the `admins` role.
 
 Broker-managed roles are a future option. In that option, an organization
 administrator records roles in the broker, through the MaaS portal or a broker
@@ -180,11 +189,11 @@ This future option will support a provider that emits no roles.
 
 ### Claim mapping
 
-The contract defines a claim mapping option, modeled on the structured
-authentication configuration in Kubernetes. This option is optional for the MVP, and
-a later release can implement it. The mapping lets a deployment set which upstream
-claim fills each MaaS identity field. A deployment configures the mapping per issuer,
-in the AITenant OIDC configuration.
+The contract defines a claim mapping option. The option is modeled on the
+structured authentication configuration in Kubernetes. This option is optional for
+the MVP, and a later release can implement it. The mapping lets a deployment set
+which upstream claim fills each MaaS identity field. A deployment configures the
+mapping per issuer, in the AITenant OIDC configuration.
 
 A field maps in one of two ways. A field maps from a named claim, with an optional
 prefix. A field maps from a CEL (Common Expression Language) expression over the
@@ -204,16 +213,18 @@ expression over the token claims. A user validation rule is a CEL expression ove
 the mapped identity. Each rule must return true. The gateway rejects a token that
 fails a rule.
 
-The gateway applies the mapping after it validates the token signature. The broker
+The gateway applies the mapping after it makes sure that the token signature is
+correct. The broker
 still mints `org_id`, so the mapping can not let an upstream claim set the
 organization. When a deployment sets no mapping, the default claim names stay
 `sub`, `email`, `groups`, `roles`, `org_id`, and `org_name`.
 
 ### Gateway validation and headers
 
-The gateway validates the OIDC token before it forwards a request to MaaS. After
-validation, it injects trusted identity headers derived from the verified claims.
-Before injection, it removes every client-supplied copy of those headers.
+The gateway makes sure that the OIDC token is valid before it forwards a request to
+MaaS. After the gateway accepts the token, it injects trusted identity headers from
+the accepted claims. Before injection, it removes every client-supplied copy of
+those headers.
 
 The identity-header contract is:
 
@@ -223,11 +234,11 @@ The identity-header contract is:
 | `x-maas-group` | `groups` | A JSON array of the user's groups. |
 | `x-maas-orgid` | `org_id` | The organization ID. |
 | `x-maas-roles` | `roles` | A JSON array of roles for the organization. |
-| `x-forwarded-id-token` | Verified OIDC ID token | The verified token for the BFF and MaaS API. |
+| `x-forwarded-id-token` | Accepted OIDC ID token | The accepted token for the BFF and MaaS API. |
 
 All values are exact strings. JSON array headers contain valid JSON. The gateway
 does not trim, case-fold, or otherwise normalize values. It overwrites these
-headers only after successful OIDC validation.
+headers only after the gateway accepts the OIDC token.
 
 MaaS trusts only gateway-injected identity headers. It does not trust identity
 headers supplied by a client. Gateway-to-MaaS and gateway-to-BFF traffic must use
@@ -238,15 +249,15 @@ RHAI-10605 defines the gateway layout that injects these headers.
 
 ### API access
 
-SSO requests use the verified OIDC identity. Existing MaaS APIs remain usable with
+SSO requests use the accepted OIDC identity. Existing MaaS APIs remain usable with
 SSO-based access, subject to the organization-scoped authorization rules described
 in this ADR.
 
 For the browser SSO flow, the client presents the proxy session cookie. If the
-request does not present an API key, the gateway validates the OIDC ID token.
-The gateway removes the client-supplied `Authorization` header. The gateway forwards
-the verified token through `x-forwarded-id-token`. The BFF calls the MaaS API
-through the validating gateway.
+request does not present an API key, the gateway makes sure that the OIDC ID token
+is valid. The gateway removes the client-supplied `Authorization` header. The
+gateway forwards the accepted token through `x-forwarded-id-token`. The BFF calls
+the MaaS API through the gateway that makes sure that tokens are valid.
 
 API keys remain the supported path for scripts and tools. A user signs in with SSO
 and creates an API key through the entitled subscription. The existing API-key
@@ -261,11 +272,12 @@ the proxy session cookie and SSO-derived identity headers. It rejects an invalid
 API key and does not remove a recognized API-key `Authorization` header.
 
 On the UI path, the proxy session cookie must be present. If an API key is also
-present, the gateway validates both the session and the API key. If the API key is
-supplied through `Authorization`, the gateway preserves and validates that header.
-If the client supplies the API key through `x-api-key`, and the target model uses
-`apiFormat: messages`, the gateway validates the key. API-key requests do not inherit SSO
-admin claims. Admin authority applies only to the SSO path.
+present, the gateway makes sure that the session and the API key are valid. If the
+API key is supplied through `Authorization`, the gateway preserves that header. The
+gateway also makes sure that the header is valid. If the client supplies the API
+key through `x-api-key`, and the target model uses `apiFormat: messages`, the
+gateway makes sure that the key is valid. API-key requests do not inherit SSO admin
+claims. Admin authority applies only to the SSO path.
 
 ### No Kubernetes identity
 
@@ -319,14 +331,20 @@ harder.
 ## Security and Privacy Considerations
 
 * The gateway accepts tokens only from the configured shared OIDC issuer.
-* The gateway validates the ID token signature, audience, issuer, and expiry.
+* The gateway makes sure that the ID token signature, audience, issuer, and expiry are valid.
 * The broker mints `org_id` from the identity-provider binding, not from an upstream claim.
 * The gateway strips client-supplied identity headers before it injects trusted values.
-* The SSO flow strips client-supplied identity headers and non-API-key `Authorization` headers before it injects trusted values.
-* Outside the UI path, the API-key flow uses `Authorization: Bearer sk-oai-*`. For an `apiFormat: messages` model, the flow can also use `x-api-key`.
-* Outside the UI path, the API-key flow ignores the proxy session cookie and SSO-derived identity headers and preserves a recognized API-key `Authorization` header.
-* If the proxy session cookie is present on the UI path, the API-key flow validates the API key.
-* Gateway-to-MaaS and gateway-to-BFF traffic uses an authenticated in-cluster channel, and direct client access is denied.
+* The SSO flow strips client-supplied identity headers and non-API-key
+  `Authorization` headers before it injects trusted values.
+* Outside the UI path, the API-key flow uses `Authorization: Bearer sk-oai-*`.
+  For an `apiFormat: messages` model, the flow can also use `x-api-key`.
+* Outside the UI path, the API-key flow ignores the proxy session cookie and
+  SSO-derived identity headers. It preserves a recognized API-key
+  `Authorization` header.
+* If the proxy session cookie is present on the UI path, the API-key flow makes
+  sure that the API key is valid.
+* Gateway-to-MaaS and gateway-to-BFF traffic uses an authenticated in-cluster
+  channel. Direct client access is denied.
 * Authorization applies groups and roles only within the requested organization.
 * Upstream-mapped roles affect only the organization that owns the identity provider.
 * The deployment owns the claim mapping, and the broker still mints `org_id`.
@@ -338,7 +356,8 @@ harder.
 
 * If the signing key of a shared OIDC issuer is compromised, the blast radius increases.
 * Incorrect claim mapping can grant access to the wrong organization.
-* A broker that assigns the organization from an upstream claim, instead of the identity-provider binding, lets a tenant fake an organization.
+* A broker that assigns the organization from an upstream claim, instead of the
+  identity-provider binding, lets a tenant fake an organization.
 * A failure to strip inbound identity headers can permit identity spoofing.
 * Existing MaaS APIs must preserve owner, API-key, and platform-admin behavior.
 
@@ -353,7 +372,8 @@ harder.
 
 **Notes:**
 
-* The MaaS and Gateway team owns token validation, trusted-header injection, and claim-based authorization.
+* The MaaS and Gateway team owns token validation, trusted-header injection, and
+  claim-based authorization.
 * The AI Grid product team owns the AI Grid organization model.
 * The identity platform team owns the OIDC provider and claim mapping.
 * Security reviewers must approve the header, session, and failure behavior.
