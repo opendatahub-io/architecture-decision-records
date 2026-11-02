@@ -60,7 +60,7 @@ A single gateway for every user and workload in the cluster was considered and r
 
 ## How
 
-### Deployment and ownership
+### Architecture and ownership
 
 This ADR uses the following terms consistently:
 
@@ -97,81 +97,6 @@ The product publishes and qualifies a compatibility matrix covering OpenShell, t
 The OpenShift sandboxed containers Operator is a separate dependency for Kata-backed profiles. It installs and maintains the Kata runtime infrastructure from which the approved `RuntimeClass` is obtained. The runtime-profile compatibility matrix covers the supported OpenShift sandboxed containers Operator versions, runtime configuration, and `RuntimeClass` values. The OpenShift AI infrastructure operator discovers and validates that runtime but does not create or reconcile its product resources. Standard-container profiles do not require the Kata runtime. A Kata profile remains unavailable until both the OpenShift sandboxed containers runtime and the selected `RuntimeClass` are ready.
 
 For platform-created sandboxes, the deployment uses OpenShell's Kubernetes compute driver in `managed` workspace mode. OpenShell creates one Kubernetes namespace for each OpenShell workspace and owns that namespace's lifecycle. This keeps namespace provisioning and cleanup automatic for high-churn service operations and avoids making platform administrators provision every workspace namespace manually. On OpenShift, OpenShell leaves the SCC annotations unset, waits for the cluster namespace allocator to assign a unique MCS label, UID range, and supplemental-group range, and only then creates the workspace ServiceAccount and sandbox workloads.
-
-The infrastructure operator generates and persists a unique, immutable, DNS-1123-compatible gateway identifier of no more than 33 characters, derived from the OpenShift AI installation identity. It must not rely on the chart's default name. The identifier is part of the gateway's signing identity, managed namespace names, and namespace ownership records. Reinstallation, upgrade, and recovery preserve it. A second OpenShell gateway on the cluster must use a different identifier. If another gateway is configured with the same identifier, admission enforcement treats it as a collision and denies it authority over namespaces registered to this gateway.
-
-The infrastructure operator installs the internal gateway with at least one default namespace template. Every managed workspace resolves to that template unless its approved service integration selects another platform-administrator-approved template. The default supplies the product's minimum resource, security, storage, network, and pod-placement controls; there is no untemplated fallback. Platform administrators may declare additional named namespace templates for workload classes that need different quotas, storage, scheduling, runtime, or network constraints. The infrastructure operator validates and reconciles that desired configuration; consuming services cannot create, update, select as a default, or remove templates. An update affects new workspace namespaces unless the template contract explicitly defines and qualifies reconciliation of existing namespaces.
-
-The rendered Helm values include this configuration:
-
-```yaml
-gatewayConfig:
-  openshell.gateway:
-    compute_driver: kubernetes
-  openshell.gateway.auth:
-    allow_unauthenticated_users: false
-  openshell.gateway.oidc:
-    issuer: "<platform-workload-identity-issuer>"
-    audience: "rhoai-internal-openshell"
-    roles_claim: "roles"
-    admin_role: "rhoai-openshell-admin"
-    user_role: "rhoai-openshell-user"
-  openshell.gateway.gateway_jwt:
-    gateway_id: "<infrastructure-operator-generated-stable-id>"
-  openshell.drivers.kubernetes:
-    workspace_mode: managed
-server:
-  tls:
-    # Keep HTTPS, but do not authenticate API callers as OpenShell mTLS operators.
-    clientCaSecretName: ""
-  credentialStorage:
-    existingSecret: "<infrastructure-operator-managed-kek-secret>"
-  sandboxJwt:
-    signingSecretName: "<infrastructure-operator-managed-jwt-signing-secret>"
-# The infrastructure operator owns the cert-manager resources rather than the chart.
-certManager:
-  enabled: false
-# Module installation does not execute Helm hooks.
-pkiInitJob:
-  enabled: false
-```
-
-Managed mode requires cluster-scoped namespace lifecycle authority, but it does not justify granting the gateway namespaced permissions across the cluster. The OpenShell v0.1.4 chart's default managed-mode `ClusterRoleBinding`, which grants Sandbox, Pod, Service, Secret, NetworkPolicy, and other namespaced permissions in customer namespaces, is not a supported configuration for this deployment. Validating admission can constrain mutations but does not run for Kubernetes `get`, `list`, or `watch`, so admission alone is not an adequate boundary.
-
-The infrastructure operator partitions the gateway's Kubernetes permissions. A cluster-wide binding contains only the qualified cluster-scoped operations that cannot be delegated into a workspace namespace, such as namespace lifecycle, `TokenReview`, and approved reads of Nodes, `RuntimeClass`, and `PriorityClass`. It does not grant namespaced Sandbox, Pod, Event, Service, Secret, ServiceAccount, NetworkPolicy, or persistent-storage permissions. After a managed namespace has an authoritative ownership record and its namespace template is ready, the sandbox lifecycle controller creates a Role and RoleBinding in that namespace for the gateway ServiceAccount. The binding grants only the namespaced operations required by the qualified OpenShell release. Removing a workspace eventually removes this binding, so compromise of the gateway ServiceAccount does not confer access to customer namespaces, another gateway's namespaces, or unregistered namespaces.
-
-The gateway also must not receive unrestricted `get`, `list`, or `watch` access to Namespace objects. OpenShift allocation metadata needed during provisioning must be supplied through the provisioning handshake controlled by the sandbox lifecycle controller or protected by an authorization mechanism that restricts reads to the registered namespace UID. If the selected OpenShell release requires a cluster-wide namespace watch or cannot operate with split namespaced RBAC, managed mode is not supportable for this deployment. The infrastructure operator reconciles admission enforcement for the remaining cluster-scoped namespace create and delete authority, while the sandbox lifecycle controller supplies its dynamic provisioning authorizations and ownership records. The permission partition and admission enforcement run outside the gateway's trust boundary and are owned and audited as part of the platform installation.
-
-The sandbox lifecycle controller's provisioning, RBAC, and admission integrations authenticate the gateway's Kubernetes ServiceAccount and enforce all of the following:
-
-- Namespace creation requires both the naming scheme for the gateway's unique identifier and an outstanding provisioning authorization created by the sandbox lifecycle controller for that exact workspace. After Kubernetes assigns the namespace UID, the sandbox lifecycle controller registers that UID, applies the selected namespace template, and creates the namespace RoleBinding before marking the workspace ready. OpenShell remains paused throughout this sequence.
-- Namespace deletion is allowed only while the authoritative ownership record identifies that namespace UID as belonging to this gateway. Caller-supplied names, prefixes, or labels alone are not sufficient proof of ownership.
-- Ownership metadata and other reserved namespace labels or annotations cannot be created, changed, or removed by consuming services, sandbox workloads, customer-managed gateways, or an OpenShell gateway outside its namespace-creation flow.
-- A platform-administrator-approved OpenShell namespace template supplies required `ResourceQuota`, `LimitRange`, security labels, NetworkPolicies, storage policy, and sandbox pod-placement defaults. Sandbox custom resources, Pods, Services, Secrets, and persistent storage remain denied by RBAC until the template has been applied successfully, the namespace RoleBinding exists, and a readiness marker controlled by the sandbox lifecycle controller is present.
-- On deletion, the sandbox lifecycle controller first blocks new sandbox operations, allows bounded cleanup using the namespace RoleBinding, verifies cleanup, removes the binding, and only then permits namespace deletion. It removes the ownership record after the namespace UID no longer exists.
-- Namespaced reads and mutations against customer namespaces, another gateway's namespaces, unregistered namespaces, and pre-created namespaces that spoof the expected name or labels are denied by the absence of a RoleBinding. Namespace lifecycle requests against them are denied by the managed-namespace admission controller.
-
-The target design requires OpenShell to support the namespace template, split-RBAC model, ownership handshake, and provisioning barrier described below. The infrastructure operator and sandbox lifecycle controller may provide an equivalent implementation during development, but that does not remove the required OpenShell capabilities from the supported architecture. Enforcement must remain fail closed and must not trust the gateway to attest its own scope. If the selected OpenShell and platform versions cannot guarantee the required permission boundary and ordering without a gap between namespace creation and sandbox admission, managed mode is not supportable and the deployment uses the `operator`-mode fallback. Qualification also enforces the OpenShell v0.1.4 OpenShift prerequisites, including OpenShift 4.19 or later and a CNI that enforces ingress and egress `NetworkPolicy`.
-
-#### Durable identity, key material, and recovery
-
-The infrastructure operator renders the OpenShell chart as templates. It does not execute Helm hooks and must not depend on Helm `lookup` to retain generated values. During initial provisioning, it creates the credential KEK Secret and the sandbox JWT signing Secret once, then configures the chart to reference them through `server.credentialStorage.existingSecret` and `server.sandboxJwt.signingSecretName`. Reconciliation, re-rendering, upgrade, rollback, and restart of the infrastructure operator reuse the existing Secret data and must not silently regenerate or overwrite it. After the gateway has been initialized, a missing or malformed Secret is a degraded recovery condition, not permission to create a new identity or key.
-
-The infrastructure operator also owns the cert-manager Issuer and Certificate resources needed for the gateway's server and client PKI and configures OpenShell to use the resulting Secrets. It does not depend on OpenShell's `certgen` hook. Cert-manager may renew leaf certificates according to the product's certificate policy, but ordinary infrastructure-operator reconciliation must not replace CA or trust material. KEK, JWT-signing-key, or CA rotation is an explicit operation initiated by a platform administrator and executed through a qualified migration procedure; it is not a side effect of reconciliation. KEK rotation must preserve access to existing encrypted credentials, JWT rotation must define whether outstanding sandbox tokens remain valid or are deliberately invalidated, and PKI rotation must preserve the required trust transition.
-
-The gateway database, credential KEK, JWT signing key, PKI and trust material, stable gateway identifier, and the configuration needed to bind them form one recovery set. Backup captures a mutually consistent set or uses a documented consistency protocol. Restore makes the complete set available and validates it before the gateway becomes ready or accepts sandbox operations. A partial restore, a database and KEK mismatch, untrusted PKI, or missing signing material fails closed and reports a degraded condition. Recovery must not make encrypted credentials permanently unreadable, silently change the gateway identity, or unintentionally trust or invalidate active sandboxes.
-
-#### API authentication and authorization
-
-The supported OpenShell v0.1.4 configuration uses OIDC RBAC for all platform and consuming-service API calls. The OIDC issuer, a gateway-specific audience, `roles_claim`, `admin_role`, and `user_role` are all configured explicitly. Both role names must be non-empty, and the token claim selected by `roles_claim` must be an array. OIDC authentication-only mode, in which both role names are empty, is unsupported because every authenticated caller can exercise OpenShell Platform Admin authority. The gateway remains protected by HTTPS, but API callers do not use the chart's default client-certificate authentication: `server.tls.clientCaSecretName` is empty so a service cannot be authenticated as an OpenShell mTLS operator and bypass workspace membership.
-
-Each consuming service receives short-lived, audience-bound OIDC tokens with a stable, unique `sub` claim and only the configured user role. The sandbox lifecycle controller adds that subject as a user of only the workspaces assigned to the service. A consumer does not receive the configured admin role, cannot manage its own role or membership, and cannot use another subject's membership. The trusted sandbox lifecycle controller uses the admin role to create workspaces and manage membership. OpenShell v0.1.4 does not provide a narrower workspace-provisioning automation role, so that controller is part of the gateway's trusted computing base until the scoped automation capability below is available.
-
-OpenShell v0.1.4 does not accept OpenShift ServiceAccount tokens as ordinary gateway API credentials. Its Kubernetes `TokenReview` paths authenticate sandbox supervisors and gateway peers for their dedicated RPCs, not consuming services. The product must therefore provide a qualified OIDC issuer or token broker that authenticates the calling OpenShift workload and issues a token with the required audience, subject, and array-valued role claim. Shared client secrets and long-lived bearer tokens are not acceptable substitutes. If no supported workload-identity integration can issue those tokens, this deployment requires new OpenShell API-caller `TokenReview` and identity-to-role mapping support before it is supportable.
-
-Each consuming service receives at least one dedicated workspace. A service may receive additional workspaces when separate isolation, credential, quota, or lifecycle boundaries are required. Short-lived service operations may receive ephemeral workspaces when they require a namespace boundary of their own. Disabling one consumer must not remove the gateway or another consumer's workspaces.
-
-The gateway is reachable only on the cluster network. It has no user-facing Route, Ingress, or externally attached `GRPCRoute`. Direct customer CLI access is unsupported. An unauthenticated or plaintext gateway is not permitted, even when a NetworkPolicy limits reachability.
 
 ```mermaid
 flowchart TB
@@ -238,31 +163,6 @@ flowchart TB
     PODS -->|standard profile| CRIO
     PODS -->|Kata profile| KATA
 ```
-
-### Required OpenShell changes
-
-OpenShell v0.1.4 is the behavioral reference for this ADR, but it does not provide every control required by the target architecture. The following capabilities must be implemented in OpenShell upstream or carried as supported downstream changes before the applicable deployment mode is supported. The managed-template, RBAC-partitioning, and ownership-handshake rows gate use of managed mode. If any of those gates cannot be met, the `operator`-mode fallback may be supported only after it independently satisfies the namespace-template, split-RBAC, lifecycle, and qualification outcomes in this decision. The other rows apply to both modes. An issue or design proposal is not considered an implemented capability; each item must be tied to a qualified OpenShell version in the product support matrix.
-
-| Capability | Required OpenShell change | Release condition |
-| --- | --- | --- |
-| Managed namespace templates | Let a platform administrator define an immutable template for namespaces created by managed workspace mode, configure one template as the mandatory default, and provide additional named templates for approved workload classes. The template must support at least `ResourceQuota`, `LimitRange`, required labels and annotations, NetworkPolicies, storage constraints, and other approved namespace policy. It must also define protected pod-placement defaults, including node selectors or affinity and tolerations, so OpenShell workloads can be restricted to dedicated, tainted agent nodes. | OpenShell refuses to create a managed workspace when no valid default or explicitly selected approved template is available. It applies namespace resources after OpenShift allocates the namespace security ranges but before it creates or admits a ServiceAccount, Sandbox custom resource, Pod, Service, Secret, PVC, or other sandbox resource. It applies the scheduling defaults to every sandbox workload and supervisor Pod, and callers cannot remove or weaken them. Failure leaves the workspace visibly blocked and admits no workload. |
-| Managed-mode RBAC partitioning | Separate truly cluster-scoped permissions from workspace permissions. The chart must support disabling its cluster-wide binding for namespaced resources while the sandbox lifecycle controller grants the gateway a qualified RoleBinding in each registered workspace namespace. OpenShell must not require unrestricted Namespace `get`, `list`, or `watch`; it must accept the required OpenShift allocation metadata through the protected provisioning handshake or an equivalently constrained authorization path. | Effective access for the gateway ServiceAccount denies every namespaced read and mutation outside registered workspace namespaces, including direct Kubernetes API use that bypasses OpenShell. No workspace binding exists until ownership and template readiness are established, and no customer namespace metadata is exposed through a cluster-wide namespace watch. |
-| Managed-namespace ownership handshake | Expose the created namespace name and UID to the admission and RBAC integration owned by the sandbox lifecycle controller, then pause provisioning until that integration registers ownership, applies the namespace template, creates the gateway RoleBinding, and marks the namespace ready. OpenShell must use the recorded UID for later mutation and deletion so a deleted and recreated namespace with the same name is not adopted. | Create, retry, recovery, and deletion fail closed on an absent, stale, or mismatched ownership record. Cleanup completes before the RoleBinding is removed; namespace deletion occurs while the UID ownership record still exists; the record is removed only after deletion is observed. The handshake has bounded timeouts and an observable error state rather than an unguarded fallback. |
-| Enforceable sandbox profiles | Add a platform-administrator-controlled profile that binds the approved workload template or image, effective policy, providers, runtime isolation, resources, and service-exposure permissions. The resolved candidate must be available to server-side admission, and callers must not be able to omit the profile or override its protected fields through `CreateSandbox`, provider attachment, policy updates, configuration updates, or service exposure. | Every consumer integration can be expressed as a server-enforced profile and negative tests prove that a workspace user cannot substitute an image, policy, provider, `RuntimeClass`, resource request, or exposed service outside that profile. |
-| OpenShift workload identity and scoped automation | Preserve the OIDC RBAC contract for platform workloads and add an automation role for workspace lifecycle and membership that does not also grant unrestricted credential or platform administration. If the product cannot supply a qualified OIDC issuer or token broker with the required audience, stable subject, and array-valued role claim, add API-caller OpenShift ServiceAccount authentication through Kubernetes `TokenReview` and a platform-administrator-controlled identity-to-role mapping. | Each consumer authenticates with only the user role and its workspace memberships. The sandbox lifecycle controller can provision workspaces and membership without shared credentials or unrestricted OpenShell Platform Admin authority. Compromise of one consumer identity does not grant access to another consumer's workspace. |
-| Recoverable workspace lifecycle | Make workspace and sandbox operations idempotent and recoverable after gateway, driver, API-server, Agent Sandbox controller, or sandbox lifecycle controller failure. Managed mode must provide a supported way to clear or reconcile a permanently pending operation and reclaim an orphaned namespace by its recorded UID. OpenShell `operator` mode must expose a terminal cleanup state before the sandbox lifecycle controller removes the namespace. | Cleanup finalizers have bounded retries and can reach a reported terminal state without silently leaking a workload or requiring unsupported database edits. |
-
-The OpenShift AI implementation may add external admission, identity, or reconciliation components around OpenShell, but those components cannot compensate for an OpenShell operation that launches a workload before the required control can run. Any temporary downstream implementation must preserve the same API invariants and qualification criteria so it can be replaced by the upstream capability without weakening the boundary.
-
-Gateway-native enforcement of platform-administrator-controlled sandbox profiles is preferred because it avoids adding a network dependency to every governed write. Until that capability is available, a supported deployment may use an external OpenShell gateway interceptor only as a transitional enforcement mechanism. The infrastructure operator owns and reconciles that interceptor with the gateway and provides:
-
-- Authenticated TLS between the gateway and interceptor, a narrowly scoped gateway audience, and protected trust material.
-- An availability topology, disruption budget, placement, and capacity suitable for a fail-closed dependency shared by every consumer.
-- Startup ordering that makes the interceptor ready before the gateway, and readiness conditions that prevent the gateway from reporting Available when its required interceptor cannot be described or authenticated.
-- `fail_closed` behavior, an `allowlist` or `exact` binding policy, bounded request timeouts, and bindings for every operation that can establish or weaken the protected sandbox profile.
-- Metrics, alerts, logs, upgrade sequencing, rollback, and explicit consumer-facing degraded conditions.
-
-An interceptor outage after gateway startup rejects governed mutations and new sandbox creation; it never permits a bypass. Existing sandboxes may continue only while they do not require a protected mutation. The infrastructure operator reports the internal sandbox service as degraded until the interceptor recovers. Adding, removing, or changing interceptor registration or bindings requires a coordinated gateway restart.
 
 ### Consumer contract
 
@@ -343,6 +243,207 @@ The infrastructure operator performs version-skew checks before upgrading the Op
 
 Disabling a consumer prevents new sandbox creation for its identity. Its sandboxes, templates, providers, services, policies, settings, and other workspace-scoped resources must be removed before deleting the workspace. OpenShell then removes the managed Kubernetes namespace. Namespace deletion is destructive, so any retained output must be exported before workspace deletion. Removing the internal gateway is an explicit action initiated by a platform administrator. The infrastructure operator coordinates removal, while the sandbox lifecycle controller first blocks new work, drains or terminates remaining sandboxes, and removes workspaces through this lifecycle. The infrastructure operator then removes gateway state according to the product's retention policy.
 
+### Required OpenShell changes
+
+OpenShell v0.1.4 is the behavioral reference for this ADR, but it does not provide every control required by the target architecture. The following capabilities must be implemented in OpenShell upstream or carried as supported downstream changes before the applicable deployment mode is supported. The managed-template, RBAC-partitioning, and ownership-handshake rows gate use of managed mode. If any of those gates cannot be met, the `operator`-mode fallback may be supported only after it independently satisfies the namespace-template, split-RBAC, lifecycle, and qualification outcomes in this decision. The other rows apply to both modes. An issue or design proposal is not considered an implemented capability; each item must be tied to a qualified OpenShell version in the product support matrix.
+
+| Capability | Required OpenShell change | Release condition |
+| --- | --- | --- |
+| Managed namespace templates | Let a platform administrator define an immutable template for namespaces created by managed workspace mode, configure one template as the mandatory default, and provide additional named templates for approved workload classes. The template must support at least `ResourceQuota`, `LimitRange`, required labels and annotations, NetworkPolicies, storage constraints, and other approved namespace policy. It must also define protected pod-placement defaults, including node selectors or affinity and tolerations, so OpenShell workloads can be restricted to dedicated, tainted agent nodes. | OpenShell refuses to create a managed workspace when no valid default or explicitly selected approved template is available. It applies namespace resources after OpenShift allocates the namespace security ranges but before it creates or admits a ServiceAccount, Sandbox custom resource, Pod, Service, Secret, PVC, or other sandbox resource. It applies the scheduling defaults to every sandbox workload and supervisor Pod, and callers cannot remove or weaken them. Failure leaves the workspace visibly blocked and admits no workload. |
+| Managed-mode RBAC partitioning | Separate truly cluster-scoped permissions from workspace permissions. The chart must support disabling its cluster-wide binding for namespaced resources while the sandbox lifecycle controller grants the gateway a qualified RoleBinding in each registered workspace namespace. OpenShell must not require unrestricted Namespace `get`, `list`, or `watch`; it must accept the required OpenShift allocation metadata through the protected provisioning handshake or an equivalently constrained authorization path. | Effective access for the gateway ServiceAccount denies every namespaced read and mutation outside registered workspace namespaces, including direct Kubernetes API use that bypasses OpenShell. No workspace binding exists until ownership and template readiness are established, and no customer namespace metadata is exposed through a cluster-wide namespace watch. |
+| Managed-namespace ownership handshake | Expose the created namespace name and UID to the admission and RBAC integration owned by the sandbox lifecycle controller, then pause provisioning until that integration registers ownership, applies the namespace template, creates the gateway RoleBinding, and marks the namespace ready. OpenShell must use the recorded UID for later mutation and deletion so a deleted and recreated namespace with the same name is not adopted. | Create, retry, recovery, and deletion fail closed on an absent, stale, or mismatched ownership record. Cleanup completes before the RoleBinding is removed; namespace deletion occurs while the UID ownership record still exists; the record is removed only after deletion is observed. The handshake has bounded timeouts and an observable error state rather than an unguarded fallback. |
+| Enforceable sandbox profiles | Add a platform-administrator-controlled profile that binds the approved workload template or image, effective policy, providers, runtime isolation, resources, and service-exposure permissions. The resolved candidate must be available to server-side admission, and callers must not be able to omit the profile or override its protected fields through `CreateSandbox`, provider attachment, policy updates, configuration updates, or service exposure. | Every consumer integration can be expressed as a server-enforced profile and negative tests prove that a workspace user cannot substitute an image, policy, provider, `RuntimeClass`, resource request, or exposed service outside that profile. |
+| OpenShift workload identity and scoped automation | Preserve the OIDC RBAC contract for platform workloads and add an automation role for workspace lifecycle and membership that does not also grant unrestricted credential or platform administration. If the product cannot supply a qualified OIDC issuer or token broker with the required audience, stable subject, and array-valued role claim, add API-caller OpenShift ServiceAccount authentication through Kubernetes `TokenReview` and a platform-administrator-controlled identity-to-role mapping. | Each consumer authenticates with only the user role and its workspace memberships. The sandbox lifecycle controller can provision workspaces and membership without shared credentials or unrestricted OpenShell Platform Admin authority. Compromise of one consumer identity does not grant access to another consumer's workspace. |
+| Recoverable workspace lifecycle | Make workspace and sandbox operations idempotent and recoverable after gateway, driver, API-server, Agent Sandbox controller, or sandbox lifecycle controller failure. Managed mode must provide a supported way to clear or reconcile a permanently pending operation and reclaim an orphaned namespace by its recorded UID. OpenShell `operator` mode must expose a terminal cleanup state before the sandbox lifecycle controller removes the namespace. | Cleanup finalizers have bounded retries and can reach a reported terminal state without silently leaking a workload or requiring unsupported database edits. |
+
+The OpenShift AI implementation may add external admission, identity, or reconciliation components around OpenShell, but those components cannot compensate for an OpenShell operation that launches a workload before the required control can run. Any temporary downstream implementation must preserve the same API invariants and qualification criteria so it can be replaced by the upstream capability without weakening the boundary.
+
+## Security and Privacy Considerations
+
+The internal gateway is a high-value control plane because it can create workloads, deliver policy, and broker credentials. It must run in a dedicated namespace with least-privilege RBAC, restrictive ingress and egress, encrypted transport, OIDC RBAC for API callers, protected signing material, and auditable administrative changes. Its managed-mode Kubernetes identity has cluster-scoped namespace lifecycle authority, so admission control reconciled by the infrastructure operator and driven by sandbox lifecycle controller ownership records constrains namespace creation and deletion outside the gateway's trust boundary. Namespaced Kubernetes access is granted separately through a RoleBinding only in namespaces authoritatively registered to this gateway, and namespace allocation data is delivered without an unrestricted cluster-wide Namespace read. The OIDC admin role is itself a platform-wide authority and is restricted to the sandbox lifecycle controller; consuming services receive only the user role and explicit workspace membership.
+
+Sharing the gateway creates a common failure and compromise domain. Workspace authorization and Kubernetes namespace controls reduce cross-service access, but they do not make gateway compromise harmless. The gateway, its persistence layer, the infrastructure operator, the sandbox lifecycle controller, the Agent Sandbox Operator, the Agent Sandbox controller, the OpenShift sandboxed containers Operator and runtime, and the cluster control plane remain trusted components.
+
+For EvalHub, the `SandboxedEvaluation` controller and compatibility broker are trusted control-plane components. They run outside the untrusted agent boundary, authenticate as a narrowly scoped service identity, and never pass gateway or Kubernetes control-plane credentials to the agent. Requests from the agent are untrusted input: the broker reconstructs an approved OpenShell operation rather than forwarding arbitrary Pod specifications or gateway requests.
+
+OpenShell policy is one layer in a defense-in-depth design. Security claims must reflect the actual compute runtime and OpenShift configuration. Container isolation shares the node kernel; a kernel, runtime, CNI, gateway, supervisor, infrastructure operator, sandbox lifecycle controller, Agent Sandbox Operator, Agent Sandbox controller, or OpenShift sandboxed containers Operator vulnerability may cross the intended boundary. Higher-risk workloads require a stronger runtime or a separate decision.
+
+Sandbox inputs and outputs can contain customer data. Consumers must document data flow, retention, geographic and regulatory constraints, and log redaction. Platform telemetry must not capture credentials, raw prompts, datasets, source files, or model outputs unless the consuming service explicitly requires and governs that data.
+
+## Risks
+
+- A gateway, infrastructure operator, sandbox lifecycle controller, Agent Sandbox Operator, Agent Sandbox controller, or OpenShift sandboxed containers Operator compromise can affect every internal consumer.
+- An overbroad ClusterRoleBinding, a stale or incorrectly provisioned workspace RoleBinding, or missing namespace admission could let a compromised gateway read or mutate customer resources or delete namespaces outside its ownership boundary.
+- A gateway outage or incompatible upgrade can interrupt multiple service workflows.
+- An incompatible Agent Sandbox Operator, CRD, or Agent Sandbox controller upgrade can disrupt both the internal gateway and customer-managed gateways that share the cluster-scoped API.
+- An OpenShift sandboxed containers Operator or Kata runtime upgrade can interrupt Kata-profile workloads even when the OpenShell and Agent Sandbox layers are healthy.
+- A required fail-closed interceptor outage can block sandbox creation and protected mutations for every internal consumer.
+- An OIDC issuer, token-broker, discovery, or JWKS outage can block authentication and therefore new sandbox operations for every internal consumer.
+- A managed-namespace admission controller, RBAC provisioner, ownership registry, or namespace-template outage blocks new workspace and sandbox operations because the system fails closed.
+- Resource exhaustion in one workspace can affect others unless quotas and admission controls are effective.
+- OpenShell's Kubernetes deployment path is evolving; upstream changes may require product integration changes or delay support.
+- OpenShell is pre-1.0, so the platform integration and EvalHub adapter may require coordinated changes between releases.
+- Kubernetes APIs expected by an evaluation framework may not map faithfully to OpenShell sandbox operations; unsupported semantics can block onboarding that provider.
+- Per-evaluation workspace and namespace churn can limit EvalHub dispatch throughput or overload gateway and Kubernetes control-plane reconciliation.
+- Incorrect policy profiles can either block required work or permit data exfiltration.
+- Failed cleanup can leave workloads, volumes, credentials, or data behind.
+- Consumers may gradually treat the internal gateway as a general agent platform. The onboarding contract and lifecycle limits must prevent that scope expansion.
+
+## Alternatives
+
+### One OpenShell gateway for the entire cluster
+
+This minimizes gateway deployments, but combines customer and product administration, policy, credentials, upgrades, availability, and audit data in one security domain. A platform administrator could affect customer agents, and customer gateway administrators could affect product services. This alternative is rejected.
+
+### One product-managed gateway per consuming service
+
+This gives each service an independent failure and administration boundary. It also duplicates packaging, state, upgrades, credentials, observability, and security qualification, increasing the chance that services ship inconsistent configurations. Use a separate gateway only when a consumer's threat model, availability, scale, or release lifecycle cannot satisfy the shared internal contract.
+
+### Operator-managed workspace namespaces
+
+OpenShell `operator` workspace mode maps workspaces to namespaces provisioned outside the gateway. The sandbox lifecycle controller can create each namespace, wait for OpenShift security allocation, apply the same namespace template, `ResourceQuota`, `LimitRange`, NetworkPolicies, storage policy, and scheduling defaults required by this decision, and only then add the namespace to OpenShell's allowlist. Workspace deletion removes gateway state but never deletes the Kubernetes namespace; the sandbox lifecycle controller removes it after sandbox cleanup. This does not require a platform administrator in the high-churn path, but it adds a lifecycle controller and a coordination protocol between that controller and OpenShell.
+
+Properly partitioned, `operator` mode materially reduces the gateway's blast radius: it removes namespace create and delete, cluster-wide Secret mutation, and ServiceAccount creation from the gateway and limits workspace permissions to namespaces deliberately enrolled by the platform. Merely setting `workspace_mode: operator` is not sufficient in OpenShell v0.1.4, however. The default gateway `ClusterRoleBinding` still grants Sandbox, Pod, Service, and NetworkPolicy permissions cluster-wide. A supported operator-mode deployment must disable that binding for namespaced resources, retain only qualified cluster-scoped reads and `TokenReview`, and install the `openshell-workspace` RoleBinding plus any additional qualified namespaced rules required by the selected release in each enrolled namespace.
+
+Managed mode remains preferred because it keeps namespace and workspace lifecycle in one control plane. `Operator` mode is the required fallback when managed mode cannot satisfy the split-RBAC, namespace-read, ownership, admission, template-ordering, or qualification requirements in this ADR. The fallback uses the same templates and security baseline, so choosing it changes lifecycle ownership rather than weakening sandbox policy or quota enforcement.
+
+### Let each service run Kubernetes Jobs directly
+
+Kubernetes Jobs provide scheduling and basic pod isolation but do not by themselves supply OpenShell's consistent sandbox lifecycle, process and filesystem controls, application-layer egress policy, or endpoint-bound credential delivery. Services would have to design and qualify these controls independently. Direct Jobs remain valid for trusted workloads that do not require the sandbox contract.
+
+### Keep EvalHub's independent namespace and Kubernetes broker control plane
+
+This preserves the proposed `SandboxedEvaluation` reconciler that creates an ephemeral namespace and lets `eval-sandbox-broker` create child pods with a namespace-scoped Kubernetes credential. It avoids translating Kubernetes operations into OpenShell operations, but duplicates lifecycle, policy, credential, image-admission, observability, and qualification logic. It also leaves a Kubernetes API credential in the trusted broker adjacent to adversarial workloads. This alternative is rejected as the default architecture. A provider-specific legacy path may be considered only when a proof of concept shows that required Kubernetes semantics cannot be represented through OpenShell and a separate security review accepts the additional control plane.
+
+### Use customer-managed gateways for product internals
+
+This avoids a product-owned deployment, but makes core service behavior depend on customer configuration and lifecycle. It also forces customers to grant product services authority inside a customer security domain. This alternative is rejected for supported out-of-the-box service behavior.
+
+## Open Questions
+
+- Which OpenShift AI infrastructure operator owns the gateway module, and is the sandbox lifecycle controller packaged in that operator or deployed as a separate workload?
+- Which platform-supported OIDC issuer or token broker authenticates OpenShift workloads and issues short-lived tokens with the required gateway audience, stable subject, and array-valued role claim?
+- Outside EvalHub's per-evaluation workspaces, does each initial consumer require one workspace or separate managed workspaces for distinct workload classes?
+- What maximum sandbox lifetime, concurrency, quotas, and cleanup service-level objectives apply to each initial consumer?
+- Which persistence backend, backup policy, and high-availability topology are required for the gateway?
+- Which OpenShell, Red Hat build of Agent Sandbox Operator, Agent Sandbox API/controller, and OpenShift sandboxed containers Operator versions are supportable on each target OpenShift release?
+- Which Kata `RuntimeClass` names and node configurations are supported, and how does the infrastructure operator report their availability without assuming ownership of the OpenShift sandboxed containers installation?
+- Which supported admission, RBAC-provisioning, and authoritative ownership-registry implementations enforce the managed-namespace boundary?
+- How does the provisioning handshake supply OpenShift namespace allocation metadata without granting the gateway cluster-wide Namespace read, list, or watch access?
+- What is the minimal qualified split between cluster-scoped permissions and per-workspace RoleBindings for each supported OpenShell release?
+- Which OpenShell release and configuration API provide namespace templates, protected pod-placement defaults, and the required provisioning sequence?
+- Which namespace templates are shipped initially, and which resource and scheduling defaults distinguish their supported workload classes?
+- Can `eval-sandbox-broker` faithfully translate the Kubernetes API and streaming semantics required by each proposed EvalHub provider into OpenShell sandbox operations?
+- Can workspace creation, membership, credential setup, and deletion meet EvalHub's concurrency and dispatch-latency requirements without giving EvalHub Platform Admin authority?
+- Which use cases are committed for the first release, and at what maturity: EvalHub, Navigator, red teaming, data access, or short-lived demonstrations?
+- What isolation level is required for workloads whose threat model exceeds container and kernel policy boundaries, and should those workloads use a microVM or a different runtime?
+
+## Stakeholder Impacts
+
+| Group | Key Contacts | Date | Impacted? |
+| --- | --- | --- | --- |
+| OpenShift AI platform administrators / infrastructure operator / sandbox lifecycle controller | Ann Marie Fred, Roland Huß | 2026-10-16 | Yes |
+| OpenShift sandboxed containers / Red Hat build of Agent Sandbox Operator | TBD | 2026-10-16 | Yes |
+| EvalHub | Marius Danciu, William | 2026-10-16 | Yes |
+| Adversarial evaluation / red teaming | sbatters | 2026-10-16 | Yes |
+| Navigator | TBD | 2026-10-16 | Yes |
+| Data access / Asago policy | Daniele Zonca, Lindani Phiri | 2026-10-16 | Yes |
+| AutoML / AutoRAG | Lukasz Cmielowski | 2026-10-16 | Potentially |
+| Product security, QE, and documentation | TBD | 2026-10-16 | Yes |
+
+## Detailed Implementation Requirements
+
+The requirements in this section implement the decision and security boundaries above. They are intentionally placed after the architecture, security analysis, alternatives, open questions, and stakeholder impacts so readers can understand the decision before its deployment mechanics.
+
+### Gateway installation and managed-namespace controls
+
+The infrastructure operator generates and persists a unique, immutable, DNS-1123-compatible gateway identifier of no more than 33 characters, derived from the OpenShift AI installation identity. It must not rely on the chart's default name. The identifier is part of the gateway's signing identity, managed namespace names, and namespace ownership records. Reinstallation, upgrade, and recovery preserve it. A second OpenShell gateway on the cluster must use a different identifier. If another gateway is configured with the same identifier, admission enforcement treats it as a collision and denies it authority over namespaces registered to this gateway.
+
+The infrastructure operator installs the internal gateway with at least one default namespace template. Every managed workspace resolves to that template unless its approved service integration selects another platform-administrator-approved template. The default supplies the product's minimum resource, security, storage, network, and pod-placement controls; there is no untemplated fallback. Platform administrators may declare additional named namespace templates for workload classes that need different quotas, storage, scheduling, runtime, or network constraints. The infrastructure operator validates and reconciles that desired configuration; consuming services cannot create, update, select as a default, or remove templates. An update affects new workspace namespaces unless the template contract explicitly defines and qualifies reconciliation of existing namespaces.
+
+The rendered Helm values include this configuration:
+
+```yaml
+gatewayConfig:
+  openshell.gateway:
+    compute_driver: kubernetes
+  openshell.gateway.auth:
+    allow_unauthenticated_users: false
+  openshell.gateway.oidc:
+    issuer: "<platform-workload-identity-issuer>"
+    audience: "rhoai-internal-openshell"
+    roles_claim: "roles"
+    admin_role: "rhoai-openshell-admin"
+    user_role: "rhoai-openshell-user"
+  openshell.gateway.gateway_jwt:
+    gateway_id: "<infrastructure-operator-generated-stable-id>"
+  openshell.drivers.kubernetes:
+    workspace_mode: managed
+server:
+  tls:
+    # Keep HTTPS, but do not authenticate API callers as OpenShell mTLS operators.
+    clientCaSecretName: ""
+  credentialStorage:
+    existingSecret: "<infrastructure-operator-managed-kek-secret>"
+  sandboxJwt:
+    signingSecretName: "<infrastructure-operator-managed-jwt-signing-secret>"
+# The infrastructure operator owns the cert-manager resources rather than the chart.
+certManager:
+  enabled: false
+# Module installation does not execute Helm hooks.
+pkiInitJob:
+  enabled: false
+```
+
+Managed mode requires cluster-scoped namespace lifecycle authority, but it does not justify granting the gateway namespaced permissions across the cluster. The OpenShell v0.1.4 chart's default managed-mode `ClusterRoleBinding`, which grants Sandbox, Pod, Service, Secret, NetworkPolicy, and other namespaced permissions in customer namespaces, is not a supported configuration for this deployment. Validating admission can constrain mutations but does not run for Kubernetes `get`, `list`, or `watch`, so admission alone is not an adequate boundary.
+
+The infrastructure operator partitions the gateway's Kubernetes permissions. A cluster-wide binding contains only the qualified cluster-scoped operations that cannot be delegated into a workspace namespace, such as namespace lifecycle, `TokenReview`, and approved reads of Nodes, `RuntimeClass`, and `PriorityClass`. It does not grant namespaced Sandbox, Pod, Event, Service, Secret, ServiceAccount, NetworkPolicy, or persistent-storage permissions. After a managed namespace has an authoritative ownership record and its namespace template is ready, the sandbox lifecycle controller creates a Role and RoleBinding in that namespace for the gateway ServiceAccount. The binding grants only the namespaced operations required by the qualified OpenShell release. Removing a workspace eventually removes this binding, so compromise of the gateway ServiceAccount does not confer access to customer namespaces, another gateway's namespaces, or unregistered namespaces.
+
+The gateway also must not receive unrestricted `get`, `list`, or `watch` access to Namespace objects. OpenShift allocation metadata needed during provisioning must be supplied through the provisioning handshake controlled by the sandbox lifecycle controller or protected by an authorization mechanism that restricts reads to the registered namespace UID. If the selected OpenShell release requires a cluster-wide namespace watch or cannot operate with split namespaced RBAC, managed mode is not supportable for this deployment. The infrastructure operator reconciles admission enforcement for the remaining cluster-scoped namespace create and delete authority, while the sandbox lifecycle controller supplies its dynamic provisioning authorizations and ownership records. The permission partition and admission enforcement run outside the gateway's trust boundary and are owned and audited as part of the platform installation.
+
+The sandbox lifecycle controller's provisioning, RBAC, and admission integrations authenticate the gateway's Kubernetes ServiceAccount and enforce all of the following:
+
+- Namespace creation requires both the naming scheme for the gateway's unique identifier and an outstanding provisioning authorization created by the sandbox lifecycle controller for that exact workspace. After Kubernetes assigns the namespace UID, the sandbox lifecycle controller registers that UID, applies the selected namespace template, and creates the namespace RoleBinding before marking the workspace ready. OpenShell remains paused throughout this sequence.
+- Namespace deletion is allowed only while the authoritative ownership record identifies that namespace UID as belonging to this gateway. Caller-supplied names, prefixes, or labels alone are not sufficient proof of ownership.
+- Ownership metadata and other reserved namespace labels or annotations cannot be created, changed, or removed by consuming services, sandbox workloads, customer-managed gateways, or an OpenShell gateway outside its namespace-creation flow.
+- A platform-administrator-approved OpenShell namespace template supplies required `ResourceQuota`, `LimitRange`, security labels, NetworkPolicies, storage policy, and sandbox pod-placement defaults. Sandbox custom resources, Pods, Services, Secrets, and persistent storage remain denied by RBAC until the template has been applied successfully, the namespace RoleBinding exists, and a readiness marker controlled by the sandbox lifecycle controller is present.
+- On deletion, the sandbox lifecycle controller first blocks new sandbox operations, allows bounded cleanup using the namespace RoleBinding, verifies cleanup, removes the binding, and only then permits namespace deletion. It removes the ownership record after the namespace UID no longer exists.
+- Namespaced reads and mutations against customer namespaces, another gateway's namespaces, unregistered namespaces, and pre-created namespaces that spoof the expected name or labels are denied by the absence of a RoleBinding. Namespace lifecycle requests against them are denied by the managed-namespace admission controller.
+
+The target design requires OpenShell to support the namespace template, split-RBAC model, ownership handshake, and provisioning barrier described above. The infrastructure operator and sandbox lifecycle controller may provide an equivalent implementation during development, but that does not remove the required OpenShell capabilities from the supported architecture. Enforcement must remain fail closed and must not trust the gateway to attest its own scope. If the selected OpenShell and platform versions cannot guarantee the required permission boundary and ordering without a gap between namespace creation and sandbox admission, managed mode is not supportable and the deployment uses the `operator`-mode fallback. Qualification also enforces the OpenShell v0.1.4 OpenShift prerequisites, including OpenShift 4.19 or later and a CNI that enforces ingress and egress `NetworkPolicy`.
+
+### API authentication and authorization
+
+The supported OpenShell v0.1.4 configuration uses OIDC RBAC for all platform and consuming-service API calls. The OIDC issuer, a gateway-specific audience, `roles_claim`, `admin_role`, and `user_role` are all configured explicitly. Both role names must be non-empty, and the token claim selected by `roles_claim` must be an array. OIDC authentication-only mode, in which both role names are empty, is unsupported because every authenticated caller can exercise OpenShell Platform Admin authority. The gateway remains protected by HTTPS, but API callers do not use the chart's default client-certificate authentication: `server.tls.clientCaSecretName` is empty so a service cannot be authenticated as an OpenShell mTLS operator and bypass workspace membership.
+
+Each consuming service receives short-lived, audience-bound OIDC tokens with a stable, unique `sub` claim and only the configured user role. The sandbox lifecycle controller adds that subject as a user of only the workspaces assigned to the service. A consumer does not receive the configured admin role, cannot manage its own role or membership, and cannot use another subject's membership. The trusted sandbox lifecycle controller uses the admin role to create workspaces and manage membership. OpenShell v0.1.4 does not provide a narrower workspace-provisioning automation role, so that controller is part of the gateway's trusted computing base until the scoped automation capability below is available.
+
+OpenShell v0.1.4 does not accept OpenShift ServiceAccount tokens as ordinary gateway API credentials. Its Kubernetes `TokenReview` paths authenticate sandbox supervisors and gateway peers for their dedicated RPCs, not consuming services. The product must therefore provide a qualified OIDC issuer or token broker that authenticates the calling OpenShift workload and issues a token with the required audience, subject, and array-valued role claim. Shared client secrets and long-lived bearer tokens are not acceptable substitutes. If no supported workload-identity integration can issue those tokens, this deployment requires new OpenShell API-caller `TokenReview` and identity-to-role mapping support before it is supportable.
+
+Each consuming service receives at least one dedicated workspace. A service may receive additional workspaces when separate isolation, credential, quota, or lifecycle boundaries are required. Short-lived service operations may receive ephemeral workspaces when they require a namespace boundary of their own. Disabling one consumer must not remove the gateway or another consumer's workspaces.
+
+The gateway is reachable only on the cluster network. It has no user-facing Route, Ingress, or externally attached `GRPCRoute`. Direct customer CLI access is unsupported. An unauthenticated or plaintext gateway is not permitted, even when a NetworkPolicy limits reachability.
+
+### Durable identity, key material, and recovery
+
+The infrastructure operator renders the OpenShell chart as templates. It does not execute Helm hooks and must not depend on Helm `lookup` to retain generated values. During initial provisioning, it creates the credential KEK Secret and the sandbox JWT signing Secret once, then configures the chart to reference them through `server.credentialStorage.existingSecret` and `server.sandboxJwt.signingSecretName`. Reconciliation, re-rendering, upgrade, rollback, and restart of the infrastructure operator reuse the existing Secret data and must not silently regenerate or overwrite it. After the gateway has been initialized, a missing or malformed Secret is a degraded recovery condition, not permission to create a new identity or key.
+
+The infrastructure operator also owns the cert-manager Issuer and Certificate resources needed for the gateway's server and client PKI and configures OpenShell to use the resulting Secrets. It does not depend on OpenShell's `certgen` hook. Cert-manager may renew leaf certificates according to the product's certificate policy, but ordinary infrastructure-operator reconciliation must not replace CA or trust material. KEK, JWT-signing-key, or CA rotation is an explicit operation initiated by a platform administrator and executed through a qualified migration procedure; it is not a side effect of reconciliation. KEK rotation must preserve access to existing encrypted credentials, JWT rotation must define whether outstanding sandbox tokens remain valid or are deliberately invalidated, and PKI rotation must preserve the required trust transition.
+
+The gateway database, credential KEK, JWT signing key, PKI and trust material, stable gateway identifier, and the configuration needed to bind them form one recovery set. Backup captures a mutually consistent set or uses a documented consistency protocol. Restore makes the complete set available and validates it before the gateway becomes ready or accepts sandbox operations. A partial restore, a database and KEK mismatch, untrusted PKI, or missing signing material fails closed and reports a degraded condition. Recovery must not make encrypted credentials permanently unreadable, silently change the gateway identity, or unintentionally trust or invalidate active sandboxes.
+
+### Transitional gateway interceptor
+
+Gateway-native enforcement of platform-administrator-controlled sandbox profiles is preferred because it avoids adding a network dependency to every governed write. Until that capability is available, a supported deployment may use an external OpenShell gateway interceptor only as a transitional enforcement mechanism. The infrastructure operator owns and reconciles that interceptor with the gateway and provides:
+
+- Authenticated TLS between the gateway and interceptor, a narrowly scoped gateway audience, and protected trust material.
+- An availability topology, disruption budget, placement, and capacity suitable for a fail-closed dependency shared by every consumer.
+- Startup ordering that makes the interceptor ready before the gateway, and readiness conditions that prevent the gateway from reporting Available when its required interceptor cannot be described or authenticated.
+- `fail_closed` behavior, an `allowlist` or `exact` binding policy, bounded request timeouts, and bindings for every operation that can establish or weaken the protected sandbox profile.
+- Metrics, alerts, logs, upgrade sequencing, rollback, and explicit consumer-facing degraded conditions.
+
+An interceptor outage after gateway startup rejects governed mutations and new sandbox creation; it never permits a bypass. Existing sandboxes may continue only while they do not require a protected mutation. The infrastructure operator reports the internal sandbox service as degraded until the interceptor recovers. Adding, removing, or changing interceptor registration or bindings requires a coordinated gateway restart.
+
 ### Observability and qualification
 
 The gateway and sandbox lifecycle controller record gateway API requests, sandbox lifecycle events, effective policy revisions, denied access, credential-provider use, resource consumption, and cleanup results. The infrastructure operator reconciles the telemetry collection and retention configuration. Logs must include service and operation correlation identifiers without exposing credentials or sensitive payloads.
@@ -383,99 +484,6 @@ Qualification includes:
 - Controlled KEK, JWT signing key, and PKI rotation, including credential migration, the documented disposition of outstanding sandbox tokens, trust transition, interruption behavior, and rollback.
 
 Passing these tests validates the supported configuration; it does not establish that all possible untrusted code is safe.
-
-## Open Questions
-
-- Which OpenShift AI infrastructure operator owns the gateway module, and is the sandbox lifecycle controller packaged in that operator or deployed as a separate workload?
-- Which platform-supported OIDC issuer or token broker authenticates OpenShift workloads and issues short-lived tokens with the required gateway audience, stable subject, and array-valued role claim?
-- Outside EvalHub's per-evaluation workspaces, does each initial consumer require one workspace or separate managed workspaces for distinct workload classes?
-- What maximum sandbox lifetime, concurrency, quotas, and cleanup service-level objectives apply to each initial consumer?
-- Which persistence backend, backup policy, and high-availability topology are required for the gateway?
-- Which OpenShell, Red Hat build of Agent Sandbox Operator, Agent Sandbox API/controller, and OpenShift sandboxed containers Operator versions are supportable on each target OpenShift release?
-- Which Kata `RuntimeClass` names and node configurations are supported, and how does the infrastructure operator report their availability without assuming ownership of the OpenShift sandboxed containers installation?
-- Which supported admission, RBAC-provisioning, and authoritative ownership-registry implementations enforce the managed-namespace boundary?
-- How does the provisioning handshake supply OpenShift namespace allocation metadata without granting the gateway cluster-wide Namespace read, list, or watch access?
-- What is the minimal qualified split between cluster-scoped permissions and per-workspace RoleBindings for each supported OpenShell release?
-- Which OpenShell release and configuration API provide namespace templates, protected pod-placement defaults, and the required provisioning sequence?
-- Which namespace templates are shipped initially, and which resource and scheduling defaults distinguish their supported workload classes?
-- Can `eval-sandbox-broker` faithfully translate the Kubernetes API and streaming semantics required by each proposed EvalHub provider into OpenShell sandbox operations?
-- Can workspace creation, membership, credential setup, and deletion meet EvalHub's concurrency and dispatch-latency requirements without giving EvalHub Platform Admin authority?
-- Which use cases are committed for the first release, and at what maturity: EvalHub, Navigator, red teaming, data access, or short-lived demonstrations?
-- What isolation level is required for workloads whose threat model exceeds container and kernel policy boundaries, and should those workloads use a microVM or a different runtime?
-
-## Alternatives
-
-### One OpenShell gateway for the entire cluster
-
-This minimizes gateway deployments, but combines customer and product administration, policy, credentials, upgrades, availability, and audit data in one security domain. A platform administrator could affect customer agents, and customer gateway administrators could affect product services. This alternative is rejected.
-
-### One product-managed gateway per consuming service
-
-This gives each service an independent failure and administration boundary. It also duplicates packaging, state, upgrades, credentials, observability, and security qualification, increasing the chance that services ship inconsistent configurations. Use a separate gateway only when a consumer's threat model, availability, scale, or release lifecycle cannot satisfy the shared internal contract.
-
-### Operator-managed workspace namespaces
-
-OpenShell `operator` workspace mode maps workspaces to namespaces provisioned outside the gateway. The sandbox lifecycle controller can create each namespace, wait for OpenShift security allocation, apply the same namespace template, `ResourceQuota`, `LimitRange`, NetworkPolicies, storage policy, and scheduling defaults required by this decision, and only then add the namespace to OpenShell's allowlist. Workspace deletion removes gateway state but never deletes the Kubernetes namespace; the sandbox lifecycle controller removes it after sandbox cleanup. This does not require a platform administrator in the high-churn path, but it adds a lifecycle controller and a coordination protocol between that controller and OpenShell.
-
-Properly partitioned, `operator` mode materially reduces the gateway's blast radius: it removes namespace create and delete, cluster-wide Secret mutation, and ServiceAccount creation from the gateway and limits workspace permissions to namespaces deliberately enrolled by the platform. Merely setting `workspace_mode: operator` is not sufficient in OpenShell v0.1.4, however. The default gateway `ClusterRoleBinding` still grants Sandbox, Pod, Service, and NetworkPolicy permissions cluster-wide. A supported operator-mode deployment must disable that binding for namespaced resources, retain only qualified cluster-scoped reads and `TokenReview`, and install the `openshell-workspace` RoleBinding plus any additional qualified namespaced rules required by the selected release in each enrolled namespace.
-
-Managed mode remains preferred because it keeps namespace and workspace lifecycle in one control plane. `Operator` mode is the required fallback when managed mode cannot satisfy the split-RBAC, namespace-read, ownership, admission, template-ordering, or qualification requirements in this ADR. The fallback uses the same templates and security baseline, so choosing it changes lifecycle ownership rather than weakening sandbox policy or quota enforcement.
-
-### Let each service run Kubernetes Jobs directly
-
-Kubernetes Jobs provide scheduling and basic pod isolation but do not by themselves supply OpenShell's consistent sandbox lifecycle, process and filesystem controls, application-layer egress policy, or endpoint-bound credential delivery. Services would have to design and qualify these controls independently. Direct Jobs remain valid for trusted workloads that do not require the sandbox contract.
-
-### Keep EvalHub's independent namespace and Kubernetes broker control plane
-
-This preserves the proposed `SandboxedEvaluation` reconciler that creates an ephemeral namespace and lets `eval-sandbox-broker` create child pods with a namespace-scoped Kubernetes credential. It avoids translating Kubernetes operations into OpenShell operations, but duplicates lifecycle, policy, credential, image-admission, observability, and qualification logic. It also leaves a Kubernetes API credential in the trusted broker adjacent to adversarial workloads. This alternative is rejected as the default architecture. A provider-specific legacy path may be considered only when a proof of concept shows that required Kubernetes semantics cannot be represented through OpenShell and a separate security review accepts the additional control plane.
-
-### Use customer-managed gateways for product internals
-
-This avoids a product-owned deployment, but makes core service behavior depend on customer configuration and lifecycle. It also forces customers to grant product services authority inside a customer security domain. This alternative is rejected for supported out-of-the-box service behavior.
-
-## Security and Privacy Considerations
-
-The internal gateway is a high-value control plane because it can create workloads, deliver policy, and broker credentials. It must run in a dedicated namespace with least-privilege RBAC, restrictive ingress and egress, encrypted transport, OIDC RBAC for API callers, protected signing material, and auditable administrative changes. Its managed-mode Kubernetes identity has cluster-scoped namespace lifecycle authority, so admission control reconciled by the infrastructure operator and driven by sandbox lifecycle controller ownership records constrains namespace creation and deletion outside the gateway's trust boundary. Namespaced Kubernetes access is granted separately through a RoleBinding only in namespaces authoritatively registered to this gateway, and namespace allocation data is delivered without an unrestricted cluster-wide Namespace read. The OIDC admin role is itself a platform-wide authority and is restricted to the sandbox lifecycle controller; consuming services receive only the user role and explicit workspace membership.
-
-Sharing the gateway creates a common failure and compromise domain. Workspace authorization and Kubernetes namespace controls reduce cross-service access, but they do not make gateway compromise harmless. The gateway, its persistence layer, the infrastructure operator, the sandbox lifecycle controller, the Agent Sandbox Operator, the Agent Sandbox controller, the OpenShift sandboxed containers Operator and runtime, and the cluster control plane remain trusted components.
-
-For EvalHub, the `SandboxedEvaluation` controller and compatibility broker are trusted control-plane components. They run outside the untrusted agent boundary, authenticate as a narrowly scoped service identity, and never pass gateway or Kubernetes control-plane credentials to the agent. Requests from the agent are untrusted input: the broker reconstructs an approved OpenShell operation rather than forwarding arbitrary Pod specifications or gateway requests.
-
-OpenShell policy is one layer in a defense-in-depth design. Security claims must reflect the actual compute runtime and OpenShift configuration. Container isolation shares the node kernel; a kernel, runtime, CNI, gateway, supervisor, infrastructure operator, sandbox lifecycle controller, Agent Sandbox Operator, Agent Sandbox controller, or OpenShift sandboxed containers Operator vulnerability may cross the intended boundary. Higher-risk workloads require a stronger runtime or a separate decision.
-
-Sandbox inputs and outputs can contain customer data. Consumers must document data flow, retention, geographic and regulatory constraints, and log redaction. Platform telemetry must not capture credentials, raw prompts, datasets, source files, or model outputs unless the consuming service explicitly requires and governs that data.
-
-## Risks
-
-- A gateway, infrastructure operator, sandbox lifecycle controller, Agent Sandbox Operator, Agent Sandbox controller, or OpenShift sandboxed containers Operator compromise can affect every internal consumer.
-- An overbroad ClusterRoleBinding, a stale or incorrectly provisioned workspace RoleBinding, or missing namespace admission could let a compromised gateway read or mutate customer resources or delete namespaces outside its ownership boundary.
-- A gateway outage or incompatible upgrade can interrupt multiple service workflows.
-- An incompatible Agent Sandbox Operator, CRD, or Agent Sandbox controller upgrade can disrupt both the internal gateway and customer-managed gateways that share the cluster-scoped API.
-- An OpenShift sandboxed containers Operator or Kata runtime upgrade can interrupt Kata-profile workloads even when the OpenShell and Agent Sandbox layers are healthy.
-- A required fail-closed interceptor outage can block sandbox creation and protected mutations for every internal consumer.
-- An OIDC issuer, token-broker, discovery, or JWKS outage can block authentication and therefore new sandbox operations for every internal consumer.
-- A managed-namespace admission controller, RBAC provisioner, ownership registry, or namespace-template outage blocks new workspace and sandbox operations because the system fails closed.
-- Resource exhaustion in one workspace can affect others unless quotas and admission controls are effective.
-- OpenShell's Kubernetes deployment path is evolving; upstream changes may require product integration changes or delay support.
-- OpenShell is pre-1.0, so the platform integration and EvalHub adapter may require coordinated changes between releases.
-- Kubernetes APIs expected by an evaluation framework may not map faithfully to OpenShell sandbox operations; unsupported semantics can block onboarding that provider.
-- Per-evaluation workspace and namespace churn can limit EvalHub dispatch throughput or overload gateway and Kubernetes control-plane reconciliation.
-- Incorrect policy profiles can either block required work or permit data exfiltration.
-- Failed cleanup can leave workloads, volumes, credentials, or data behind.
-- Consumers may gradually treat the internal gateway as a general agent platform. The onboarding contract and lifecycle limits must prevent that scope expansion.
-
-## Stakeholder Impacts
-
-| Group | Key Contacts | Date | Impacted? |
-| --- | --- | --- | --- |
-| OpenShift AI platform administrators / infrastructure operator / sandbox lifecycle controller | Ann Marie Fred, Roland Huß | 2026-10-16 | Yes |
-| OpenShift sandboxed containers / Red Hat build of Agent Sandbox Operator | TBD | 2026-10-16 | Yes |
-| EvalHub | Marius Danciu, William | 2026-10-16 | Yes |
-| Adversarial evaluation / red teaming | sbatters | 2026-10-16 | Yes |
-| Navigator | TBD | 2026-10-16 | Yes |
-| Data access / Asago policy | Daniele Zonca, Lindani Phiri | 2026-10-16 | Yes |
-| AutoML / AutoRAG | Lukasz Cmielowski | 2026-10-16 | Potentially |
-| Product security, QE, and documentation | TBD | 2026-10-16 | Yes |
 
 ## References
 
