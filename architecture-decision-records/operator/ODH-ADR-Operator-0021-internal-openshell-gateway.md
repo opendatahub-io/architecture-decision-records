@@ -64,17 +64,19 @@ A single gateway for every user and workload in the cluster was considered and r
 
 This ADR uses the following terms consistently:
 
-- **Platform administrator** means a human who approves integrations, declares the desired templates and policies, initiates administrative operations, and responds to escalations. A platform administrator is not in the automated workspace or sandbox lifecycle path.
-- **OpenShift AI infrastructure operator** means the Kubernetes/OLM-style software operator that installs, upgrades, and reconciles the internal gateway and its supporting components and configuration. It may be an existing OpenShift AI operator or a new module operator; the final packaging owner is an open question.
+- **Platform administrator** means a human who enables the required product operators and runtime infrastructure, approves integrations, declares the desired templates and policies, initiates administrative operations, and responds to escalations. A platform administrator is not in the automated workspace or sandbox lifecycle path.
+- **OpenShift AI infrastructure operator** means the Kubernetes/OLM-style software operator that installs, upgrades, and reconciles the internal gateway, the sandbox lifecycle controller, and their OpenShift AI-owned configuration. It validates—but does not itself own—the Agent Sandbox API/controller and OpenShift sandboxed containers runtime dependencies. It may be an existing OpenShift AI operator or a new module operator; the final packaging owner is an open question.
 - **OpenShift AI sandbox lifecycle controller** means the trusted OpenShift AI runtime controller that calls OpenShell's administrative automation API. It provisions workspaces and membership, coordinates managed-namespace ownership and RBAC readiness, and performs time-to-live and orphan-cleanup reconciliation. The infrastructure operator deploys and reconciles this controller, whether its reconciliation code is packaged in the same operator or in a separate workload.
+- **Red Hat build of Agent Sandbox Operator**, shortened to **Agent Sandbox Operator** after first use, means the OLM operator delivered with OpenShift sandboxed containers that installs and upgrades the Agent Sandbox CRDs, Agent Sandbox controller, sandbox router, extension CRDs, RBAC, and related deployment resources.
 - **Agent Sandbox controller** means the controller from the Kubernetes SIG Apps [Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox) project. It reconciles `agents.x-k8s.io` Sandbox custom resources into sandbox workloads. OpenShell consumes this API as a separate cluster prerequisite; the controller is not part of the OpenShell gateway. It does not provision OpenShell workspaces, manage OpenShell membership, perform the managed-namespace ownership handshake, or own service-operation TTL cleanup.
+- **OpenShift sandboxed containers Operator** means the product operator that installs and maintains the Kata-based runtime infrastructure used when a sandbox selects an approved Kata `RuntimeClass`. It does not install the Agent Sandbox API, reconcile Agent Sandbox custom resources, or manage OpenShell workspaces.
 - **OpenShell gateway** includes OpenShell's API server and Kubernetes compute driver. It is distinct from both OpenShift AI controllers and the Agent Sandbox controller. OpenShell's `operator` workspace mode and Platform Admin role are OpenShell product terms, not references to the OpenShift AI infrastructure operator or a human platform administrator.
 
 Ownership must not be split across consuming services. The infrastructure operator owns:
 
 - The pinned OpenShell release and gateway configuration.
 - The gateway workload and Service; gateway database; credential key-encryption key (KEK); JWT signing key; PKI, certificates, and trust material; stable gateway identity; and their backup or recovery configuration.
-- The qualified Agent Sandbox CRDs and Agent Sandbox controller used by the Kubernetes compute driver.
+- The compatibility requirements and readiness checks for the Agent Sandbox and OpenShift sandboxed containers dependencies used by the Kubernetes compute driver and Kata profiles.
 - Managed-workspace configuration, the reconciliation of platform-administrator-approved namespace templates, and the admission guardrails under which OpenShell creates and removes workspace namespaces.
 - Gateway and workspace RBAC, service identities, NetworkPolicies, quotas, limits, and default sandbox policy.
 - Any external gateway interceptor required to enforce the approved sandbox profiles.
@@ -88,9 +90,11 @@ The sandbox lifecycle controller owns automated runtime reconciliation:
 - Cancellation, time-to-live enforcement, orphan detection, cleanup retries, and cleanup status.
 - The internal service API used when a consuming service must not receive OpenShell administrative authority directly.
 
-The Agent Sandbox CRDs and Agent Sandbox controller are cluster-scoped platform infrastructure, not children of the internal gateway installation. The infrastructure operator installs and reconciles one qualified Agent Sandbox controller deployment and the served CRD versions required by the supported OpenShell release. Customer-managed OpenShell gateways on the same cluster may use this shared API and controller, so disabling or removing the internal gateway must not remove them.
+The Agent Sandbox CRDs and Agent Sandbox controller are cluster-wide platform infrastructure, not children of the internal gateway installation. The Agent Sandbox Operator installs and reconciles one qualified controller deployment and the served CRD versions required by the supported OpenShell release. The OpenShift AI infrastructure operator verifies their presence, version, served APIs, and readiness before making the internal gateway available; it neither creates those resources directly nor removes them with the internal gateway. Customer-managed OpenShell gateways on the same cluster may use the same API and controller.
 
-The product publishes and qualifies an OpenShell-to-Agent-Sandbox compatibility matrix. An upgrade must preserve every API version required by supported gateways on the cluster, upgrade the CRDs and Agent Sandbox controller in the documented order, and verify that controller's readiness before allowing new sandbox operations. The internal gateway is restarted after an in-place Agent Sandbox API upgrade so its Kubernetes driver rediscovers the served API version. The infrastructure operator does not restart customer-managed gateways; their administrators receive the compatible-version requirements and restart instructions as part of the upgrade documentation and status reporting.
+The product publishes and qualifies a compatibility matrix covering OpenShell, the Red Hat build of Agent Sandbox Operator, and the Agent Sandbox API and controller. The Agent Sandbox Operator owns the ordered upgrade of its CRDs and controller, and that upgrade must preserve every API version required by supported gateways on the cluster. The OpenShift AI infrastructure operator observes the dependency version and readiness, blocks incompatible new operations, and restarts the internal gateway after an in-place Agent Sandbox API upgrade so its Kubernetes driver rediscovers the served API version. It does not restart customer-managed gateways; their administrators receive the compatible-version requirements and restart instructions as part of the upgrade documentation and status reporting.
+
+The OpenShift sandboxed containers Operator is a separate dependency for Kata-backed profiles. It installs and maintains the Kata runtime infrastructure from which the approved `RuntimeClass` is obtained. The runtime-profile compatibility matrix covers the supported OpenShift sandboxed containers Operator versions, runtime configuration, and `RuntimeClass` values. The OpenShift AI infrastructure operator discovers and validates that runtime but does not create or reconcile its product resources. Standard-container profiles do not require the Kata runtime. A Kata profile remains unavailable until both the OpenShift sandboxed containers runtime and the selected `RuntimeClass` are ready.
 
 For platform-created sandboxes, the deployment uses OpenShell's Kubernetes compute driver in `managed` workspace mode. OpenShell creates one Kubernetes namespace for each OpenShell workspace and owns that namespace's lifecycle. This keeps namespace provisioning and cleanup automatic for high-churn service operations and avoids making platform administrators provision every workspace namespace manually. On OpenShift, OpenShell leaves the SCC annotations unset, waits for the cluster namespace allocator to assign a unique MCS label, UID range, and supplemental-group range, and only then creates the workspace ServiceAccount and sandbox workloads.
 
@@ -170,11 +174,8 @@ Each consuming service receives at least one dedicated workspace. A service may 
 The gateway is reachable only on the cluster network. It has no user-facing Route, Ingress, or externally attached `GRPCRoute`. Direct customer CLI access is unsupported. An unauthenticated or plaintext gateway is not permitted, even when a NetworkPolicy limits reachability.
 
 ```mermaid
-flowchart LR
+flowchart TB
     PA[Platform administrator]
-    IO[OpenShift AI infrastructure operator]
-    SLC[OpenShift AI sandbox lifecycle controller]
-    ASC[Agent Sandbox controller]
 
     subgraph consumers["OpenShift AI services"]
         EH[EvalHub controller]
@@ -184,10 +185,41 @@ flowchart LR
         OTHER[Approved future service]
     end
 
+    subgraph installation["Product installation and dependency ownership"]
+        IO[OpenShift AI infrastructure operator]
+        ASO[Red Hat build of Agent Sandbox Operator]
+        OSCO[OpenShift sandboxed containers Operator]
+    end
+
+    subgraph integration["OpenShift AI integration layer"]
+        SLC[OpenShift AI sandbox lifecycle controller]
+        GW[Internal OpenShell gateway]
+    end
+
+    subgraph orchestration["Kubernetes sandbox orchestration layer"]
+        NS[Managed workspace namespaces]
+        ASAPI[Agent Sandbox CRDs and served API]
+        ASCR[agents.x-k8s.io Sandbox resources]
+        ASC[Agent Sandbox controller]
+        PODS[Sandbox Pods]
+    end
+
+    subgraph runtime["Workload isolation layer"]
+        CRIO[Default CRI-O runtime]
+        KATA[Approved Kata RuntimeClass and runtime]
+    end
+
     PA -->|declares approved configuration| IO
-    IO -->|reconciles| GW[Internal OpenShell gateway]
+    PA -->|enables| ASO
+    PA -->|enables and configures| OSCO
     IO -->|deploys and reconciles| SLC
-    IO -->|deploys and reconciles| ASC
+    IO -->|deploys and reconciles| GW
+    ASO -->|installs and upgrades| ASAPI
+    ASO -->|installs and upgrades| ASC
+    OSCO -->|provides| KATA
+    IO -. validates compatibility and readiness .-> ASAPI
+    IO -. validates Kata readiness .-> KATA
+
     EH -->|SandboxedEvaluation| SLC
     SLC -->|workspace, membership, and cleanup| GW
     EHB -->|child sandbox operations| GW
@@ -195,20 +227,16 @@ flowchart LR
     RT -->|service identity| GW
     OTHER -->|service identity| GW
 
-    GW -->|Sandbox custom resources| ASC
-    GW --> EHW[Ephemeral EvalHub workspaces and managed namespaces]
-    GW --> NAVW[Navigator workspace and managed namespace]
-    GW --> RTW[Red-team workspace and managed namespace]
-    GW --> OW[Future workspace and managed namespace]
-
-    ASC --> EHS[Short-lived sandboxes]
-    ASC --> NAVS[Short-lived sandboxes]
-    ASC --> RTS[Short-lived sandboxes]
-    ASC --> OS[Short-lived sandboxes]
-    EHW -. contains .-> EHS
-    NAVW -. contains .-> NAVS
-    RTW -. contains .-> RTS
-    OW -. contains .-> OS
+    GW -->|creates and deletes| NS
+    SLC -->|ownership, templates, and RBAC readiness| NS
+    GW -->|creates| ASCR
+    ASAPI -. defines .-> ASCR
+    ASCR -->|observed by| ASC
+    ASC -->|reconciles| PODS
+    NS -. contains .-> ASCR
+    NS -. contains .-> PODS
+    PODS -->|standard profile| CRIO
+    PODS -->|Kata profile| KATA
 ```
 
 ### Required OpenShell changes
@@ -293,13 +321,13 @@ Sandbox workloads run under the most restrictive supported OpenShift security co
 The same gateway manages both regular-container and Kata-isolated sandboxes through its single Kubernetes compute driver. Platform administrators approve, and the infrastructure operator reconciles, two runtime profiles:
 
 - `standard` omits `runtimeClassName` and uses the cluster's default container runtime.
-- `kata` sets the approved Kata `RuntimeClass` on the sandbox workload Pod.
+- `kata` sets a platform-administrator-approved Kata `RuntimeClass`, supplied by the OpenShift sandboxed containers installation, on the sandbox workload Pod.
 
 The gateway-wide `default_runtime_class_name` remains unset. The approved integration configuration assigns a runtime profile to each service and supplies the Kata value through an infrastructure-operator-managed sandbox template or typed API request. Callers and sandboxed processes must not be able to weaken or replace that assignment.
 
 OpenShell driver configuration is disabled for callers by default. If a reusable template requires Kubernetes driver configuration, a platform administrator may enable `allow_driver_config` only together with resource admission, and the infrastructure operator reconciles that setting. Every selectable Kata `RuntimeClass` must carry the platform-administrator-approved labels. A fail-closed gateway interceptor on `CreateSandbox`, or an equivalent server-side control, validates the authenticated service, workspace, selected template, and effective `runtimeClassName` before creation.
 
-A workload assigned the `kata` profile fails closed when its approved `RuntimeClass` is absent, unapproved, or unavailable. It must not fall back to `standard`. The service reports the operation as unavailable or failed according to its integration contract. A separate gateway is required only when a consumer needs a distinct compromise, availability, upgrade, or administrative boundary that workspace and runtime-profile controls cannot provide.
+A workload assigned the `kata` profile fails closed when the OpenShift sandboxed containers runtime or its approved `RuntimeClass` is absent, unapproved, or unavailable. It must not fall back to `standard`. The service reports the operation as unavailable or failed according to its integration contract. The OpenShift sandboxed containers Operator owns runtime installation and health; the OpenShift AI infrastructure operator only validates that the required runtime is ready for the profile. A separate gateway is required only when a consumer needs a distinct compromise, availability, upgrade, or administrative boundary that workspace and runtime-profile controls cannot provide.
 
 ### Credentials and data
 
@@ -311,7 +339,7 @@ Inputs copied into a sandbox are treated as disclosure to untrusted code. The co
 
 The internal gateway is a shared dependency inside the OpenShift AI trust boundary. Its readiness is reported independently from the readiness of each consuming service. Gateway availability requires the qualified Agent Sandbox API, the Agent Sandbox controller, the sandbox lifecycle controller, and every configured fail-closed interceptor to be ready. A gateway outage must not make unrelated OpenShift AI components unavailable. Consumers fail closed when sandbox creation or policy delivery is unavailable and report a service-specific degraded condition.
 
-The infrastructure operator performs version-skew checks before upgrading the Agent Sandbox CRDs, Agent Sandbox controller, OpenShell gateway, sandbox lifecycle controller, supervisor, sandbox images, interceptor, or integration contract. Existing sandboxes may finish on the previous supported version when safe; otherwise the sandbox lifecycle controller terminates them and the consuming service reports or retries the interrupted operation according to its own contract. An Agent Sandbox API upgrade includes a controlled restart of the internal gateway after Agent Sandbox controller readiness is restored. Rollback must preserve the complete recovery set, including the gateway database, KEK, JWT signing key, PKI and trust material, and stable gateway identifier. If rollback deliberately invalidates outstanding sandboxes or credentials, that effect must be explicit and reported to consumers.
+The infrastructure operator performs version-skew checks before upgrading the OpenShell gateway, sandbox lifecycle controller, supervisor, sandbox images, interceptor, or integration contract. It also performs those checks whenever it observes an Agent Sandbox Operator upgrade, a change to the served Agent Sandbox APIs, or a change to the approved Kata runtime. The Agent Sandbox Operator owns Agent Sandbox CRD and controller upgrades, while the OpenShift sandboxed containers Operator owns Kata runtime upgrades. Existing sandboxes may finish on the previous supported version when safe; otherwise the sandbox lifecycle controller terminates them and the consuming service reports or retries the interrupted operation according to its own contract. An Agent Sandbox API upgrade includes a controlled restart of the internal gateway after Agent Sandbox controller readiness is restored. A Kata runtime upgrade follows the OpenShift sandboxed containers lifecycle and keeps affected Kata profiles unavailable until the runtime is qualified and ready. Rollback of OpenShift AI-owned components must preserve the complete recovery set, including the gateway database, KEK, JWT signing key, PKI and trust material, and stable gateway identifier. If any coordinated rollback deliberately invalidates outstanding sandboxes or credentials, that effect must be explicit and reported to consumers.
 
 Disabling a consumer prevents new sandbox creation for its identity. Its sandboxes, templates, providers, services, policies, settings, and other workspace-scoped resources must be removed before deleting the workspace. OpenShell then removes the managed Kubernetes namespace. Namespace deletion is destructive, so any retained output must be exported before workspace deletion. Removing the internal gateway is an explicit action initiated by a platform administrator. The infrastructure operator coordinates removal, while the sandbox lifecycle controller first blocks new work, drains or terminates remaining sandboxes, and removes workspaces through this lifecycle. The infrastructure operator then removes gateway state according to the product's retention policy.
 
@@ -329,11 +357,11 @@ Qualification includes:
 - Network, filesystem, process, privilege-escalation, and OpenShift API escape attempts from a sandbox.
 - Credential exfiltration attempts to destinations outside the credential binding.
 - Policy mutation and policy-bypass attempts from both the caller and sandbox.
-- Sandbox timeout, cancellation, caller crash, gateway restart, restart of the infrastructure operator, sandbox lifecycle controller restart, Agent Sandbox controller restart, and partial-cleanup scenarios.
+- Sandbox timeout, cancellation, caller crash, gateway restart, restart of the infrastructure operator, sandbox lifecycle controller restart, Agent Sandbox Operator reconciliation, Agent Sandbox controller restart, and partial-cleanup scenarios.
 - Resource exhaustion and noisy-neighbor tests across service workspaces.
 - Adversarial agent and red-team workloads representative of supported consumers.
 - EvalHub compatibility tests for every supported broker operation, including streaming interruption and cancellation.
-- EvalHub controller, broker, OpenShell gateway, sandbox lifecycle controller, infrastructure operator, and Agent Sandbox controller failure during workspace creation and deletion.
+- EvalHub controller, broker, OpenShell gateway, sandbox lifecycle controller, infrastructure operator, Agent Sandbox Operator, Agent Sandbox controller, and OpenShift sandboxed containers Operator failure during workspace creation and deletion.
 - Managed-workspace churn, orphan recovery, and cleanup at the supported EvalHub concurrency limit.
 - Rendered-RBAC and effective-permission tests verify that no cluster-wide binding grants the gateway namespaced Sandbox, Pod, Event, Service, Secret, ServiceAccount, NetworkPolicy, or persistent-storage access.
 - Direct Kubernetes API attempts using the gateway ServiceAccount credential to get, list, watch, create, delete, or mutate namespaced resources in customer namespaces, another gateway's namespaces, and unregistered namespaces are denied even when they bypass the OpenShell API.
@@ -345,7 +373,8 @@ Qualification includes:
 - Verification that namespace resource defaults are enforced and every OpenShell-created workload and supervisor Pod retains the required node placement and tolerations, including when a caller requests conflicting scheduling configuration.
 - Managed-namespace admission controller outage and recovery, verifying that namespace lifecycle and sandbox operations fail closed without leaving an admitted but unguarded workload.
 - Qualification of the `operator`-mode fallback verifies that quotas and namespace policy precede allowlist enrollment, workspace permissions are bound only in enrolled namespaces, the gateway cannot delete namespaces, and the same cross-namespace access tests pass.
-- Agent Sandbox CRD and Agent Sandbox controller installation, absence, upgrade, rollback, served-version changes, Agent Sandbox controller outage, and the required internal-gateway restart.
+- Agent Sandbox Operator installation, absence, reconciliation, upgrade, and rollback; Agent Sandbox CRD served-version changes; Agent Sandbox controller outage; and the required internal-gateway restart.
+- OpenShift sandboxed containers Operator installation, absence, reconciliation, upgrade, and rollback; approved Kata `RuntimeClass` creation and removal; and Kata runtime readiness loss and recovery.
 - Coexistence with a customer-managed gateway using every Agent Sandbox API version in the published compatibility matrix.
 - Interceptor unavailability during gateway startup, timeout or failure after startup, replica failover, upgrade, and recovery, verifying that governed writes fail closed and the gateway and consumers report accurate readiness.
 - Repeated template-only rendering, reconciliation, restart of the infrastructure operator, gateway upgrade, and rollback, verifying that the KEK, JWT signing key, CA and trust material, and gateway identifier are retained and that stored credentials remain decryptable.
@@ -362,8 +391,8 @@ Passing these tests validates the supported configuration; it does not establish
 - Outside EvalHub's per-evaluation workspaces, does each initial consumer require one workspace or separate managed workspaces for distinct workload classes?
 - What maximum sandbox lifetime, concurrency, quotas, and cleanup service-level objectives apply to each initial consumer?
 - Which persistence backend, backup policy, and high-availability topology are required for the gateway?
-- Which OpenShell and Agent Sandbox versions are supportable on each target OpenShift release?
-- Which Kata `RuntimeClass` names and node configurations are supported, and how does installation readiness report their availability?
+- Which OpenShell, Red Hat build of Agent Sandbox Operator, Agent Sandbox API/controller, and OpenShift sandboxed containers Operator versions are supportable on each target OpenShift release?
+- Which Kata `RuntimeClass` names and node configurations are supported, and how does the infrastructure operator report their availability without assuming ownership of the OpenShift sandboxed containers installation?
 - Which supported admission, RBAC-provisioning, and authoritative ownership-registry implementations enforce the managed-namespace boundary?
 - How does the provisioning handshake supply OpenShift namespace allocation metadata without granting the gateway cluster-wide Namespace read, list, or watch access?
 - What is the minimal qualified split between cluster-scoped permissions and per-workspace RoleBindings for each supported OpenShell release?
@@ -408,20 +437,21 @@ This avoids a product-owned deployment, but makes core service behavior depend o
 
 The internal gateway is a high-value control plane because it can create workloads, deliver policy, and broker credentials. It must run in a dedicated namespace with least-privilege RBAC, restrictive ingress and egress, encrypted transport, OIDC RBAC for API callers, protected signing material, and auditable administrative changes. Its managed-mode Kubernetes identity has cluster-scoped namespace lifecycle authority, so admission control reconciled by the infrastructure operator and driven by sandbox lifecycle controller ownership records constrains namespace creation and deletion outside the gateway's trust boundary. Namespaced Kubernetes access is granted separately through a RoleBinding only in namespaces authoritatively registered to this gateway, and namespace allocation data is delivered without an unrestricted cluster-wide Namespace read. The OIDC admin role is itself a platform-wide authority and is restricted to the sandbox lifecycle controller; consuming services receive only the user role and explicit workspace membership.
 
-Sharing the gateway creates a common failure and compromise domain. Workspace authorization and Kubernetes namespace controls reduce cross-service access, but they do not make gateway compromise harmless. The gateway, its persistence layer, the infrastructure operator, the sandbox lifecycle controller, the Agent Sandbox controller, and the cluster control plane remain trusted components.
+Sharing the gateway creates a common failure and compromise domain. Workspace authorization and Kubernetes namespace controls reduce cross-service access, but they do not make gateway compromise harmless. The gateway, its persistence layer, the infrastructure operator, the sandbox lifecycle controller, the Agent Sandbox Operator, the Agent Sandbox controller, the OpenShift sandboxed containers Operator and runtime, and the cluster control plane remain trusted components.
 
 For EvalHub, the `SandboxedEvaluation` controller and compatibility broker are trusted control-plane components. They run outside the untrusted agent boundary, authenticate as a narrowly scoped service identity, and never pass gateway or Kubernetes control-plane credentials to the agent. Requests from the agent are untrusted input: the broker reconstructs an approved OpenShell operation rather than forwarding arbitrary Pod specifications or gateway requests.
 
-OpenShell policy is one layer in a defense-in-depth design. Security claims must reflect the actual compute runtime and OpenShift configuration. Container isolation shares the node kernel; a kernel, runtime, CNI, gateway, supervisor, infrastructure operator, sandbox lifecycle controller, or Agent Sandbox controller vulnerability may cross the intended boundary. Higher-risk workloads require a stronger runtime or a separate decision.
+OpenShell policy is one layer in a defense-in-depth design. Security claims must reflect the actual compute runtime and OpenShift configuration. Container isolation shares the node kernel; a kernel, runtime, CNI, gateway, supervisor, infrastructure operator, sandbox lifecycle controller, Agent Sandbox Operator, Agent Sandbox controller, or OpenShift sandboxed containers Operator vulnerability may cross the intended boundary. Higher-risk workloads require a stronger runtime or a separate decision.
 
 Sandbox inputs and outputs can contain customer data. Consumers must document data flow, retention, geographic and regulatory constraints, and log redaction. Platform telemetry must not capture credentials, raw prompts, datasets, source files, or model outputs unless the consuming service explicitly requires and governs that data.
 
 ## Risks
 
-- A gateway, infrastructure operator, sandbox lifecycle controller, or Agent Sandbox controller compromise can affect every internal consumer.
+- A gateway, infrastructure operator, sandbox lifecycle controller, Agent Sandbox Operator, Agent Sandbox controller, or OpenShift sandboxed containers Operator compromise can affect every internal consumer.
 - An overbroad ClusterRoleBinding, a stale or incorrectly provisioned workspace RoleBinding, or missing namespace admission could let a compromised gateway read or mutate customer resources or delete namespaces outside its ownership boundary.
 - A gateway outage or incompatible upgrade can interrupt multiple service workflows.
-- An incompatible Agent Sandbox CRD or Agent Sandbox controller upgrade can disrupt both the internal gateway and customer-managed gateways that share the cluster-scoped API.
+- An incompatible Agent Sandbox Operator, CRD, or Agent Sandbox controller upgrade can disrupt both the internal gateway and customer-managed gateways that share the cluster-scoped API.
+- An OpenShift sandboxed containers Operator or Kata runtime upgrade can interrupt Kata-profile workloads even when the OpenShell and Agent Sandbox layers are healthy.
 - A required fail-closed interceptor outage can block sandbox creation and protected mutations for every internal consumer.
 - An OIDC issuer, token-broker, discovery, or JWKS outage can block authentication and therefore new sandbox operations for every internal consumer.
 - A managed-namespace admission controller, RBAC provisioner, ownership registry, or namespace-template outage blocks new workspace and sandbox operations because the system fails closed.
@@ -439,6 +469,7 @@ Sandbox inputs and outputs can contain customer data. Consumers must document da
 | Group | Key Contacts | Date | Impacted? |
 | --- | --- | --- | --- |
 | OpenShift AI platform administrators / infrastructure operator / sandbox lifecycle controller | Ann Marie Fred, Roland Huß | 2026-10-16 | Yes |
+| OpenShift sandboxed containers / Red Hat build of Agent Sandbox Operator | TBD | 2026-10-16 | Yes |
 | EvalHub | Marius Danciu, William | 2026-10-16 | Yes |
 | Adversarial evaluation / red teaming | sbatters | 2026-10-16 | Yes |
 | Navigator | TBD | 2026-10-16 | Yes |
@@ -449,6 +480,8 @@ Sandbox inputs and outputs can contain customer data. Consumers must document da
 ## References
 
 - [Kubernetes SIG Apps Agent Sandbox](https://github.com/kubernetes-sigs/agent-sandbox)
+- [Installing the Red Hat build of Agent Sandbox Operator](https://docs.redhat.com/en/documentation/openshift_sandboxed_containers/1.12/html/deploying_red_hat_build_of_agent_sandbox/install-agent-sandbox-overview_agent-sandbox)
+- [Red Hat build of Agent Sandbox integration with OpenShift sandboxed containers](https://docs.redhat.com/en/documentation/openshift_sandboxed_containers/1.13/html/deploying_red_hat_build_of_agent_sandbox/discover-agent-sandbox_agent-sandbox)
 - [OpenShell v0.1.4 architecture](https://github.com/NVIDIA/OpenShell/blob/v0.1.4/rfc/0001-core-architecture/README.md)
 - [OpenShell v0.1.4 gateway architecture](https://github.com/NVIDIA/OpenShell/blob/v0.1.4/architecture/gateway.md)
 - [OpenShell v0.1.4 Kubernetes driver behavior](https://github.com/NVIDIA/OpenShell/blob/v0.1.4/crates/openshell-driver-kubernetes/README.md)
