@@ -316,13 +316,100 @@ Before TP release, owners must demonstrate:
   without polling admission in the submit request.
 - Admission/policy enforcement for workload-authority fields, including ServiceAccount selection and Secret mounts.
 
+### Additional requirements and options for Architecture Board review
+
+The following requirements and design options extend the TP architecture described above. The recommendations are
+proposals for Architecture Board review, not approved decisions.
+
+#### DSC structure and backend enablement
+
+**Requirement:** The DSC must represent TaaS and its backend components through the platform-managed lifecycle, with
+clear enablement and status boundaries and without making the TaaS API operator own Ray or KFT. The current DSC exposes
+Ray and KFT as separate top-level components. The options below define how to represent TaaS and its backends. The
+proposed `training.api`, `training.ray`, and `training.kft` names are conceptual until platform owners confirm the schema.
+
+1. **Add a standalone TaaS entry; keep Ray and KFT unchanged.** Add a new DSC entry for the Training as a Service API
+   operator. Continue enabling Ray and KFT through their existing DSC entries. TaaS does not trigger backend enablement;
+   administrators must enable a backend separately. This is the least disruptive option, but does not express a single
+   training capability or provide backend dependency enablement.
+2. **Add a TaaS entry with a `backend` subelement.** Keep the existing Ray and KFT entries and add a TaaS DSC entry with
+   `backend: Ray`, `backend: KFT`, or both. The platform operator enables the corresponding existing backend components
+   from this selection. This offers a compact user choice, but creates two configuration paths for the same components
+   unless precedence between `TrainingService.backend` and the standalone Ray/KFT entries is defined. It also couples
+   TaaS selection to backend activation.
+3. **Restructure DSC under a `training` item with `api`, `ray`, and `kft` subelements.** Replace the standalone Ray and
+   KFT DSC entries with child components under one training item, alongside the TaaS API operator. The platform operator
+   maps each child to its own component lifecycle; TaaS does not own or reconcile Ray or KFT. This gives administrators
+   one coherent training capability while preserving separate API/backend ownership and explicit control over each
+   child. It also gives each component a clear status and enablement boundary.
+
+**Recommendation: option 3.** It makes the DSC hierarchy reflect the training capability without making the TaaS API
+operator responsible for backend lifecycle, and avoids the duplicate sources of truth that option 2 would introduce. It
+makes API and backend selections explicit while allowing platform policy to define valid combinations; for this TP, Ray
+remains a critical TaaS dependency and KFT remains unsupported by the TaaS API. This recommendation depends on the
+platform team defining a safe migration from the current Ray/KFT top-level entries, including upgrade behavior,
+compatibility or conversion for existing DSCs, and precedence for administrator disables. The restructuring itself must
+not silently disable existing workloads or remove shared backend components. This is not a decision to add KFT backend
+support to the TaaS 3.7 TP API; KFT support remains separately scoped and the TP API's KFT operation remains unsupported
+unless that scope changes.
+
+#### Custom training code submission
+
+**Requirement:** The Training API should support submitting user-provided training code alongside predefined
+algorithms, with an identifiable entrypoint and parameters. RHAIRFE-3751 requests this custom-code path. The following
+options are for Architecture Board review; this extends the Training API workflow and does not prescribe a new service
+or backend. Supported frameworks and runtime configurations remain subject to refinement.
+
+1. **Reference a packaged code artifact (recommended).** Accept a project-authorized PVC path or S3-compatible object
+   URI, together with an entrypoint and parameters. For S3, the request also references the approved storage Connection;
+   for PVC, the workload mounts the authorized claim. Pin the artifact with an immutable object version or digest where
+   supported. This aligns code, model, and dataset inputs with reference-based storage, and avoids putting source code
+   in the REST body. The Board must confirm supported URI forms, retrieval/mount behavior, and how the workload is
+   authorized to read the artifact.
+2. **Reference a user-built container image.** Accept an image reference, command/entrypoint, and parameters; prefer an
+   immutable image digest. The image can package code and dependencies together, but requires image build/publish
+   workflows, registry access policy, image validation, and an explicit supported runtime contract.
+3. **Inline source in the REST request (last resort; not recommended).** Add a source/function field, entrypoint, and
+   parameters to the submission payload. This gives users a single-request workflow, but requires strict request-size
+   limits and decisions about supported language/function contracts, dependencies, source validation, versioning, and
+   reproducibility. Source and credentials must not be copied into persisted RayJob fields, logs, or error responses;
+   achieving this may require a separate secure artifact/Secret creation flow.
+
+Whichever option is selected, user code must run within administrator-approved runtime and resource limits and must not
+gain access to TaaS credentials, service-host files, or other projects' resources. Define source and non-secret
+parameter visibility in job inspection and the output contract as part of the submission design.
+
+#### Model, dataset, and output storage authentication
+
+**Requirement:** Requests must identify model, dataset, and output locations and define how the training workload gets
+authorized storage access. The DP architecture calls for credential references authorized in the project. The options
+below define how credentials reach the workload. S3 credentials are distinct from the caller's OpenShift bearer token,
+which continues to authorize API and Kubernetes operations.
+
+1. **Reference an RHOAI Connection (recommended).** Store S3-compatible endpoint and credentials in a project-scoped
+   RHOAI Connection and pass its reference alongside the model, dataset, or output URI. TaaS passes the reference to the
+   training workload; it does not accept or persist raw access keys. Confirm how caller authorization to use a
+   Connection is enforced and how the Ray runtime consumes the reference.
+2. **Pass credentials in the request body.** Accept a credential value alongside a storage URI, for example
+   `{ "dataset": { "url": "s3://...", "key": "..." } }`. This avoids pre-provisioning a Connection, but exposes
+   credentials to request handling and risks persisting them in RayJob specs, logs, traces, or errors. Supporting this
+   safely would require a design that materializes the credential into a protected, short-lived project Secret and never
+   places the value in persisted job fields.
+3. **Support both Connection references and request credentials.** This offers flexibility but requires explicit
+   precedence, validation, redaction, Secret lifecycle, and policy rules when both are supplied. It retains the risks of
+   the request-credential option.
+
+**Recommendation:** use project-scoped RHOAI Connection references for S3-compatible model, dataset, and output storage.
+Do not send raw storage credentials in the request. A URI alone is not authorization: the workload must receive only the
+credentials it is permitted to use, and TaaS must not use its own service-account identity to access the bucket.
+
 ## Open Questions
 
 1. **Architecture Board / platform owners — DSC structure and component enablement:** Which DSC option in the
-   Alternatives section should be adopted? Option 3 is recommended, but requires a migration and compatibility plan for
-   removing the existing top-level Ray and KFT entries. The module onboarding ADR defines dependency discovery and
-   readiness, but not automatic component enablement. Preserve explicit administrator control, and ensure disabling TaaS
-   does not remove a separately shared backend.
+   Additional requirements and options for Architecture Board review section should be adopted? Option 3 is
+   recommended, but requires a migration and compatibility plan for removing the existing top-level Ray and KFT entries.
+   The module onboarding ADR defines dependency discovery and readiness, but not automatic component enablement.
+   Preserve explicit administrator control, and ensure disabling TaaS does not remove a separately shared backend.
 2. **TP service boundary:** Should the TP remain a training-specific API, or evolve into a shared Jobs API for training,
    synthetic-data generation, and pipelines? A September 21, 2026 review raised the broader direction and specifically
    called for alignment with EvalHub; no decision or API ownership agreement was recorded. This ADR keeps the TP
@@ -395,110 +482,29 @@ resources not created by TaaS. It does not decide whether visibility is intended
 project path alone grants no access, and namespace-level `list` permission returns the collection rather than filtering
 by creator.
 
-## Alternatives
+## Alternative approaches for the selected TP architecture
 
 ### TaaS controller installs or owns Ray and Kueue
 
-Rejected. Ray and Kueue have independent platform modules and administrator-controlled lifecycles. Putting their
+Not Recommended. Ray and Kueue have independent platform modules and administrator-controlled lifecycles. Putting their
 operators or CRDs under TaaS would broaden permissions, couple releases, and risk removing capabilities still used by
 other components. The TaaS controller only discovers Ray; Kueue is optional and remains separately managed.
 
 ### Submit jobs with a TaaS service account after a SAR check
 
-Rejected. This replaces the caller's authorization with the service account's permissions and creates a check/use gap.
+Not Recommended. This replaces the caller's authorization with the service account's permissions and creates a check/use gap.
 RayJob creation and Kubernetes reads/deletes must be sent to the Kubernetes API with the caller's token. Log retrieval
 is a separate unresolved read path and must not be treated as permission to use a shared Ray identity for submission.
 
 ### Use a direct OpenShift Route or a TaaS-specific OAuth proxy
 
-Rejected for the RHOAI integration. The approved RHOAI component pattern uses the shared Gateway API with
+Not Recommended for the RHOAI integration. The approved RHOAI component pattern uses the shared Gateway API with
 kube-auth-proxy and kube-rbac-proxy. A component-specific route and proxy stack would diverge from that platform
 contract.
 
-### DSC structure and backend enablement options
-
-The current DSC exposes Ray and KFT as separate top-level components. The following options define how a new TaaS API
-operator and its backends could be represented. The proposed `training.api`, `training.ray`, and `training.kft` names
-are conceptual until the RHOAI platform owners confirm the DSC schema.
-
-1. **Add a standalone TaaS entry; keep Ray and KFT unchanged.** Add a new DSC entry for the Training as a Service API
-   operator. Continue enabling Ray and KFT through their existing DSC entries. TaaS does not trigger backend enablement;
-   administrators must enable a backend separately. This is the least disruptive option, but does not express a single
-   training capability or provide backend dependency enablement.
-2. **Add a TaaS entry with a `backend` subelement.** Keep the existing Ray and KFT entries and add a TaaS DSC entry with
-   `backend: Ray`, `backend: KFT`, or both. The platform operator enables the corresponding existing backend components
-   from this selection. This offers a compact user choice, but creates two configuration paths for the same components
-   unless precedence between `TrainingService.backend` and the standalone Ray/KFT entries is defined. It also couples
-   TaaS selection to backend activation.
-3. **Restructure DSC under a `training` item with `api`, `ray`, and `kft` subelements.** Replace the standalone Ray and
-   KFT DSC entries with child components under one training item, alongside the TaaS API operator. The platform operator
-   maps each child to its own component lifecycle; TaaS does not own or reconcile Ray or KFT. This gives administrators
-   one coherent training capability while preserving separate API/backend ownership and explicit control over each
-   child. It also gives each component a clear status and enablement boundary.
-
-**Recommendation: option 3.** It makes the DSC hierarchy reflect the training capability without making the TaaS API
-operator responsible for backend lifecycle, and avoids the duplicate sources of truth that option 2 would introduce. It
-makes API and backend selections explicit while allowing platform policy to define valid combinations; for this TP, Ray
-remains a critical TaaS dependency and KFT remains unsupported by the TaaS API. This recommendation depends on the
-platform team defining a safe migration from the current Ray/KFT top-level entries, including upgrade behavior,
-compatibility or conversion for existing DSCs, and precedence for administrator disables. The restructuring itself must
-not silently disable existing workloads or remove shared backend components. This is not a decision to add KFT backend
-support to the TaaS 3.7 TP API; KFT support remains separately scoped and the TP API's KFT operation remains unsupported
-unless that scope changes.
-
-### Custom training code submission options (Architecture Board decision)
-
-RHAIRFE-3751 requests a custom-code submission path alongside predefined algorithms: users provide a training function
-or packaged code, an identifiable entrypoint, and parameters. The following options are alternatives for Architecture
-Board review. This extends the Training API workflow and does not prescribe a new service or backend. Supported
-frameworks and runtime configurations remain subject to refinement.
-
-1. **Reference a packaged code artifact (recommended).** Accept a project-authorized PVC path or S3-compatible object
-   URI, together with an entrypoint and parameters. For S3, the request also references the approved storage Connection;
-   for PVC, the workload mounts the authorized claim. Pin the artifact with an immutable object version or digest where
-   supported. This aligns code, model, and dataset inputs with reference-based storage, and avoids putting source code
-   in the REST body. The Board must confirm supported URI forms, retrieval/mount behavior, and how the workload is
-   authorized to read the artifact.
-2. **Reference a user-built container image.** Accept an image reference, command/entrypoint, and parameters; prefer an
-   immutable image digest. The image can package code and dependencies together, but requires image build/publish
-   workflows, registry access policy, image validation, and an explicit supported runtime contract.
-3. **Inline source in the REST request (last resort; not recommended).** Add a source/function field, entrypoint, and
-   parameters to the submission payload. This gives users a single-request workflow, but requires strict request-size
-   limits and decisions about supported language/function contracts, dependencies, source validation, versioning, and
-   reproducibility. Source and credentials must not be copied into persisted RayJob fields, logs, or error responses;
-   achieving this may require a separate secure artifact/Secret creation flow.
-
-Whichever option is selected, user code must run within administrator-approved runtime and resource limits and must not
-gain access to TaaS credentials, service-host files, or other projects' resources. Define source and non-secret
-parameter visibility in job inspection and the output contract as part of the submission design.
-
-### Model, dataset, and output storage authentication options (Architecture Board decision)
-
-The request may identify model, dataset, and output locations separately from the credentials used to access them. The
-DP architecture calls for credential references authorized in the project; the following choices define how those
-credentials reach a training workload. The S3 credentials are distinct from the caller's OpenShift bearer token, which
-continues to authorize API and Kubernetes operations.
-
-1. **Reference an RHOAI Connection (recommended).** Store S3-compatible endpoint and credentials in a project-scoped
-   RHOAI Connection and pass its reference alongside the model, dataset, or output URI. TaaS passes the reference to the
-   training workload; it does not accept or persist raw access keys. Confirm how caller authorization to use a
-   Connection is enforced and how the Ray runtime consumes the reference.
-2. **Pass credentials in the request body.** Accept a credential value alongside a storage URI, for example
-   `{ "dataset": { "url": "s3://...", "key": "..." } }`. This avoids pre-provisioning a Connection, but exposes
-   credentials to request handling and risks persisting them in RayJob specs, logs, traces, or errors. Supporting this
-   safely would require a design that materializes the credential into a protected, short-lived project Secret and never
-   places the value in persisted job fields.
-3. **Support both Connection references and request credentials.** This offers flexibility but requires explicit
-   precedence, validation, redaction, Secret lifecycle, and policy rules when both are supplied. It retains the risks of
-   the request-credential option.
-
-**Recommendation:** use project-scoped RHOAI Connection references for S3-compatible model, dataset, and output storage.
-Do not send raw storage credentials in the request. A URI alone is not authorization: the workload must receive only the
-credentials it is permitted to use, and TaaS must not use its own service-account identity to access the bucket.
-
 ### Store job records in a TaaS database
 
-Rejected for this TP. RayJob CRs already hold the job identity and status, and the DP contract lists all caller-readable
+Not Recommended for this TP. RayJob CRs already hold the job identity and status, and the DP contract lists all caller-readable
 RayJobs in the project. A second database would add consistency, lifecycle, and authorization work without improving the
 transient driver-log availability. Durable logs or cross-backend history would require a separate retention and storage
 decision.
