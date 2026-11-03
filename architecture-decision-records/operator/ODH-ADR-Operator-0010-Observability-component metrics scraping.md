@@ -167,8 +167,9 @@ kubectl get namespace <namespace-name> --show-labels
 # Opt in to automatic monitor labeling (if not labeling the CR explicitly)
 kubectl label namespace <namespace-name> monitoring.opendatahub.io/scrape=true
 
-# Confirm the monitor CR was labeled and verify the deployed allocator selector
+# Confirm either monitor CR kind was labeled and verify the deployed allocator selector
 kubectl get servicemonitor <monitor-name> -n <namespace-name> --show-labels
+kubectl get podmonitor <monitor-name> -n <namespace-name> --show-labels
 kubectl get opentelemetrycollector data-science-collector -n <monitoring-namespace> -o yaml
 ```
 
@@ -371,7 +372,10 @@ spec:
 ### Key Implementation Notes
 
 - **Label Consistency**: For the modular Target Allocator, include `monitoring.opendatahub.io/scrape: "true"` on the ServiceMonitor/PodMonitor CR (directly or via the opt-in namespace's webhook). Pod-only labels describe the earlier in-tree collector and do not enroll a monitor in the modular stack. Check the deployed selector on older builds.
-- **Namespace Isolation**: `namespaceSelector` in ServiceMonitor/PodMonitor CRs provides an additional security boundary beyond NetworkPolicy
+- **Target Selection, Not Authorization**: A monitor's `namespaceSelector`
+  limits which namespaces it selects for scraping. It does not authorize
+  users who can create or edit monitors; constrain those writers with RBAC
+  or admission controls, and restrict endpoint access with NetworkPolicy.
 - **Port Naming**: Use descriptive port names (`metrics`, `admin-metrics`) to improve clarity and maintainability
 - **NetworkPolicy Requirements**: Every component must include NetworkPolicy rules allowing ingress from `redhat-ods-monitoring` namespace
 
@@ -408,6 +412,7 @@ spec:
     serviceAccount: odh-prometheus-operator  # Requires broad RBAC permissions
     prometheusCR:
       enabled: true
+      denyFSAccessThroughSMs: true
       serviceMonitorSelector:
         matchLabels:
           monitoring.opendatahub.io/scrape: "true"
