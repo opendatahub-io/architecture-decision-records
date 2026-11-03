@@ -12,7 +12,26 @@
 
 ## What
 
-This ADR defines the guidelines for RHOAI component metrics scraping. It documents three supported strategies for exposing component metrics to the RHOAI monitoring infrastructure: label-based pod scraping, ServiceMonitor CRs, and PodMonitor CRs. The recommended approach uses ServiceMonitor/PodMonitor CRs with the OpenTelemetry Collector's Target Allocator for component team ownership of monitoring configuration.
+This ADR defines the guidelines for RHOAI component metrics scraping. It originally
+documented three approaches: label-based pod scraping, ServiceMonitor CRs, and
+PodMonitor CRs. The current modular `odh-observability` stack uses ServiceMonitor or
+PodMonitor CRs with the OpenTelemetry Collector's Target Allocator. Pod-label-only
+scraping described below applies to an earlier in-tree collector and is not a
+supported enrollment method for the modular stack.
+
+**Implementation clarification (2026-11-03):** In current upstream
+`odh-observability`, `serviceMonitorSelector` and `podMonitorSelector` both match
+`monitoring.opendatahub.io/scrape: "true"` **on the monitor CR**. The admission
+webhook can inject that label into `monitoring.coreos.com/v1` monitors in a
+namespace opted in with `monitoring.opendatahub.io/scrape=true`. An explicit
+monitor label also works. The Target Allocator does not require the target
+namespace to have `opendatahub.io/dashboard=true`. Verify the selector on the
+*deployed* `OpenTelemetryCollector` when using a different platform version;
+an earlier in-tree `rhods-operator` template used
+`opendatahub.io/monitoring: "true"` instead. See the in-review
+[ODH-ADR-Operator-0020](https://github.com/opendatahub-io/architecture-decision-records/pull/180)
+for the proposed rule-evaluation contract; monitor enrollment and rule
+evaluation are separate concerns.
 
 ## Why
 
@@ -25,7 +44,7 @@ Enabling component teams to own their monitoring configuration through ServiceMo
 - Provide clear guidelines for component developers on metrics integration
 - Support multiple deployment patterns (Deployments, StatefulSets, Services)
 - Enable component teams to manage ServiceMonitors/PodMonitors independently
-- Implement namespace-based filtering to scope discovery to ODH workloads only
+- Allow component teams to opt monitors into Target Allocator discovery
 - Maintain security through controlled NetworkPolicy access and namespace isolation
 - Support both simple and complex metrics collection scenarios
 
@@ -35,27 +54,32 @@ Enabling component teams to own their monitoring configuration through ServiceMo
 - Provide metrics storage or visualization (handled by existing Prometheus/Grafana stack)
 - Define specific metrics that components should expose
 - Handle metrics collection outside of Kubernetes environments
-- Support components in non-ODH-labeled namespaces (intentionally scoped)
+- Make a pod label alone enroll metrics in the current modular Target Allocator
 
 ## How
 
-RHOAI supports three strategies for component metrics scraping, with ServiceMonitor/PodMonitor CRs as the recommended approach for new components.
+The modular stack supports ServiceMonitor and PodMonitor CR enrollment; the
+pod-label-only approach in Section 1 describes the earlier in-tree stack.
 
 ### Metrics Collection Flow
 
 ```mermaid
 graph TD
-    A[Component Team creates ServiceMonitor/PodMonitor CR] --> B[Target Allocator watches CRs in ODH-labeled namespaces]
+    A[Component Team creates ServiceMonitor/PodMonitor CR] --> B[Target Allocator selects labeled monitor CRs]
     B --> C[Target Allocator discovers matching Services/Pods]
     C --> D[Target Allocator distributes scrape targets to OTel Collectors]
     D --> E[NetworkPolicy: Allow monitoring namespace access]
     E --> F[OTel Collector scrapes metrics from targets]
     F --> G[RHOAI Prometheus: Stores and serves metrics]
 
-    H[Namespace labeled with opendatahub.io/dashboard=true] --> B
+    H[Namespace opted in for webhook labeling, or explicit CR label] --> B
 ```
 
-### 1. Label-Based Pod Scraping
+### 1. Label-Based Pod Scraping (Earlier In-Tree Collector Only)
+
+The modular `odh-observability` collector does not include this generic pod
+scrape job. Use a ServiceMonitor or PodMonitor for a new component. The
+following description is retained as historical context for older deployments.
 
 Components can expose metrics by applying the `monitoring.opendatahub.io/scrape: "true"` label on their pods. The OpenTelemetry Collector uses Kubernetes pod discovery (`kubernetes_sd_configs` with `role: pod`) and a `relabel_configs` rule to filter pods with this label, scraping metrics on port 8080 at `/metrics`.
 
@@ -70,10 +94,10 @@ Components can expose metrics by applying the `monitoring.opendatahub.io/scrape:
 
 ### 2. ServiceMonitor Custom Resource (Recommended)
 
-ServiceMonitor CRs enable component teams to manage their own monitoring configuration independently. The OpenTelemetry Collector's Target Allocator discovers ServiceMonitors in ODH-labeled namespaces.
+ServiceMonitor CRs enable component teams to manage their own monitoring configuration independently. The modular Target Allocator discovers labeled ServiceMonitor CRs.
 
 **Required Configuration:**
-- **Target Namespace Label**: Namespaces containing services to be monitored must be labeled with `opendatahub.io/dashboard: "true"`
+- **Webhook Opt-in**: Label the monitor's namespace `monitoring.opendatahub.io/scrape: "true"` for automatic CR labeling, or label the monitor CR explicitly. The Target Allocator does not use `opendatahub.io/dashboard` as a monitor discovery selector.
 - **ServiceMonitor Labels**: ServiceMonitor CRs must have the label `monitoring.opendatahub.io/scrape: "true"` to be discovered by the Target Allocator
 - **NetworkPolicy**: Target namespace must allow ingress from `redhat-ods-monitoring`
 
@@ -88,17 +112,17 @@ prometheusCR:
 
 **Component Team Responsibilities:**
 - Create and maintain ServiceMonitor CRs in their namespace with the `monitoring.opendatahub.io/scrape: "true"` label
-- Ensure target namespaces (containing services to monitor) have the `opendatahub.io/dashboard: "true"` label
+- Opt the monitor's namespace into webhook labeling or set the monitor label explicitly
 - Configure `namespaceSelector.matchNames` in ServiceMonitor to list target namespaces
 - Configure NetworkPolicy for metrics access
 - Test metrics scraping in their deployment pipeline
 
 ### 3. PodMonitor Custom Resource (Recommended)
 
-PodMonitor CRs enable direct pod-based metrics collection, ideal for StatefulSets and scenarios requiring pod-level granularity. The OpenTelemetry Collector's Target Allocator discovers PodMonitors in ODH-labeled namespaces.
+PodMonitor CRs enable direct pod-based metrics collection, ideal for StatefulSets and scenarios requiring pod-level granularity. The modular Target Allocator discovers labeled PodMonitor CRs.
 
 **Required Configuration:**
-- **Target Namespace Label**: Namespaces containing pods to be monitored must be labeled with `opendatahub.io/dashboard: "true"`
+- **Webhook Opt-in**: Label the monitor's namespace `monitoring.opendatahub.io/scrape: "true"` for automatic CR labeling, or label the monitor CR explicitly.
 - **PodMonitor Labels**: PodMonitor CRs must have the label `monitoring.opendatahub.io/scrape: "true"` to be discovered by the Target Allocator
 - **NetworkPolicy**: Target namespace must allow ingress from `redhat-ods-monitoring`
 
@@ -113,42 +137,48 @@ prometheusCR:
 
 **Component Team Responsibilities:**
 - Create and maintain PodMonitor CRs in their namespace with the `monitoring.opendatahub.io/scrape: "true"` label
-- Ensure target namespaces (containing pods to monitor) have the `opendatahub.io/dashboard: "true"` label
+- Opt the monitor's namespace into webhook labeling or set the monitor label explicitly
 - Configure `namespaceSelector.matchNames` in PodMonitor to list target namespaces
 - Configure NetworkPolicy for metrics access
 - Test metrics scraping in their deployment pipeline
 
 ### Namespace Labeling Strategy
 
-**Critical Requirement**: For ServiceMonitor/PodMonitor to scrape metrics from target pods/services, the target namespaces MUST be labeled with the ODH identifier.
+**Current modular behavior:** Target Allocator discovery is based on the
+`ServiceMonitor`/`PodMonitor` **CR label**, not an ODH dashboard label on
+its namespace. Namespace opt-in enables webhook injection for unlabeled
+monitors; the CR can instead carry the label explicitly. The monitor's
+own `namespaceSelector` still determines which target namespaces it scrapes.
 
-**Required Namespace Labels:**
+**Namespace Label for Automatic Injection (Optional When CR Is Explicitly Labeled):**
 ```yaml
-opendatahub.io/dashboard: "true"            # Required for Target Allocator namespace filtering
-monitoring.opendatahub.io/scrape: "true"     # Required for mutating webhook auto-injection
+monitoring.opendatahub.io/scrape: "true"     # Namespace opt-in for the webhook
 ```
 
 **Labeling Responsibility:**
-- **ODH-Managed Namespaces**: Automatically labeled by the ODH operator when creating namespaces
-- **Manually Created Namespaces**: Component teams must apply the label explicitly
+- **Webhook Path**: Opt the monitor's namespace in before creating an unlabeled monitor
+- **Explicit CR Label Path**: Set `monitoring.opendatahub.io/scrape: "true"` on the monitor CR
 
 **Verification:**
 ```bash
-# Check if namespace has the required label
+# Check webhook opt-in on the monitor's namespace
 kubectl get namespace <namespace-name> --show-labels
 
-# Add labels to existing namespace
-kubectl label namespace <namespace-name> opendatahub.io/dashboard=true
+# Opt in to automatic monitor labeling (if not labeling the CR explicitly)
 kubectl label namespace <namespace-name> monitoring.opendatahub.io/scrape=true
+
+# Confirm the monitor CR was labeled and verify the deployed allocator selector
+kubectl get servicemonitor <monitor-name> -n <namespace-name> --show-labels
+kubectl get opentelemetrycollector data-science-collector -n <monitoring-namespace> -o yaml
 ```
 
 **Impact of Missing Labels:**
-- Without `opendatahub.io/dashboard: "true"`: namespace will not be included in Target Allocator discovery
-- Without `monitoring.opendatahub.io/scrape: "true"`: mutating webhook will not auto-inject the scrape label into PodMonitors/ServiceMonitors
-- No error will be reported in either case (silent failure)
+- Without namespace opt-in **and** without an explicit monitor CR label, the monitor will not match the current modular Target Allocator selector
+- A monitor may be accepted by Kubernetes yet not discovered by Target Allocator; check the actual CR labels and deployed selector before moving recording rules
 
 **Security Benefit:**
-Namespace-based filtering ensures that only ODH-related workloads are monitored, preventing accidental scraping of non-ODH components and reducing security exposure.
+Explicit monitor selection limits unintended discovery; `namespaceSelector`, RBAC,
+and NetworkPolicy must still constrain what a selected monitor can scrape.
 
 ### NetworkPolicy Requirements
 
@@ -158,7 +188,7 @@ All approaches require that the component namespace allows ingress from the RHOA
 
 ### Strategy Selection Guidelines and Use Cases
 
-#### When to Use Label-Based Scraping (Default)
+#### When Label-Based Pod Scraping Was Used (Earlier In-Tree Collector)
 
 **Best for simple, straightforward metrics collection scenarios:**
 - Components with a **single metrics endpoint** on standard port (8080) and path (/metrics)
@@ -340,7 +370,7 @@ spec:
 
 ### Key Implementation Notes
 
-- **Label Consistency**: For label-based scraping, apply the `monitoring.opendatahub.io/scrape: "true"` label on the pod template within Deployment/StatefulSet. For ServiceMonitor/PodMonitor CRs, include the `monitoring.opendatahub.io/scrape: "true"` label on the CR itself so the Target Allocator can discover it. Target namespaces must have both `opendatahub.io/dashboard: "true"` and `monitoring.opendatahub.io/scrape: "true"` labels.
+- **Label Consistency**: For the modular Target Allocator, include `monitoring.opendatahub.io/scrape: "true"` on the ServiceMonitor/PodMonitor CR (directly or via the opt-in namespace's webhook). Pod-only labels describe the earlier in-tree collector and do not enroll a monitor in the modular stack. Check the deployed selector on older builds.
 - **Namespace Isolation**: `namespaceSelector` in ServiceMonitor/PodMonitor CRs provides an additional security boundary beyond NetworkPolicy
 - **Port Naming**: Use descriptive port names (`metrics`, `admin-metrics`) to improve clarity and maintainability
 - **NetworkPolicy Requirements**: Every component must include NetworkPolicy rules allowing ingress from `redhat-ods-monitoring` namespace
@@ -349,7 +379,10 @@ spec:
 
 ### OpenTelemetry Collector Integration with Target Allocator
 
-The RHOAI monitoring system uses OpenTelemetry Collector with **Target Allocator** for Prometheus Custom Resource (ServiceMonitor/PodMonitor) discovery, while also supporting label-based pod discovery for simpler use cases.
+The current modular collector uses **Target Allocator** for
+`monitoring.coreos.com/v1` `ServiceMonitor`/`PodMonitor` discovery. The
+generic label-based pod scrape described in Section 1 belongs to an
+earlier in-tree collector, not the modular collector.
 
 #### Target Allocator Implementation
 
@@ -438,7 +471,7 @@ N/A
 
 - **Target Allocator Performance**: High number of ServiceMonitor/PodMonitor CRs across many namespaces may impact Target Allocator resource usage and discovery latency
 - **RBAC Permission Scope**: Target Allocator requires broad cluster permissions to watch CRs and discover endpoints across namespaces
-- **Namespace Label Dependency**: Missing or incorrect `opendatahub.io/dashboard: "true"` labels cause silent failures where metrics are not discovered
+- **Monitor Label Dependency**: Missing or incorrect monitor labels cause silent discovery failures; if relying on injection, also verify namespace opt-in and webhook health
 - **Network Policy Misconfiguration**: Incorrectly configured NetworkPolicies could block legitimate metrics collection or allow unauthorized access
 - **Component Team Learning Curve**: Teams need to understand ServiceMonitor/PodMonitor CR semantics and Prometheus configuration
 - **OpenTelemetry Collector Performance**: High-cardinality metrics from many components could impact collector performance
