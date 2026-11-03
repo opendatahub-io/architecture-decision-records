@@ -79,7 +79,7 @@ Moving a rule is not sufficient. The series it references must already be in the
 
 ```mermaid
 graph LR
-    A[Component /metrics] --> B[ServiceMonitor or PodMonitor<br/>monitoring.opendatahub.io/scrape: true]
+    A[Component /metrics] --> B[ServiceMonitor or PodMonitor<br/>use the deployed variant's selector<br/>modular: monitoring.opendatahub.io/scrape: true<br/>older in-tree: opendatahub.io/monitoring: true]
     B --> C[OTel Target Allocator]
     C --> D[OTel Collector]
     D --> E[Collector Prometheus exporter]
