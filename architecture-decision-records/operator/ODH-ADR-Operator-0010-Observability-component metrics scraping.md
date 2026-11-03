@@ -398,35 +398,48 @@ The Target Allocator is a component of the OpenTelemetry Operator that discovers
 - Supports both ServiceMonitor and PodMonitor discovery
 - Enables decentralized monitoring configuration management
 
-**OpenTelemetryCollector CR Configuration:**
+**Authenticated monitors:** If a ServiceMonitor or PodMonitor references
+authentication Secrets, allowlist the namespaces containing those Secrets
+under `prometheusCR.secretNamespaces`. The Target Allocator transfers
+credentials to the collector over mTLS; keep
+`allowInsecureAuthSecrets: false`. Do not enable insecure credential
+transfer to work around a missing
+namespace allowlist: plaintext transfer is appropriate only if a separate
+transport layer guarantees encryption. Confirm both the rendered allowlist
+and the authorized Secret access in the installed deployment.
+
+**OpenTelemetryCollector Target Allocator configuration (illustrative
+excerpt; inspect the deployed CR for generated names and namespaces):**
 ```yaml
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
-  name: odh-monitoring-collector
-  namespace: redhat-ods-monitoring
+  name: data-science-collector
+  namespace: <monitoring-namespace>
 spec:
   mode: statefulset
   targetAllocator:
     enabled: true
-    serviceAccount: odh-prometheus-operator  # Requires broad RBAC permissions
+    serviceAccount: <configured-target-allocator-service-account>
+    mtls:
+      enabled: true
+      useCertManager: true
+    allowInsecureAuthSecrets: false
     prometheusCR:
       enabled: true
       denyFSAccessThroughSMs: true
+      secretNamespaces:
+        - <namespace-containing-monitor-auth-secret>
       serviceMonitorSelector:
         matchLabels:
           monitoring.opendatahub.io/scrape: "true"
       podMonitorSelector:
         matchLabels:
           monitoring.opendatahub.io/scrape: "true"
-  config:
-    receivers:
-      prometheus:
-        config:
-          scrape_configs:
-          - job_name: 'serviceMonitor'  # Managed by Target Allocator
-          - job_name: 'podMonitor'      # Managed by Target Allocator
 ```
+
+If monitors use no authentication Secrets, use the namespace allowlist
+rendered by the installed operator instead of copying this placeholder.
 
 **Target Allocator Capabilities:**
 - **CR Discovery**: Automatically discovers ServiceMonitor and PodMonitor CRs cluster-wide
@@ -440,8 +453,8 @@ The Target Allocator requires elevated permissions to watch ServiceMonitor/PodMo
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: odh-prometheus-operator
-  namespace: redhat-ods-monitoring
+  name: <configured-target-allocator-service-account>
+  namespace: <monitoring-namespace>
 ---
 # ClusterRole with permissions to:
 # - List/watch ServiceMonitor and PodMonitor CRs
