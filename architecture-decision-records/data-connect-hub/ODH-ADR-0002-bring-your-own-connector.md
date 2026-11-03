@@ -138,6 +138,8 @@ When the dc-controller reconciles a `customConnectors` entry and the Deployment 
 
 When a client calls `GetSupportedConnectors` on the default Flight service, it reads the registered custom Flight service endpoints from the database, fans out `GetSupportedConnectors` calls to each of them, and returns an aggregated view: its own built-in connectors plus all connectors from custom services, each tagged with the hostname of the service that provides it. The client receives the full list and connects to the appropriate hostname for subsequent data operations.
 
+The fan-out calls must be bounded and failure-isolated: each call to a custom Flight service has a per-service timeout (e.g. 5s), all calls run concurrently with a configurable concurrency limit, and individual failures are isolated so that one unavailable service cannot block the overall response. On partial failure, the response includes the successfully discovered connectors (both built-in and from healthy custom services) and omits connectors from unreachable services. Clients can detect missing connectors by comparing the response against previously known connector types.
+
 This approach requires no custom proxy — it relies on standard Gateway API routing by hostname and uses the existing discovery mechanism to direct clients to the right service.
 
 #### Routing flow diagram
