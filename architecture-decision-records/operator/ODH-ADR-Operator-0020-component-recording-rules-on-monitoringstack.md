@@ -79,7 +79,7 @@ Moving a rule is not sufficient. The series it references must already be in the
 
 ```mermaid
 graph LR
-    A[Component /metrics] --> B[ServiceMonitor or PodMonitor<br/>opendatahub.io/monitoring: true]
+    A[Component /metrics] --> B[ServiceMonitor or PodMonitor<br/>monitoring.opendatahub.io/scrape: true]
     B --> C[OTel Target Allocator]
     C --> D[OTel Collector]
     D --> E[Collector Prometheus exporter]
@@ -89,9 +89,22 @@ graph LR
     H --> I[Perses dashboard]
 ```
 
-The Target Allocator discovers `ServiceMonitor` and `PodMonitor` CRs carrying the label `opendatahub.io/monitoring: "true"`. A component whose endpoint is not yet discovered this way must add that monitor before, or in the same change as, moving its rules.
+For the current modular `odh-observability` deployment, the Target Allocator discovers
+`monitoring.coreos.com/v1` `ServiceMonitor` and `PodMonitor` CRs carrying
+`monitoring.opendatahub.io/scrape: "true"`. The admission webhook injects that label on
+monitors created in namespaces opted in with the same label; an explicit label on the
+monitor remains the safest way to state the intent. A pod label alone does not enroll
+its metrics in this Target Allocator. A component must verify that its actual monitor
+is discovered and its raw series reaches the Data Science Prometheus before moving rules.
 
-> ODH-ADR-Operator-0010 describes this selector as `monitoring.opendatahub.io/scrape: "true"` on pods and namespace filtering on `opendatahub.io/dashboard=true`. The shipped Target Allocator configuration uses `opendatahub.io/monitoring: "true"` on the monitor CR. Where the two disagree, the operator configuration is authoritative; ODH-ADR-Operator-0010 should be corrected.
+The earlier in-tree `rhods-operator` collector template selected
+`opendatahub.io/monitoring: "true"` on monitor CRs. It is **not** the selector in
+current upstream `odh-observability` or the current `opendatahub-operator` webhook.
+During migration, inspect the deployed `OpenTelemetryCollector` selector rather than
+assuming all platform versions behave alike. The companion
+[ADR-0010 update](https://github.com/opendatahub-io/architecture-decision-records/pull/182)
+clarifies the modular monitor contract and historical pod-scraping guidance
+without silently rewriting that decision's original scope.
 
 ### Authoring constraints
 
@@ -151,7 +164,9 @@ Alert routing is handled by the MonitoringStack Alertmanager. Teams moving alert
 * **Migration window.** Between moving the dashboard and moving the rules, panels are empty. Components should move the monitor, rules, and dashboard together.
 * **Name collisions.** A flat rule namespace across fifteen-plus components will eventually collide. The risk is sharpened by the SLO burn-rate rules, where sharing a name is deliberate, so a genuine collision cannot be detected by name alone and review must distinguish the two cases.
 * **Cardinality.** Consolidating component rules onto one MonitoringStack concentrates evaluation cost that was previously spread across UWM.
-* **Documentation drift.** ODH-ADR-Operator-0010's selector names already disagree with the shipped configuration, which is partly why this gap went unnoticed.
+* **Deployment variant drift.** Older in-tree collector templates and current modular
+  deployments select different monitor labels; copying a label between them without
+  checking the actual `OpenTelemetryCollector` can silently lose input series.
 
 ## Stakeholder Impacts
 
@@ -173,6 +188,9 @@ Alert routing is handled by the MonitoringStack Alertmanager. Teams moving alert
 
 * `ODH-ADR-Operator-0009-observability-tracing-strategy.md` - Observability tracing strategy
 * `ODH-ADR-Operator-0010-Observability-component metrics scraping.md` - RHOAI component metrics scraping guidelines
+* [ADR-0010 monitor discovery correction](https://github.com/opendatahub-io/architecture-decision-records/pull/182) - companion PR requested during this review
+* [Current modular Target Allocator configuration](https://github.com/opendatahub-io/odh-observability/blob/main/internal/controller/resources/opentelemetry-collector.tmpl.yaml) - deployed selector contract for current upstream
+* [Platform observability ADR index](https://github.com/opendatahub-io/architecture-decision-records/issues/183) - discoverability and ownership tracking without a feature epic
 * `ODH-ADR-Operator-0011-Perses-dashboard-guidelines.md` - Perses dashboard guidelines
 * `ODH-ADR-Operator-0011-observability-metrics-autoscaling.md` - RHOAI component metrics-based autoscaling, source of the Thanos querier endpoint cited above
 * [models-as-a-service#1363](https://github.com/opendatahub-io/models-as-a-service/pull/1363) - datasource direction discussion
