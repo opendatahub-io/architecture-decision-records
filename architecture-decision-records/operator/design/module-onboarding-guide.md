@@ -21,6 +21,8 @@ Acts as the central management interface. It does **not** manage the deep intern
 **Responsibility**
 
 * It deploys the **module controllers** (Deployment, RBAC, etc.).
+* Creates the module operator namespace. The ODH Operator derives the module's default namespace from the module's preferred namespace; if none is declared, it uses `redhat-ai-${module-name}-system`. A user may override this default through ODH Operator configuration or environment variables. Namespace selection is not part of a top-level CR such as the `DataScienceCluster` because the ODH Operator must resolve it before configuring its cache and watch scope.
+* Ensures that each module operator has an individual system namespace. If the resolved namespace is already associated with another module, the ODH Operator reports the collision on the applicable top-level CR when one is available, such as the `DataScienceCluster`, emits a Kubernetes event, and does not deploy or adopt the module there.
 * Renders platform configuration (auth, TLS, observability, networking) into each module's **ConfigMap**.
 * Watches all the created resources (CRs, Deployments, etc.) having the **components.platform.opendatahub.io/managed-by** label.
 * Aggregates status from the module CRs.
@@ -159,13 +161,13 @@ This pattern follows established Kubernetes precedent: CoreDNS reads `coredns` C
 
 **Packaging:** Helm is the preferred method for packaging module controller manifests. Kustomize is supported but switching to Helm is highly encouraged. The ODH Operator renders manifests using **Helm** (template rendering only; advanced features such as hooks are not currently supported) or **Kustomize**.
 
-The ODH operator will only install the **module controller** manifests. The module repository must provide a directory containing **only** the **minimal set of artifacts** required to bootstrap the module controller. The manifests should strictly encompass the artifacts needed to **deploy and run the module controller** (e.g., the controller Deployment, its RBAC, and the Module CRD); do **not** include application-level manifests (e.g., ModelMesh Serving runtime, Dashboard UI Deployment). These manifests are **embedded** in the ODH controller binary at **build time**, ensuring the operator is self-contained and does not require runtime network access to fetch manifests.
+The ODH Operator will only install the **module controller** bootstrap manifests. The module repository must provide a directory containing **only** the **minimal set of artifacts** required to bootstrap the module controller. The manifests should strictly encompass the artifacts needed to **deploy and run the module controller** (e.g., the controller Deployment, its RBAC, and the Module CRD); do **not** include application-level manifests (e.g., ModelMesh Serving runtime, Dashboard UI Deployment). These manifests are **embedded** in the ODH controller binary at **build time**, ensuring the operator is self-contained and does not require runtime network access to fetch manifests.
 
-**Minimal manifests interface:** The manifests that the ODH Operator installs must be limited to core Kubernetes types (Deployment, ServiceAccount, ClusterRole/ClusterRoleBinding, CRD). This constraint is driven by the principle of least privilege: the ODH Operator today operates with near cluster-admin permissions, and reducing its scope to core Kubernetes types only - with no knowledge of workload-specific CRDs - is a key goal of this architecture.
+**Minimal manifests interface:** The manifests that the ODH Operator installs must be limited to the strict minimum set of core Kubernetes resources required to deploy and run the module controller. The ODH Operator does not install or manage operand resources; those are applied by the module controller. Module-scoped platform baselines are governed by [ODH-ADR-Operator-0015](../ODH-ADR-Operator-0015-module-namespace-isolation.md). The exact NetworkPolicy boundaries are to be defined in a separate ADR and are out of scope for this guide.
 
 **Notes:**
 
-* The actual application manifests are **embedded** within the module controller and applied by the controller, not the ODH operator. The specific manifest types (Helm, Kustomize, plain YAML) and technical mechanism used to embed these manifests is a decision left to the module team, as long as the controller remains self-contained.
+* The actual application manifests are **embedded** within the module controller and applied by the controller, not the ODH Operator. The specific manifest types (Helm, Kustomize, plain YAML) and technical mechanism used to embed these manifests is a decision left to the module team, as long as the controller remains self-contained.
 
 ### **3.2 Deployment patterns**
 
@@ -179,7 +181,7 @@ The module operator is the orchestrator for its feature area: it handles upgrade
 
 ### **3.3 Logic & detection**
 
-The module controller is responsible for "smart" behavior (a dedicated set of functionalities will be provided in the form of Go modules, see [Shared Utilities Repository](#6.2-shared-utilities-repository)). For example, the module controller could check if the cluster has FIPS enabled and switch internal crypto libraries; the module must not rely on the ODH operator to perform "smart" behavior and pass that down.
+The module controller is responsible for "smart" behavior (a dedicated set of functionalities will be provided in the form of Go modules, see [Shared Utilities Repository](#6.2-shared-utilities-repository)). For example, the module controller could check if the cluster has FIPS enabled and switch internal crypto libraries; the module must not rely on the ODH Operator to perform "smart" behavior and pass that down.
 
 ### **3.4 Dependency management**
 
@@ -200,6 +202,10 @@ Many modules require internal TLS certificates, particularly for **Admission Web
 
 Module controllers must follow the **principle of least privilege** when defining RBAC permissions. Controllers should request only the minimum permissions required to perform their specific functions. Avoid wildcard permissions (`*`) and prefer namespace-scoped permissions (Role/RoleBinding) over cluster-scoped (ClusterRole/ClusterRoleBinding) when possible.
 
+### **3.7 Namespace and network policy references**
+
+Module operators and operands must follow the per-module namespace ownership and isolation model defined in [ODH-ADR-Operator-0015](../ODH-ADR-Operator-0015-module-namespace-isolation.md). The exact NetworkPolicy boundaries, bootstrap behavior, and policy ownership are to be defined in a separate ADR and are out of scope for this guide.
+
 ## **4\. Integration with DataScienceCluster (DSC)**
 
 The ODH Operator is always present. It is responsible for installing, upgrading, and uninstalling module controllers, and for injecting platform configuration into each module's ConfigMap. This applies regardless of whether a DSC is used.
@@ -209,7 +215,7 @@ The `DataScienceCluster` (DSC) CR is an **optional** high-level entry point that
 **With DSC (e.g., RHAI):**
 
 * The module has a stanza in the DSC, i.e., `spec.components`.
-* The ODH operator reads `spec.components.mymodule` from the DSC and creates/updates the `MyModule` CR with user-facing configuration. The ODH Operator owns the DSC-projected fields and will revert manual edits to those fields.
+* The ODH Operator reads `spec.components.mymodule` from the DSC and creates/updates the `MyModule` CR with user-facing configuration. The ODH Operator owns the DSC-projected fields and will revert manual edits to those fields.
 * The `MyModule` CR is free to support additional `spec` fields that are **not** exposed in the DSC. These fields are module-owned and are not managed or reverted by the ODH Operator. This allows advanced configuration by editing the `MyModule` CR directly.
   * *Example:* Users may need to fine-tune **resource requirements** (CPU/Memory requests and limits) for the deployed controller's Pods. While these operational details are too granular for the high-level DSC, they can be exposed in the `MyModule` CR (e.g., via `spec.controllers[].resources`), allowing administrators to adjust them directly on the module level.
 
@@ -321,11 +327,12 @@ spec:
 
 **ODH Operator Actions:**
 1. Detects `workbenches.managementState: Managed`
-2. Deploys Workbenches module controller resources:
+2. Creates the `opendatahub-workbenches` namespace according to the per-module namespace isolation model.
+3. Deploys Workbenches module controller resources:
    - Workbenches CRD (`workbenches.components.platform.opendatahub.io`)
    - Workbenches module controller Deployment (`odh-workbenches-operator`)
    - ServiceAccount, ClusterRole, ClusterRoleBinding (RBAC)
-3. Injects platform configuration into Workbenches ConfigMap:
+4. Injects platform configuration into Workbenches ConfigMap:
    ```yaml
    apiVersion: v1
    kind: ConfigMap
