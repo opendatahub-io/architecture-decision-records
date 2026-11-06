@@ -35,6 +35,8 @@ yet publicly specified.
 ## Goals
 
 - Integrate the TaaS API as a RHOAI module component for the RHOAI 3.7 Technical Preview target.
+- Provide a simple REST entry point for training-job submission and observation, so callers do not need to write Python
+  client code or backend-specific YAML or learn Ray/KFT submission details.
 - Support Ray as the initial backend through the existing CodeFlare SDK managed RayJob path.
 - Execute job submission and RayJob CRUD with the calling user's bearer token and permissions.
 - Use the shared platform Gateway API authentication pattern.
@@ -51,8 +53,10 @@ yet publicly specified.
 - Supporting job cancel, pause, or resume operations. DELETE applies only to terminal RayJob resources.
 - Making Compute Profiles part of the TP critical path.
 - Defining a new backend-neutral job resource or stable cross-backend job identifier in this ADR.
-- Turning this TP into a platform-wide generic Jobs API. A September 2026 architecture discussion raised that
-  possibility; scope and ownership need a separate product and architecture decision.
+- Supporting non-training job types or turning this TP into a platform-wide generic Jobs API. Any future generalization
+  requires separate product and architecture decisions with EvalHub.
+- Delivering a unified TaaS client SDK in this TP. The REST API is the customer-facing submission interface; the
+  CodeFlare SDK remains an internal integration for the Ray backend.
 - Making resource estimation a TP acceptance requirement. It was a DP stretch goal and is not part of the TP baseline.
 
 ## How
@@ -118,12 +122,12 @@ yet publicly specified.
 
 ```mermaid
 flowchart LR
-    Admin[Platform administrator] --> DSC[DSC component configuration<br/>Recommended: training.api, training.ray, training.kft]
+    Admin[Platform administrator] --> DSC[DSC component configuration<br/>Recommended: Training with TaaS child; existing Ray and KFT entries unchanged]
     DSC --> Platform[RHOAI platform operator]
-    Platform -->|training . api| TaaS[TaaS module controller]
+    Platform -->|Training . TaaS| TaaS[TaaS module controller]
     TaaS -->|owns API operands only| API[TaaS API Deployment and Service]
-    Platform -->|training . ray| Ray[Ray module operator]
-    Platform -->|training . kft| KFT[KFT module operator]
+    Platform -->|existing top-level DSC entry| Ray[Ray module operator]
+    Platform -->|existing top-level DSC entry| KFT[KFT module operator]
     TaaS -. discovers selected critical dependency .-> Ray
     Ray --> KubeRay[KubeRay operator]
     KubeRay -->|reconciles| RayJob[RayJob and transient RayCluster]
@@ -132,11 +136,11 @@ flowchart LR
     Gateway --> API
 ```
 
-The lifecycle diagram depicts recommended DSC option 3 below; the option is a recommendation, not an approved platform
-schema. Under that option, the platform operator maps the `training.api`, `training.ray`, and `training.kft` DSC
-subelements to their respective module lifecycles. Each component operator retains ownership of its own operands: the
-TaaS controller manages only API operands, while Ray and KFT operators own their respective stacks. The module
-controller follows the module onboarding ADR and guide. The onboarding ADR specifies
+The lifecycle diagram depicts recommended DSC option 4 below; the option is a recommendation, not an approved platform
+schema. For RHOAI 3.7, the platform operator adds a top-level `Training` component with TaaS as a child while keeping the
+existing top-level Ray and KFT entries unchanged. The exact DSC field names remain to be confirmed. Each component
+operator retains ownership of its own operands: the TaaS controller manages only API operands, while Ray and KFT
+operators own their respective stacks. The module controller follows the module onboarding ADR and guide. The onboarding ADR specifies
 `components.platform.opendatahub.io` for module APIs and requires a beta API version for TP. Use that group and a beta
 version (initially proposed as `v1beta1`); confirm the concrete kind, CR name, DSC schema, and supported version with
 the RHOAI 3.7 platform owners. No public 3.7 contract was available during this research.
@@ -150,10 +154,9 @@ the RHOAI 3.7 platform owners. No public 3.7 contract was available during this 
 | Kueue                           | Separately administered platform component | Optional queue admission; TaaS neither installs nor manages it.                                                                                             |
 | RayJob and transient RayCluster | Caller project and KubeRay                 | Job resource is created in the explicit caller project; KubeRay owns transient cluster reconciliation and cleanup.                                          |
 
-Whether enabling TaaS also asks the platform operator to enable Ray remains a separate Architecture Board decision. If
-automatic enablement is adopted, explicit administrator disable of Ray takes precedence; disabling or removing TaaS must
-not remove shared Ray. Otherwise, administrators enable Ray explicitly, and TaaS reports `Ready=False` until the
-critical dependency is available.
+For RHOAI 3.7, enabling TaaS does not enable Ray: administrators continue to manage Ray through its existing DSC entry.
+TaaS reports `Ready=False` until this critical dependency is available. Moving Ray and KFT under `Training` may be
+considered in a future release after a compatibility and migration plan is agreed; it is not part of the 3.7 change.
 
 ### Request and backend flows
 
@@ -242,9 +245,9 @@ The pinned DP OpenAPI remains authoritative for request schemas and detailed res
 | Discover project queues | `GET /projects/{project}/queues`                      | Keep the DP endpoint. List LocalQueues in the requested project using the caller's token. If Kueue is absent or not set up for the project, return `200`, `kueue_enabled: false`, `queues: []`.                                                                                                                                                                                                                                                                              |
 
 The request requires `name`, `model`, `dataset`, and `algorithm`. The current DP page describes optional queue, resource
-topology, backend, and output settings; the September sync notes queue-parameter descoping, but the TP baseline now
-includes the user's clarified queue-selection behavior. If `queue_name` is omitted and a namespace-local `default`
-LocalQueue exists with Kueue defaulting enabled, Kueue applies it even if other LocalQueues are present. TaaS does not
+topology, backend, and output settings; the TP baseline includes the clarified queue-selection behavior. If `queue_name`
+is omitted and a namespace-local `default` LocalQueue exists with Kueue defaulting enabled, Kueue applies it even if
+other LocalQueues are present. TaaS does not
 choose or add a queue. If Kueue is not set up to manage the project, the job is submitted without Kueue management. If
 the caller names a queue, TaaS checks that LocalQueue with the caller's token and applies it to the RayJob; a missing
 queue or a queue the caller cannot read fails promptly with a clear error. After Kubernetes accepts the RayJob, return
@@ -272,6 +275,11 @@ preflight authorization check can improve error messages, but the operation itse
 | Discover queues         | `list` on `localqueues.kueue.x-k8s.io` in `{project}`                                                           | Kubernetes API server; absence of Kueue is handled without cluster-scoped list permission                          |
 | Read logs               | At minimum `get` on the RayJob in `{project}`; the additional Ray dashboard authorization mapping is unresolved | Must be enforced at the protected Ray dashboard path; no shared credential is accepted as proof of caller identity |
 
+The API accepts callers authenticated as OpenShift identities. For a non-human caller, the customer chooses and sets up
+the identity, for example a ServiceAccount with the required project RBAC, and manages its token issuance and rotation.
+TaaS accepts and forwards that caller identity through the same path as any other OpenShift caller; it does not
+provision or manage customer identities or require a separate non-human authentication flow.
+
 The TaaS **module controller** has its own narrowly scoped permissions to reconcile the API service operands and
 discover module dependencies. Those permissions do not grant the TaaS **API service** permission to impersonate callers
 or submit jobs as its service account. The TaaS API runtime must not receive broad RayJob CRUD, Secret-read, or
@@ -282,11 +290,13 @@ authorization layer is added.
 
 ### Workload authority and data handling
 
-RayJob creation can grant workload authority through pod-template fields such as ServiceAccount selection and
-same-namespace Secret mounts. Admission or policy controls must constrain these fields; validating the REST request
-alone is not a complete boundary. TaaS does not maintain its own durable job database or persist caller credentials,
-request payloads, or driver logs. The RayJob specification is stored by Kubernetes, and Ray retains job/log state only
-for its configured lifetime. Never log bearer tokens or credentials; treat driver logs as sensitive user content.
+The TaaS request does not accept ServiceAccount names or Secret references in its payload. TaaS submits
+RayJobs as the caller, so matching platform authorization and admission controls continue to apply to those RayJobs as
+they do to direct submissions. TaaS does not install, configure, or modify Ray/KubeRay admission policy; standalone
+Ray/KubeRay policy validation is outside this ADR. TaaS does not maintain its own durable job database or persist caller
+credentials, request payloads, or driver logs. The RayJob specification is stored by Kubernetes, and Ray retains job/log
+state only for its configured lifetime. Never log bearer tokens or credentials; treat driver logs as sensitive user
+content.
 
 ### Release gates
 
@@ -297,8 +307,6 @@ Before TP release, owners must demonstrate:
 - CodeFlare client isolation with the pinned SDK: prove that concurrent requests cannot overwrite or reuse each other's
   caller credentials; do not use `set_api_client(...)` as per-request mutable global state unless the implementation
   provides and verifies isolation.
-- Define and verify the OpenShift identity and token lifecycle for non-interactive callers, including the caller's
-  minimum RBAC in each target project and token renewal/expiry behavior.
 - Caller authorization for RayJob create/list/get/delete and namespaced LocalQueue reads, with no service-account
   fallback or cluster-scoped Kueue probe.
 - Verify the exact CodeFlare submission path does not require cluster-scoped Kueue, DataScienceCluster, or
@@ -314,44 +322,63 @@ Before TP release, owners must demonstrate:
   supported configuration.
 - Verify the supported KubeRay status exposed while Kueue holds a RayJob suspended, and map that state to API `PENDING`
   without polling admission in the submit request.
-- Admission/policy enforcement for workload-authority fields, including ServiceAccount selection and Secret mounts.
 
 ### Additional requirements and options for Architecture Board review
 
 The following requirements and design options extend the TP architecture described above. The recommendations are
 proposals for Architecture Board review, not approved decisions.
 
+#### Operator ownership and packaging
+
+**Requirement:** Assign clear ownership for the TaaS API lifecycle, its controller permissions, and its release and
+upgrade path.
+
+The current ADR baseline is a dedicated TaaS RHOAI module component with a module controller managing the API
+Deployment and its platform-facing resources. This ADR compares that baseline with placing TaaS ownership in an existing
+operator.
+
+1. **Dedicated TaaS operator/module (current baseline).** A TaaS module controller owns the API Deployment, Service,
+   configuration, route registration, and related operands; it does not own Ray, Kueue, or training workloads. This
+   gives TaaS a clear lifecycle, release cadence, and permission boundary, and avoids coupling the REST API lifecycle to
+   a backend operator. It adds another operator/module package and its associated onboarding, upgrade, and maintenance
+   work.
+2. **Extend an existing operator to own the TaaS API component.** The KubeRay operator is the candidate under
+   consideration. It could reconcile the TaaS API Deployment and related resources while the API remains a separate
+   service. This may reuse existing operator packaging and lifecycle machinery, but couples TaaS delivery, permissions,
+   and upgrades to the Ray component. That coupling may complicate using TaaS with a future backend that does not require
+   Ray, such as KFT. The operator would also take responsibility for a REST API outside its current Ray/KubeRay
+   reconciliation function.
+
 #### DSC structure and backend enablement
 
-**Requirement:** The DSC must represent TaaS and its backend components through the platform-managed lifecycle, with
-clear enablement and status boundaries and without making the TaaS API operator own Ray or KFT. The current DSC exposes
-Ray and KFT as separate top-level components. The options below define how to represent TaaS and its backends. The
-proposed `training.api`, `training.ray`, and `training.kft` names are conceptual until platform owners confirm the schema.
+**Requirement:** Add TaaS to the platform-managed DSC lifecycle while preserving compatibility with the current DSC in
+RHOAI 3.7. The TaaS API operator must not own Ray or KFT. The current DSC exposes Ray and KFT as separate top-level
+components; their locations must remain unchanged for 3.7. Exact names and field structure for the new TaaS component are
+subject to confirmation by platform owners.
 
-1. **Add a standalone TaaS entry; keep Ray and KFT unchanged.** Add a new DSC entry for the Training as a Service API
-   operator. Continue enabling Ray and KFT through their existing DSC entries. TaaS does not trigger backend enablement;
-   administrators must enable a backend separately. This is the least disruptive option, but does not express a single
-   training capability or provide backend dependency enablement.
+1. **Add a standalone TaaS entry; keep Ray and KFT unchanged.** Add a new top-level DSC entry for the Training as a
+   Service API operator. Continue enabling Ray and KFT through their existing DSC entries. TaaS does not trigger backend
+   enablement; administrators must enable a backend separately. This preserves compatibility but does not group TaaS
+   under a Training component.
 2. **Add a TaaS entry with a `backend` subelement.** Keep the existing Ray and KFT entries and add a TaaS DSC entry with
    `backend: Ray`, `backend: KFT`, or both. The platform operator enables the corresponding existing backend components
    from this selection. This offers a compact user choice, but creates two configuration paths for the same components
    unless precedence between `TrainingService.backend` and the standalone Ray/KFT entries is defined. It also couples
    TaaS selection to backend activation.
-3. **Restructure DSC under a `training` item with `api`, `ray`, and `kft` subelements.** Replace the standalone Ray and
-   KFT DSC entries with child components under one training item, alongside the TaaS API operator. The platform operator
-   maps each child to its own component lifecycle; TaaS does not own or reconcile Ray or KFT. This gives administrators
-   one coherent training capability while preserving separate API/backend ownership and explicit control over each
-   child. It also gives each component a clear status and enablement boundary.
+3. **Move TaaS, Ray, and KFT under a single Training DSC item in 3.7.** Replace the existing top-level Ray and KFT DSC
+   entries with children under one Training item, alongside TaaS. This groups the components and gives each a distinct
+   lifecycle, but changes the existing DSC structure and risks breaking compatibility for 3.7.
+4. **Add a top-level Training item with TaaS as a child; preserve existing Ray and KFT entries.** Add the new Training
+   component and place TaaS beneath it, while leaving the existing top-level Ray and KFT DSC entries unchanged for 3.7.
+   Administrators continue to enable Ray separately, and TaaS does not own or reconcile either backend. Moving Ray and
+   KFT under Training can be considered in a future release after its compatibility and migration requirements are
+   defined.
 
-**Recommendation: option 3.** It makes the DSC hierarchy reflect the training capability without making the TaaS API
-operator responsible for backend lifecycle, and avoids the duplicate sources of truth that option 2 would introduce. It
-makes API and backend selections explicit while allowing platform policy to define valid combinations; for this TP, Ray
-remains a critical TaaS dependency and KFT remains unsupported by the TaaS API. This recommendation depends on the
-platform team defining a safe migration from the current Ray/KFT top-level entries, including upgrade behavior,
-compatibility or conversion for existing DSCs, and precedence for administrator disables. The restructuring itself must
-not silently disable existing workloads or remove shared backend components. This is not a decision to add KFT backend
-support to the TaaS 3.7 TP API; KFT support remains separately scoped and the TP API's KFT operation remains unsupported
-unless that scope changes.
+**Recommendation: option 4.** It introduces TaaS under a Training component while preserving the existing Ray and KFT
+locations in DSC v3 for RHOAI 3.7. Administrators continue to control Ray independently, and the TaaS API operator remains
+responsible only for the API lifecycle. A later release may move Ray and KFT under Training, subject to a separate
+compatibility and migration decision. This recommendation does not add KFT backend support to the TaaS 3.7 TP API; KFT
+support remains separately scoped and the TP API's KFT operation remains unsupported unless that scope changes.
 
 #### Custom training code submission
 
@@ -405,16 +432,12 @@ credentials it is permitted to use, and TaaS must not use its own service-accoun
 
 ## Open Questions
 
-1. **Architecture Board / platform owners — DSC structure and component enablement:** Which DSC option in the
-   Additional requirements and options for Architecture Board review section should be adopted? Option 3 is
-   recommended, but requires a migration and compatibility plan for removing the existing top-level Ray and KFT entries.
-   The module onboarding ADR defines dependency discovery and readiness, but not automatic component enablement.
-   Preserve explicit administrator control, and ensure disabling TaaS does not remove a separately shared backend.
-2. **TP service boundary:** Should the TP remain a training-specific API, or evolve into a shared Jobs API for training,
-   synthetic-data generation, and pipelines? A September 21, 2026 review raised the broader direction and specifically
-   called for alignment with EvalHub; no decision or API ownership agreement was recorded. This ADR keeps the TP
-   training-specific pending that review.
-3. **Queue setup and admission behavior:** Keep `GET /projects/{project}/queues`. When `queue_name` is omitted, Kueue
+1. **Architecture Board / platform owners — DSC structure and component enablement:** Confirm the exact RHOAI 3.7 DSC
+   schema and field names for a top-level Training component with TaaS as a child, while preserving the existing top-level
+   Ray and KFT entries. Confirm the enablement and status behavior for the new component. Moving Ray and KFT under
+   Training may be considered for a future release, with compatibility and migration defined separately. The module
+   onboarding ADR defines dependency discovery and readiness, but not automatic component enablement.
+2. **Queue setup and admission behavior:** Keep `GET /projects/{project}/queues`. When `queue_name` is omitted, Kueue
    applies the namespace-local `default` LocalQueue even when other LocalQueues exist, provided defaulting is configured
    and supported by the bundled version (stable upstream since v0.17). A supplied queue is checked with the caller's
    token and applied to the RayJob; fail promptly with a clear error if it is missing or unreadable. Return
@@ -426,56 +449,47 @@ credentials it is permitted to use, and TaaS must not use its own service-accoun
    reading the associated Workload. The preflight check is not atomic with RayJob creation: if the LocalQueue is deleted
    after validation, Kueue may leave the accepted workload inadmissible. Also define how the status API represents that
    race and what happens if Kueue is present but no `default` LocalQueue/defaulting is configured. Verify that the
-   selected CodeFlare submission path does not require a cluster-wide Kueue/operator-version probe. The October 5 DP
-   page includes discovery and selection; September 21 notes record queue-parameter descoping.
-4. **Job visibility:** Is project-wide visibility for callers with namespace-level RayJob list permissions intended, or
-   does TP require per-user ownership isolation? The DP page says to return caller-readable RayJobs but does not define
-   a creator-level filter. Kubernetes RBAC `list` is namespace-level; per-user filtering needs an additional
-   authorization design and must not rely on a caller-supplied label selector. The current preferred baseline is “every
-   training job in the project the caller has access to see,” with this boundary left open for review.
-5. **Ray driver-log authorization:** The proposed example is a request-scoped CodeFlare client configured with the
+   selected CodeFlare submission path does not require a cluster-wide Kueue/operator-version probe. The DP page includes
+   queue discovery and selection.
+3. **Job visibility:** Should `GET /projects/{project}/training-jobs` return all RayJobs the caller is authorized to
+   read in the project, including jobs submitted by other users, or only jobs submitted by that caller? The DP contract
+   carries forward the caller-readable RayJob collection. Kubernetes RBAC `list` is namespace-level and does not filter
+   by creator; caller-only filtering requires trustworthy creator attribution and consistent enforcement for list,
+   detail, logs, and delete operations.
+4. **Ray driver-log authorization:** The proposed example is a request-scoped CodeFlare client configured with the
    caller bearer token, streaming Ray job logs and relaying them through TaaS; this avoids giving the TaaS API service
-   account enhanced Ray permissions. Which supported SDK operation and protected route preserve and enforce that caller
-   identity for the log request? CodeFlare documents token-based Kubernetes authentication, but the SDK's exact
-   log-streaming behavior and TaaS-to-Ray authorization mapping are not proven. RHOAI 3.6's Ray dashboard path includes
-   kube-rbac-proxy behind the shared Gateway, but that does not itself prove per-caller authorization. Ray's built-in
-   token is a static cluster token, and the current KubeRay API reference documents Kubernetes-delegated auth as
-   unsupported for RayJob. Product Security and the Ray/platform owners must approve the trust boundary before logs
-   ship. If the supported path cannot enforce the caller's identity, defer the logs endpoint rather than release it with
-   shared Ray authority.
-6. **RHOAI 3.7 API contract:** Confirm the DSC field, Module CR name/kind/version, and platform-owned dependency
+   account enhanced Ray permissions. If the supported path cannot enforce the caller's identity, defer the logs endpoint rather than release it with shared Ray authority.
+5. **RHOAI 3.7 API contract:** Confirm the DSC field, Module CR name/kind/version, and platform-owned dependency
    behavior with the 3.7 platform owners. The module ADR specifies the module API group and requires a beta version for
    TP; the concrete TaaS CRD and DSC mapping are not specified by public 3.7 docs.
-7. **Component and API names:** Confirm the public component/CRD name and whether the project-qualified DP paths remain
+6. **Component and API names:** Confirm the public component/CRD name and whether the project-qualified DP paths remain
    the TP contract. Avoid collisions with Training Hub, Trainer's Training API terminology, and the existing
    `training-service` repository/name.
-8. **Supported runtime and SDK client model:** Pin the exact RHOAI TP Ray image, CodeFlare SDK, KubeRay/Ray versions,
+7. **Supported runtime and SDK client model:** Pin the exact RHOAI TP Ray image, CodeFlare SDK, KubeRay/Ray versions,
    and KubeRay RayJob submission mode as one supported combination. Confirm the SDK's caller-token configuration and how
    its client is isolated per request under concurrency; the documented `set_api_client(...)` pattern must not create
    shared mutable caller identity. Do not infer the 3.7 combination from the RHOAI 3.5 image or current upstream Ray.
-9. **Admission policy:** Identify the platform owner and concrete policy mechanism that constrains RayJob pod-template
-   fields, including ServiceAccount selection and same-namespace Secret mounts. Confirm how this policy covers direct
-   RayJob creation outside TaaS.
-10. **Backend-neutral API:** Before adding KFT/Trainer, decide whether the public resource and identifier should remain
+8. **Backend-neutral API:** Before adding KFT/Trainer, decide whether the public resource and identifier should remain
     RayJob-shaped or introduce a backend-neutral job abstraction. This is not required to implement the Ray-only TP.
-11. **Non-interactive caller identity:** Which OpenShift identity and token-issuance flow should automation use? A
-    dedicated ServiceAccount can provide a first-class OpenShift identity (`system:serviceaccount:<namespace>:<name>`)
-    with narrowly scoped project RBAC. Prefer a short-lived TokenRequest or projected token over a manually created,
-    long-lived service-account token Secret. Decide whether each automation client/project gets its own ServiceAccount,
-    where external callers obtain and rotate tokens, and how the API receives the token and passes it unchanged to
-    Kubernetes and CodeFlare. The caller's ServiceAccount is distinct from the TaaS API pod's service account; TaaS must
-    not substitute its own runtime identity for the caller.
-12. **Custom training code submission — Architecture Board:** Confirm the recommended packaged-code reference from a
+9. **Custom training code submission:** Confirm the recommended packaged-code reference from a
     project-authorized PVC or S3-compatible object, including immutable version/digest, entrypoint, S3 Connection
     reference, and runtime retrieval. Decide whether a user-built container image is also supported. Inline source is
     last-resort and not recommended. Define the request contract, runtime/dependency limits, and source/parameter
     inspection behavior. RHAIRFE-3751 covers this enhancement; do not infer that arbitrary code is accepted through the
     existing `algorithm` field.
-13. **Model, dataset, and output storage authentication — Architecture Board:** Choose between project-scoped RHOAI
+10. **Model, dataset, and output storage authentication:** Choose between project-scoped RHOAI
     Connection references, credentials supplied in the request body, or supporting both. The recommendation is
     Connection references. Define how the caller is authorized to use a Connection, how references are passed to the Ray
     workload, how credentials are kept out of RayJob specs and logs, and whether code artifacts may reuse these
     Connections. The caller's OpenShift bearer token and storage credentials are separate identities.
+11. **Operator ownership and packaging — platform/operator owners:** Should the dedicated TaaS module/controller in the
+    current baseline own the API lifecycle, or should the KubeRay operator reconcile the TaaS API component? Clarify
+    whether the API remains a separate Deployment, how its lifecycle behaves when Ray/KubeRay is disabled or removed,
+    whether future non-Ray backends could use TaaS independently, and which team owns permissions, releases, and
+    upgrades. Confirm whether this requires formal Architecture Board review.
+12. **MLflow workspace tenancy — architecture/MLflow owners:** For optional experiment tracking under RHAIRFE-3752,
+    should the selected MLflow workspace match `{project}` in `POST /projects/{project}/training-jobs`, or may the
+    caller select another workspace they are authorized to access?
 
 The DP page states that list/detail operations return RayJobs readable by the caller in the explicit project, including
 resources not created by TaaS. It does not decide whether visibility is intended to be project-wide or per-user. A
@@ -526,16 +540,18 @@ rank-specific contract would require the training runtime to identify or funnel 
   using the caller's bearer token. Never submit as the TaaS service account after a TokenReview or SAR check.
 - Forward the original bearer token through the Gateway chain for caller-native Kubernetes calls. Identity headers alone
   cannot authorize downstream API operations.
-- Non-interactive clients must authenticate as an explicit OpenShift principal, such as a dedicated ServiceAccount with
-  least-privilege project RBAC. Keep that caller identity separate from the TaaS API pod's service account; do not use a
-  shared TaaS runtime token to submit on behalf of callers.
+- For non-human callers, customers choose and manage an OpenShift identity, such as a ServiceAccount with least-privilege
+  project RBAC. TaaS accepts that identity through the same caller-authentication path and does not provision identities
+  or tokens. Keep the caller identity separate from the TaaS API pod's service account; do not submit on the caller's
+  behalf using a shared TaaS runtime token.
 - The Ray Jobs API is not a per-OpenShift-user API by default. Ray warns that access to the dashboard/Jobs services can
   allow arbitrary code execution; protect the Ray route with the supported RHOAI Gateway and kube-rbac-proxy path and
   verify the CodeFlare SDK log call uses and preserves the caller bearer token. Do not give the TaaS service account
   enhanced Ray permissions for logs. Current upstream Ray token authentication is a single static cluster token, not
   per-user identity; do not treat it as the caller's identity or expose it to API callers.
-- Constrain workload-bearing RayJob fields with admission or policy to prevent unauthorized ServiceAccount selection and
-  same-namespace Secret mounts. Validate policy against RayJobs created outside TaaS as well.
+- TaaS does not expose caller-selected ServiceAccounts or arbitrary Secret mounts and does not modify platform
+  authorization or admission policy. Ray/KubeRay policy is managed and validated at the platform/component level, outside
+  this ADR.
 - Do not persist credentials, request payloads, or log contents. Avoid logging tokens or other credentials. Treat
   returned driver logs as potentially sensitive user content.
 - Keep Kueue and Ray installation/lifecycle outside the TaaS controller. The module controller and API runtime have
@@ -547,8 +563,8 @@ rank-specific contract would require the training runtime to identify or funnel 
   enhanced service-account permissions, but the supported SDK's log-streaming operation and the RHOAI proxy route must
   be shown to preserve and enforce caller authorization. Ray Jobs/dashboard access can expose job submission and other
   control operations.
-- **RayJob rights have workload implications.** Kubernetes RBAC alone may permit pod templates with broader authority
-  than intended; admission policy is required.
+- **Platform RayJob policy is outside TaaS scope.** The API submits RayJobs as the caller and does not configure
+  Ray/KubeRay admission policy. Matching platform controls apply to TaaS and direct RayJob submissions alike.
 - **Snapshot logging may consume excessive memory or latency.** The SDK fetches the full driver log before TaaS applies
   its tail limit; impose and validate bounded response behavior.
 - **Streaming behavior is best-effort.** Ray's `tail_job_logs` is a WebSocket iterator; reconnect, resume cursor, and
@@ -556,12 +572,11 @@ rank-specific contract would require the training runtime to identify or funnel 
   testing.
 - **3.7 platform interfaces may change.** Component lifecycle, Gateway availability, and API shape need confirmation
   against the supported release.
-- **DSC restructuring is unresolved.** Option 3 requires a compatible migration from existing top-level Ray/KFT entries
-  and clear administrator-disable precedence; an unsafe migration could change component enablement unexpectedly.
+- **DSC schema and lifecycle behavior need platform confirmation.** The recommended 3.7 change adds Training with TaaS as
+  a child and preserves the existing top-level Ray/KFT entries. Future consolidation requires a separate compatibility
+  and migration plan.
 - **Kueue defaulting depends on platform setup.** The no-queue behavior only uses the intended Kueue default if the
   supported installation provides the required LocalQueue defaulting behavior in the project.
-- **Service scope may expand.** A generic job API could change names, resource types, and ownership boundaries; do not
-  silently generalize the DP contract without product and EvalHub alignment.
 - **Project-wide list permissions may expose peer jobs.** Namespace-level `list` rights do not apply creator-based
   filtering; per-user privacy is not provided by the Kubernetes RBAC contract alone.
 
@@ -581,12 +596,12 @@ rank-specific contract would require the training runtime to identify or funnel 
   Retrieved October 26, 2026; the page remains an architecture review draft with reviewer sign-off pending.
 - [Pinned TaaS DP OpenAPI contract](https://github.com/opendatahub-io/training-service/blob/0b6b28e7b46c385ee27348cebe2b43549a2d0ff6/api/openapi.yaml) —
   DP API schema and operation contract.
-- [TaaS weekly sync, September 21, 2026](https://docs.google.com/document/d/1GV5mCD8KGaMGqvoxsy5FM4Tr3OX1KP7LAtWqhtagD_U/edit) —
-  records queue-parameter descoping for DP and a pending discussion about Jobs-as-a-Service scope; meeting notes are not
-  a final TP API decision.
 - [RHAIRFE-3751 — Training API: Predictive Training with Custom Functions](https://redhat.atlassian.net/browse/RHAIRFE-3751) —
   requests custom training functions or packaged code alongside predefined algorithms; supported frameworks and runtime
   configurations are to be agreed during refinement.
+- [RHAIRFE-3752 — Training API: MLflow Experiment Tracking](https://redhat.atlassian.net/browse/RHAIRFE-3752) —
+  requests optional association of training jobs with authorized MLflow experiments/workspaces and recording of run
+  parameters, reported metrics, and model outputs.
 - [ODH Module Onboarding ADR](../operator/ODH-ADR-Operator-0012-module-onboarding.md)
   and [Module Onboarding Guide](../operator/design/module-onboarding-guide.md)
 - [Gateway API Authentication ADR](../operator/ODH-ADR-Operator-0012-gateway-api-authentication-architecture.md)
@@ -608,9 +623,6 @@ rank-specific contract would require the training runtime to identify or funnel 
 - [OpenShift
   `oc create token` documentation](https://docs.openshift.com/container-platform/4.22/html/cli_tools/openshift-cli-oc) —
   documents requesting a service-account token with a specified duration or audience.
-- [TaaS progress and architecture discussion, October 27, 2026](https://docs.google.com/document/d/1F38koAmQAAM8ftV8pxCujr5rBY3W_vuk6p82rT2ubCg/edit) —
-  meeting notes record the proposed use of the CodeFlare SDK for driver-log streaming; this is an implementation
-  proposal, not evidence that end-to-end caller authorization has been verified.
 - [Ray 2.55.1 JobSubmissionClient](https://docs.ray.io/en/releases-2.55.1/cluster/running-applications/job-submission/doc/ray.job_submission.JobSubmissionClient.html), [
   `get_job_logs`](https://docs.ray.io/en/releases-2.55.1/cluster/running-applications/job-submission/doc/ray.job_submission.JobSubmissionClient.get_job_logs.html),
   and [
