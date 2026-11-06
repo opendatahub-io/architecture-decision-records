@@ -380,6 +380,45 @@ responsible only for the API lifecycle. A later release may move Ray and KFT und
 compatibility and migration decision. This recommendation does not add KFT backend support to the TaaS 3.7 TP API; KFT
 support remains separately scoped and the TP API's KFT operation remains unsupported unless that scope changes.
 
+#### Multi-tenancy and authorization
+
+**Requirement:** Treat the OpenShift project/namespace named by `{project}` as the tenant. For Kubernetes operations,
+TaaS uses the caller's identity and Kubernetes RBAC authorizes each operation; TaaS does not duplicate this with its own
+endpoint-to-resource SubjectAccessReview (SAR) mapping. Non-Kubernetes operations still need an explicit authorization
+path. Algorithm discovery is currently the only non-Kubernetes endpoint and should be available to all API callers
+without project-specific authorization.
+
+- **Authorization architecture — Architecture Board:** Is caller-identity authorization sufficient, or should TaaS
+  adopt EvalHub's endpoint-specific SAR pattern, implemented there as a service filter for now and considered for the
+  Kube RBAC Proxy long term? TaaS currently uses the shared Gateway and `kube-rbac-proxy` for ingress/TLS; adding
+  EvalHub-style SAR checks would change this flow.
+- **Job visibility — open:** Should `GET /projects/{project}/training-jobs` return every RayJob the caller can read in
+  the project, or only jobs submitted by that caller? TaaS stamps a submitter annotation that could support caller-only
+  filtering. Define how jobs without that annotation are handled; Kubernetes namespace-level `list` permission does not
+  filter by creator.
+- **Related resources:** Logs follow their RayJob in `{project}`. Model, dataset, and custom-code storage access uses
+  project-scoped RHOAI Connections or authorized PVCs; TaaS does not manage raw storage credentials. The remaining
+  cross-system question is whether an MLflow workspace must match `{project}` or may be another workspace the caller is
+  authorized to use. Keeping the workspace aligned with the project keeps experiment and run metadata within the same
+  tenant, as in EvalHub's workspace/namespace model.
+
+#### Algorithm discovery
+
+**Requirement:** Report algorithms and parameter schemas available in the configured Ray runtime, rather than a
+hard-coded universal catalog.
+
+**Proposed implementation:** Configure one `trainingRuntime.image` per TaaS deployment. At pod startup, an init
+container using that image imports its installed Training Hub package and inspects `AlgorithmRegistry` and callable
+metadata. The algorithm implementations stay in the runtime image; the init container writes their names and parameter
+schemas to a `catalog.json` in a shared pod-local `emptyDir`. The API container mounts it read-only and uses it for
+algorithm discovery and request parameter validation. The catalog is derived from the same runtime image used by
+training jobs; changing the image rolls out the pod and regenerates the catalog. This matches the approach in
+[training-service PR #12](https://github.com/opendatahub-io/training-service/pull/12).
+
+The proposed storage is ephemeral because the catalog is regenerated at startup and does not need to outlive the pod.
+A ConfigMap is an alternative if the catalog is generated and versioned before deployment against a pinned runtime
+image; the image and catalog must then be updated together.
+
 #### Custom training code submission
 
 **Requirement:** The Training API should support submitting user-provided training code alongside predefined
