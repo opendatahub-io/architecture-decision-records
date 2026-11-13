@@ -17,10 +17,10 @@ This ADR records the user-validated architecture baseline for integrating Traini
 OpenShift AI (RHOAI) as a Technical Preview component targeted for RHOAI 3.7. TaaS provides a project-scoped REST API
 for submitting and observing training jobs; Ray is the first backend.
 
-The baseline applies the RHOAI module-controller and shared Gateway patterns to the TaaS API service. It does not make
-the TaaS controller responsible for installing or operating Ray, Kueue, or training workloads. The approval recorded
-here covers the decisions in the summary below; unresolved platform and security items remain release gates or require
-separate owner decisions.
+The baseline applies the RHOAI module-controller pattern to the TaaS API service. For the TP, the proposed ingress is a
+standard OpenShift Route. The TaaS controller is not responsible for
+installing or operating Ray, Kueue, or training workloads. The approval recorded here covers the decisions in the
+summary below; unresolved platform and security items remain release gates or require separate owner decisions.
 
 ## Why
 
@@ -29,7 +29,7 @@ API into RHOAI requires a clear ownership boundary, a supported ingress and auth
 that preserves the caller's permissions when the service creates RayJob resources.
 
 These decisions are especially important for a TP: a service account with broad namespace permissions could turn an API
-request into workload authority beyond the caller's intent, and the platform's 3.7 lifecycle and gateway details are not
+request into workload authority beyond the caller's intent, and the platform's 3.7 lifecycle and ingress details are not
 yet publicly specified.
 
 ## Goals
@@ -39,7 +39,7 @@ yet publicly specified.
   client code or backend-specific YAML or learn Ray/KFT submission details.
 - Support Ray as the initial backend through the existing CodeFlare SDK managed RayJob path.
 - Execute job submission and RayJob CRUD with the calling user's bearer token and permissions.
-- Use the shared platform Gateway API authentication pattern.
+- Expose the API through a standard OpenShift Route for the TP.
 - Keep the TaaS module controller focused on the API service lifecycle and its platform-facing resources.
 - Expose driver-log snapshots and streaming according to the DP API contract, subject to the verification gates in this
   ADR.
@@ -64,7 +64,7 @@ yet publicly specified.
 ### Decision summary
 
 1. **RHOAI integration:** Ship TaaS as a module component with a module-controller Deployment and a separate stateless
-   API Deployment. The controller owns the API Deployment, Service, configuration, HTTPRoute registration, operand
+   API Deployment. The controller owns the API Deployment, Service, configuration, OpenShift Route, operand
    NetworkPolicy, and monitoring resources. Keep controller privileges out of the API runtime.
 2. **Backend ownership:** Use Ray first. The TaaS controller discovers Ray and never installs or removes the separate
    Ray module. Ray is a critical dependency for this TP because no other backend is implemented; if Ray is absent or not
@@ -80,11 +80,12 @@ yet publicly specified.
    before using that setter in a shared API process. Do not mutate process-global SDK credentials per request unless
    concurrency isolation is demonstrated. The service does not perform a SAR check and then submit as its own service
    account. A TokenReview or SAR is not a substitute for invoking Kubernetes as the caller.
-4. **Ingress:** Register an HTTPRoute on the shared platform Gateway and follow the platform flow: Envoy calls
-   kube-auth-proxy for an external authorization decision, then routes data traffic to the TaaS kube-rbac-proxy sidecar,
-   which terminates TLS at the pod boundary. The original caller credential must be made available securely to the API
-   for downstream caller-native Kubernetes operations. The gateway ADR does not establish that forwarding behavior, so
-   it remains a release gate; identity headers alone are insufficient.
+4. **Ingress (proposed):** Expose the API through a standard OpenShift Route, following the current EvalHub pattern.
+   The TrustyAI Service Operator creates a `route.openshift.io/v1` Route with reencrypt TLS to the service's HTTPS
+   port; in EvalHub, `kube-rbac-proxy` handles backend TLS and authentication/authorization. This is an ingress
+   precedent only: whether TaaS uses `kube-rbac-proxy` only for TLS or terminates TLS at the OpenShift router remains
+   open (Open Question 13). TaaS must preserve the caller's bearer token for caller-native Kubernetes requests and must
+   not substitute proxy identity headers. Do not depend on the shared AI Gateway for this TP.
 5. **Job source of truth:** Keep no durable TaaS job database. The namespaced RayJob CR is the source for listing and
    status/details; the API lists all RayJobs the caller can read in the requested project, whether or not TaaS created
    them. The API maps RayJob provisioning, waiting, and Kueue-suspended states to `PENDING` and reports runtime states
@@ -132,8 +133,8 @@ flowchart LR
     Ray --> KubeRay[KubeRay operator]
     KubeRay -->|reconciles| RayJob[RayJob and transient RayCluster]
     Admin -->|manages independently| Kueue[Kueue, optional]
-    Caller[Caller] --> Gateway[Shared platform Gateway]
-    Gateway --> API
+    Caller[Caller] --> Ingress[OpenShift Route]
+    Ingress --> API
 ```
 
 The lifecycle diagram depicts recommended DSC option 4 below; the option is a recommendation, not an approved platform
@@ -148,8 +149,8 @@ the RHOAI 3.7 platform owners. No public 3.7 contract was available during this 
 | Element                         | Owner                                      | Boundary                                                                                                                                                    |
 |---------------------------------|--------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | TaaS module controller          | RHOAI module lifecycle                     | Reconciles TaaS API operands and reports readiness; does not own Ray, Kueue, or training jobs.                                                              |
-| TaaS API runtime                | TaaS service                               | Stateless API process behind the TaaS kube-rbac-proxy sidecar; holds no persistent caller credentials and receives no broad workload-management privileges. |
-| Shared Gateway                  | RHOAI platform                             | Routes the TaaS HTTPRoute and invokes kube-auth-proxy for authentication/authorization decisions.                                                           |
+| TaaS API runtime                | TaaS service                               | Stateless API with no broad workload-management privileges; whether it uses a kube-rbac-proxy sidecar or terminates TLS at the OpenShift router remains open (see Question 13). |
+| TaaS API ingress                | TaaS module controller / OpenShift platform | Registers an OpenShift Route to expose the API, following the EvalHub resource pattern; the shared AI Gateway is not a TP dependency.                           |
 | Ray module / KubeRay operator   | RHOAI Ray component                        | Owns Ray/KubeRay lifecycle and reconciliation of RayJob resources and transient RayClusters.                                                                |
 | Kueue                           | Separately administered platform component | Optional queue admission; TaaS neither installs nor manages it.                                                                                             |
 | RayJob and transient RayCluster | Caller project and KubeRay                 | Job resource is created in the explicit caller project; KubeRay owns transient cluster reconciliation and cleanup.                                          |
@@ -163,35 +164,33 @@ considered in a future release after a compatibility and migration plan is agree
 ```mermaid
 sequenceDiagram
     actor Caller
-    participant GW as Shared Gateway / Envoy
-    participant Auth as kube-auth-proxy ext_authz
-    participant Proxy as TaaS kube-rbac-proxy sidecar
+    participant Ingress as OpenShift Route
+    participant Proxy as Optional TaaS kube-rbac-proxy
     participant API as TaaS API
     participant K8s as Kubernetes API
     participant CF as CodeFlare SDK
     participant KubeRay as KubeRay
     participant Kueue as Kueue (optional)
     participant RayHTTP as Ray Jobs API via protected Ray dashboard route
-    Caller ->> GW: Project-scoped request with bearer token
-    GW ->> Auth: ext_authz check (authorization service, not data path)
-    Auth -->> GW: Allow or deny
-    GW ->> Proxy: Route request;%% caller-token forwarding is unverified
-    Proxy ->> API: Authorized request
+    Note over Ingress,Proxy: Proxy use and TLS termination are open - see Question 13
+    Caller ->> Ingress: Project-scoped request with bearer token
+    Ingress ->> Proxy: Route request;%% token forwarding is a release gate
+    Proxy ->> API: Forward request - token preservation must be verified
     alt submit job
         opt queue_name supplied
             API ->> K8s: Caller-authenticated GET named LocalQueue
             K8s -->> API: Queue found or clear authorization/not-found error
         end
         API ->> CF: Create request-scoped client with caller token
-        CF ->> K8s: Create RayJob in explicit project;%% apply queue label if requested
+        CF ->> K8s: Create RayJob in explicit project;%% apply requested queue label; default queueing may occur at admission
         K8s -->> API: RayJob persisted
         API -->> Caller: 202 Accepted, RayJob name and Location
         Note over Kueue, KubeRay: Reconciliation and queue admission continue asynchronously after the response
         opt Kueue installed and configured
-            Kueue ->> K8s: Observe RayJob;%% default LocalQueue may be applied
+            Kueue ->> K8s: Observe RayJob and evaluate queue admission
             Kueue -->> K8s: Unsuspend RayJob after admission
         end
-        KubeRay ->> K8s: Observe unsuspended RayJob;%% create transient RayCluster and submitter resources
+        KubeRay ->> K8s: Observe RayJob;%% reconcile RayCluster and submitter resources as required by its state
     else list, detail, status, delete, or queue discovery
         API ->> K8s: Caller-authorized namespaced read/delete
         K8s -->> API: RayJob or LocalQueue resources
@@ -211,23 +210,13 @@ configuration supplies the caller bearer token to the SDK's Kubernetes client ex
 of the in-pod service-account credential. The SDK's documented `set_api_client(...)` registration must be checked for
 process-global state and concurrent-request safety. The pinned integration must isolate credentials per caller; it must
 not let one request replace the client used by another. The exact mechanism by which the original credential passes the
-Gateway and proxy chain is not specified by the platform ADR and must be proven before release. If the credential is
+OpenShift Route and TaaS proxy path must be proven before release. If the credential is
 unavailable or invalid downstream, fail closed; never substitute an in-pod service-account token or trust
 caller-supplied identity headers.
 
-The Ray Jobs API is a separate trust boundary. The proposed logs path uses a CodeFlare client configured with the
-original caller bearer token, then uses the SDK's Ray job log-streaming interface to retrieve driver logs and relay them
-to the caller. This is an example of caller-token use without granting the TaaS API service account broader Ray
-permissions. CodeFlare's documented token setup configures its Kubernetes client; it does not, by itself, establish that
-the supported SDK log operation forwards that token to the Ray dashboard route or that the route enforces project-level
-access. Also verify that the SDK client can be isolated per API request; a process-global client registration cannot
-safely represent concurrent callers unless the SDK provides an isolation mechanism. Current RHOAI 3.6 architecture
-context shows the Ray dashboard route protected by the platform Gateway and a kube-rbac-proxy sidecar, but this does not
-prove that the caller's OpenShift identity is preserved for TaaS-to-Ray requests. Current upstream Ray documentation
-describes one static cluster token; the current KubeRay API reference says Kubernetes-delegated token authentication is
-unsupported for RayJob. These are current upstream references, not the exact 3.7 bundle. Verify the complete SDK-to-Ray
-path and operation-level authorization before release; do not use a shared Ray token or the TaaS pod's service-account
-token as a substitute for caller identity.
+Verify that the pinned CodeFlare SDK isolates caller-specific clients when requests run concurrently. Do not register a
+different caller client through process-global `set_api_client(...)` state per request unless the SDK guarantees
+isolation.
 
 ### REST contract carried forward from DP
 
@@ -302,8 +291,8 @@ content.
 
 Before TP release, owners must demonstrate:
 
-- Original bearer-token propagation from the Gateway through the TaaS backend to caller-native Kubernetes API calls and
-  the CodeFlare Kubernetes client.
+- Original bearer-token propagation through the OpenShift ingress and TaaS proxy path to caller-native Kubernetes API
+  calls and the CodeFlare Kubernetes client.
 - CodeFlare client isolation with the pinned SDK: prove that concurrent requests cannot overwrite or reuse each other's
   caller credentials; do not use `set_api_client(...)` as per-request mutable global state unless the implementation
   provides and verifies isolation.
@@ -317,7 +306,8 @@ Before TP release, owners must demonstrate:
   Ray permission is required, and that log access does not grant unintended Ray job submission/stop authority.
 - Snapshot and SSE behavior on the exact supported Ray image: memory/latency bounds, SSE backpressure and disconnect
   cleanup, and the image's worker-log redirection/deduplication behavior.
-- RHOAI 3.7 DSC/component lifecycle, Module CR API, and shared Gateway availability against the actual release API.
+- RHOAI 3.7 DSC/component lifecycle, Module CR API, supported OpenShift ingress, and bearer-token forwarding against the
+  actual release API.
 - Supported Ray image, CodeFlare SDK version, KubeRay version, and RayJob submission mode pinned and tested as one
   supported configuration.
 - Verify the supported KubeRay status exposed while Kueue holds a RayJob suspended, and map that state to API `PENDING`
@@ -390,8 +380,9 @@ without project-specific authorization.
 
 - **Authorization architecture — Architecture Board:** Is caller-identity authorization sufficient, or should TaaS
   adopt EvalHub's endpoint-specific SAR pattern, implemented there as a service filter for now and considered for the
-  Kube RBAC Proxy long term? TaaS currently uses the shared Gateway and `kube-rbac-proxy` for ingress/TLS; adding
-  EvalHub-style SAR checks would change this flow.
+  Kube RBAC Proxy long term? The current ingress proposal is an OpenShift Route. Whether TaaS uses a `kube-rbac-proxy`
+  sidecar or terminates TLS at the router is open (see Question 13); adding EvalHub-style SAR checks would change the
+  authorization flow.
 - **Job visibility — open:** Should `GET /projects/{project}/training-jobs` return every RayJob the caller can read in
   the project, or only jobs submitted by that caller? TaaS stamps a submitter annotation that could support caller-only
   filtering. Define how jobs without that annotation are handled; Kubernetes namespace-level `list` permission does not
@@ -529,6 +520,15 @@ credentials it is permitted to use, and TaaS must not use its own service-accoun
 12. **MLflow workspace tenancy — architecture/MLflow owners:** For optional experiment tracking under RHAIRFE-3752,
     should the selected MLflow workspace match `{project}` in `POST /projects/{project}/training-jobs`, or may the
     caller select another workspace they are authorized to access?
+13. **TaaS ingress and TLS termination — Architecture Board / platform owners:** The AI Gateway architect's guidance is
+    that the shared AI Gateway is primarily used for inference and is not planned to support other API use cases in 3.7
+    or 3.8. Recommendation: use a standard OpenShift Route for the TP, following EvalHub's current operator-managed
+    pattern, and revisit AI Gateway integration when it supports this use case. Which TLS termination pattern is
+    approved for TaaS: `kube-rbac-proxy` used only as a pod-side TLS terminator, with Kubernetes authorization still
+    performed using the caller's bearer token, or TLS termination at the OpenShift router? If router termination is
+    approved, choose edge termination (HTTP to the API) or reencrypt termination (TLS to a native-HTTPS API). In either
+    design, preserve the caller bearer token; EvalHub's SAR/identity-header flow is not a substitute for TaaS caller-token
+    forwarding.
 
 The DP page states that list/detail operations return RayJobs readable by the caller in the explicit project, including
 resources not created by TaaS. It does not decide whether visibility is intended to be project-wide or per-user. A
@@ -549,11 +549,10 @@ Not Recommended. This replaces the caller's authorization with the service accou
 RayJob creation and Kubernetes reads/deletes must be sent to the Kubernetes API with the caller's token. Log retrieval
 is a separate unresolved read path and must not be treated as permission to use a shared Ray identity for submission.
 
-### Use a direct OpenShift Route or a TaaS-specific OAuth proxy
+### Depend on the shared AI Gateway for TaaS ingress
 
-Not Recommended for the RHOAI integration. The approved RHOAI component pattern uses the shared Gateway API with
-kube-auth-proxy and kube-rbac-proxy. A component-specific route and proxy stack would diverge from that platform
-contract.
+Not Recommended for the TP. Use the standard OpenShift Route; see Open Question 13 for the AI Gateway rationale,
+EvalHub precedent, and requested confirmation.
 
 ### Store job records in a TaaS database
 
@@ -577,16 +576,16 @@ rank-specific contract would require the training runtime to identify or funnel 
 
 - The Kubernetes API server must authenticate and authorize RayJob create/list/get/delete and LocalQueue list operations
   using the caller's bearer token. Never submit as the TaaS service account after a TokenReview or SAR check.
-- Forward the original bearer token through the Gateway chain for caller-native Kubernetes calls. Identity headers alone
-  cannot authorize downstream API operations.
+- Forward the original bearer token through the selected ingress path for caller-native Kubernetes calls.
+  Identity headers alone cannot authorize downstream API operations.
 - For non-human callers, customers choose and manage an OpenShift identity, such as a ServiceAccount with least-privilege
   project RBAC. TaaS accepts that identity through the same caller-authentication path and does not provision identities
   or tokens. Keep the caller identity separate from the TaaS API pod's service account; do not submit on the caller's
   behalf using a shared TaaS runtime token.
 - The Ray Jobs API is not a per-OpenShift-user API by default. Ray warns that access to the dashboard/Jobs services can
-  allow arbitrary code execution; protect the Ray route with the supported RHOAI Gateway and kube-rbac-proxy path and
-  verify the CodeFlare SDK log call uses and preserves the caller bearer token. Do not give the TaaS service account
-  enhanced Ray permissions for logs. Current upstream Ray token authentication is a single static cluster token, not
+  allow arbitrary code execution; protect the Ray dashboard Route with the supported RHOAI authentication and
+  kube-rbac-proxy path, and verify the CodeFlare SDK log call uses and preserves the caller bearer token. Do not give the
+  TaaS service account enhanced Ray permissions for logs. Current upstream Ray token authentication is a single static cluster token, not
   per-user identity; do not treat it as the caller's identity or expose it to API callers.
 - TaaS does not expose caller-selected ServiceAccounts or arbitrary Secret mounts and does not modify platform
   authorization or admission policy. Ray/KubeRay policy is managed and validated at the platform/component level, outside
@@ -609,8 +608,8 @@ rank-specific contract would require the training runtime to identify or funnel 
 - **Streaming behavior is best-effort.** Ray's `tail_job_logs` is a WebSocket iterator; reconnect, resume cursor, and
   durable ordering are not guaranteed by the current API. Disconnect and backpressure behavior need implementation
   testing.
-- **3.7 platform interfaces may change.** Component lifecycle, Gateway availability, and API shape need confirmation
-  against the supported release.
+- **3.7 platform interfaces may change.** Component lifecycle, ingress and token-forwarding support, and API shape need
+  confirmation against the supported release.
 - **DSC schema and lifecycle behavior need platform confirmation.** The recommended 3.7 change adds Training with TaaS as
   a child and preserves the existing top-level Ray/KFT entries. Future consolidation requires a separate compatibility
   and migration plan.
@@ -644,6 +643,9 @@ rank-specific contract would require the training runtime to identify or funnel 
 - [ODH Module Onboarding ADR](../operator/ODH-ADR-Operator-0012-module-onboarding.md)
   and [Module Onboarding Guide](../operator/design/module-onboarding-guide.md)
 - [Gateway API Authentication ADR](../operator/ODH-ADR-Operator-0012-gateway-api-authentication-architecture.md)
+- [TrustyAI Service Operator EvalHub Route reconciler](https://github.com/opendatahub-io/trustyai-service-operator/blob/5b622da8bda70884742c5c0a571d670795a7155e/controllers/evalhub/route.go)
+  and [EvalHub deployment proxy configuration](https://github.com/opendatahub-io/trustyai-service-operator/blob/5b622da8bda70884742c5c0a571d670795a7155e/controllers/evalhub/deployment.go)
+  — the Route targets the HTTPS Service port with reencrypt TLS; `kube-rbac-proxy` terminates backend TLS and enforces authentication/authorization.
 - [RHOAI 3.6 EA.2 Component Integration guide](https://github.com/opendatahub-io/opendatahub-operator/blob/v3.6.0-ea.2/docs/COMPONENT_INTEGRATION.md) —
   latest operator guide identified during research; not a 3.7 specification.
 - [RHOAI 3.6 KubeRay architecture context](https://github.com/opendatahub-io/architecture-context/blob/main/architecture/rhoai-3.6/kuberay.md) —
