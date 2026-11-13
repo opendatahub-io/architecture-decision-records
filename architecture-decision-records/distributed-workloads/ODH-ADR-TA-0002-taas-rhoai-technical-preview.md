@@ -4,7 +4,7 @@
 |----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Date           | October 26, 2026                                                                                                                                                                                |
 | Scope          | Training as a Service (TaaS), Distributed Workloads                                                                                                                                             |
-| Status         | Approved                                                                                                                                                                                        |
+| Status         | Pending                                                                                                                                                                                        |
 | Authors        | Umberto Manganiello                                                                                                                                                                             |
 | Supersedes     | N/A                                                                                                                                                                                             |
 | Superseded by: | N/A                                                                                                                                                                                             |
