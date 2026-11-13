@@ -38,7 +38,7 @@ yet publicly specified.
 - Provide a simple REST entry point for training-job submission and observation, so callers do not need to write Python
   client code or backend-specific YAML or learn Ray/KFT submission details.
 - Support Ray as the initial backend through the existing CodeFlare SDK managed RayJob path.
-- Execute job submission and RayJob CRUD with the calling user's bearer token and permissions.
+- Expose cancel, pause, and resume actions, and allow deletion of RayJobs in any state, using the caller's identity.
 - Expose the API through a standard OpenShift Route for the TP.
 - Keep the TaaS module controller focused on the API service lifecycle and its platform-facing resources.
 - Expose driver-log snapshots and streaming according to the DP API contract, subject to the verification gates in this
@@ -50,7 +50,6 @@ yet publicly specified.
 - Supporting KFT/Trainer as a backend in this TP. The API reports that this backend is unsupported (HTTP 501) until a
   later decision.
 - Providing worker/rank log selection, durable log storage, or a TaaS job database.
-- Supporting job cancel, pause, or resume operations. DELETE applies only to terminal RayJob resources.
 - Making Compute Profiles part of the TP critical path.
 - Defining a new backend-neutral job resource or stable cross-backend job identifier in this ADR.
 - Supporting non-training job types or turning this TP into a platform-wide generic Jobs API. Any future generalization
@@ -74,8 +73,8 @@ yet publicly specified.
    Kubernetes client explicitly from the incoming caller bearer token (for example, the documented
    `AuthConfig(method="openshift", k8s_api_host=..., token=...)` and `get_k8s_client(config=...)` flow), then provide
    that client to the SDK using the API supported by the pinned version. Use the caller-authenticated Kubernetes API for
-   listing, details/status, terminal deletion, and namespaced LocalQueue discovery. Do not use in-cluster credential
-   auto-detection, which can select the TaaS pod's service account. The published CodeFlare setup uses
+   listing, details/status, caller-authorized job control and deletion, and namespaced LocalQueue discovery. Do not use
+   in-cluster credential auto-detection, which can select the TaaS pod's service account. The published CodeFlare setup uses
    `set_api_client(...)`; verify that the pinned SDK supports isolated caller-specific clients under concurrent requests
    before using that setter in a shared API process. Do not mutate process-global SDK credentials per request unless
    concurrency isolation is demonstrated. The service does not perform a SAR check and then submit as its own service
@@ -115,9 +114,19 @@ yet publicly specified.
    shortage is a workload admission state, not an inactive queue. Never silently drop an explicitly requested queue or
    bypass platform admission policy.
 8. **API compatibility:** Use the pinned DP OpenAPI `1.4.0-dp` as the starting contract, and explicitly review any TP
-   change. The current DP page documents project-qualified paths relative to `/api/v1`; confirm the pinned OpenAPI and
+   change. Add the cancel, pause, and resume operations below to the TP contract; the current DP page does not define
+   them. The current DP page documents project-qualified paths relative to `/api/v1`; confirm the pinned OpenAPI and
    final API-owner approval before implementation. Use RayJob names as current IDs; a backend-neutral identifier is not
    defined here.
+9. **Job controls:** Add cancel, pause, and resume actions to the TP API. Cancel stops execution while retaining the
+   RayJob for status inspection; DELETE removes the RayJob in any state, including queued, running, or paused, and
+   asks KubeRay to stop its active workload as part of cleanup. Do not reject DELETE solely because the RayJob is
+   non-terminal.
+   Distinguish a user-requested pause from Kueue's queue-admission suspension in API status. Pause/resume mechanics and
+   their effect on training progress remain a release gate (Open Question 14): upstream KubeRay's `spec.suspend` deletes
+   the RayCluster and submitter, and clearing it creates a new cluster; that alone does not preserve in-memory training
+   progress. Kueue also controls `spec.suspend` for queue admission, so TaaS must coordinate with Kueue rather than
+   changing that field blindly.
 
 ### Lifecycle and ownership
 
@@ -191,10 +200,14 @@ sequenceDiagram
             Kueue -->> K8s: Unsuspend RayJob after admission
         end
         KubeRay ->> K8s: Observe RayJob;%% reconcile RayCluster and submitter resources as required by its state
-    else list, detail, status, delete, or queue discovery
-        API ->> K8s: Caller-authorized namespaced read/delete
+    else list, detail, status, or queue discovery
+        API ->> K8s: Caller-authorized namespaced read
         K8s -->> API: RayJob or LocalQueue resources
         API -->> Caller: Contract response
+    else cancel, pause, resume, or delete
+        API ->> K8s: RayJob operation with caller token - Kubernetes RBAC allows or denies
+        K8s -->> API: Operation result - KubeRay reconciles the RayJob as needed
+        API -->> Caller: Operation response - observe job state through GET
     else driver logs
         API ->> K8s: Verify caller can read the RayJob and resolve its cluster
         API ->> CF: Create request-scoped client configured with caller bearer token
@@ -227,9 +240,12 @@ The pinned DP OpenAPI remains authoritative for request schemas and detailed res
 |-------------------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Submit training         | `POST /projects/{project}/training-jobs`              | Create a RayJob with CodeFlare using caller's bearer token. If `queue_name` is supplied, first verify that the caller can read the LocalQueue, then apply it as `kueue.x-k8s.io/queue-name`; when the field is omitted, let configured platform/Kueue defaulting apply `default`, including when other LocalQueues exist. Return `202 Accepted`, RayJob name as `id`, and `Location` as soon as Kubernetes accepts the RayJob; do not wait for Kueue admission or job start. |
 | List jobs               | `GET /projects/{project}/training-jobs`               | List RayJobs the caller can list in that project, including RayJobs not created by TaaS.                                                                                                                                                                                                                                                                                                                                                                                     |
-| Read job details/status | `GET /projects/{project}/training-jobs/{job_id}`      | Get the RayJob in the requested project using caller's token; map provisioning, waiting, and Kueue-suspended states to `PENDING`.                                                                                                                                                                                                                                                                                                                                            |
+| Read job details/status | `GET /projects/{project}/training-jobs/{job_id}`      | Get the RayJob in the requested project using caller's token; map provisioning, waiting, and Kueue-suspended states to `PENDING`, and expose user-requested cancel/pause/resume progress separately.                                                                                                                                                                                                                                                                         |
 | Read/follow driver logs | `GET /projects/{project}/training-jobs/{job_id}/logs` | Driver logs only. Proposed implementation: a request-scoped CodeFlare client configured with the caller bearer token streams logs from the Ray job; TaaS relays chunks as SSE. Snapshot uses `follow=false`; follow mode uses SSE. `409` if logs are not ready; `410` if the managed RayCluster is gone. Ship only after verifying that the supported SDK and protected Ray Jobs route preserve and enforce caller authorization; otherwise defer the endpoint.              |
-| Delete terminal record  | `DELETE /projects/{project}/training-jobs/{job_id}`   | Caller-authorized delete of a terminal RayJob only. Return `409` for a non-terminal job. KubeRay applies its configured cleanup; checkpoints and model outputs are not deleted.                                                                                                                                                                                                                                                                                              |
+| Cancel job              | `POST /projects/{project}/training-jobs/{job_id}/cancel`  | Request cancellation of a queued or running job while retaining its RayJob for status inspection. Return `202 Accepted`; expose the eventual terminal state through GET. The mechanism and behavior for jobs not yet admitted by Kueue require confirmation (Open Question 14).                                                                                                                                                                               |
+| Pause job               | `POST /projects/{project}/training-jobs/{job_id}/pause`   | Request a pause while retaining the RayJob. Return `202 Accepted`; expose pause progress and state through GET. Pause semantics must be validated against the pinned Ray/KubeRay versions and training checkpoint behavior (Open Question 14).                                                                                                                                                                                                               |
+| Resume job              | `POST /projects/{project}/training-jobs/{job_id}/resume`  | Request resumption of a paused job. Return `202 Accepted`; expose resumption progress through GET. Define whether this continues from a checkpoint or restarts the training entrypoint (Open Question 14).                                                                                                                                                                                                                                                   |
+| Delete job              | `DELETE /projects/{project}/training-jobs/{job_id}`       | Caller-authorized delete in any state, including queued, running, and paused. Do not reject solely because the RayJob is non-terminal. KubeRay stops non-terminal Ray jobs during RayJob deletion and cleans up managed resources; transient logs and job status may become unavailable after cleanup. External checkpoints and model outputs are not deleted.                                                                                                                                                                              |
 | Discover algorithms     | `GET /algorithms`                                     | Reflect the configured Ray Training Image/release catalog and parameter schemas, not a hard-coded universal list.                                                                                                                                                                                                                                                                                                                                                            |
 | Discover project queues | `GET /projects/{project}/queues`                      | Keep the DP endpoint. List LocalQueues in the requested project using the caller's token. If Kueue is absent or not set up for the project, return `200`, `kueue_enabled: false`, `queues: []`.                                                                                                                                                                                                                                                                              |
 
@@ -241,13 +257,15 @@ choose or add a queue. If Kueue is not set up to manage the project, the job is 
 the caller names a queue, TaaS checks that LocalQueue with the caller's token and applies it to the RayJob; a missing
 queue or a queue the caller cannot read fails promptly with a clear error. After Kubernetes accepts the RayJob, return
 `202 Accepted` immediately without waiting for Kueue admission. A Kueue-suspended RayJob is reported as `PENDING`; quota
-and other admission delays are asynchronous. Kueue's LocalQueue `Active` condition can identify some configuration
+and other admission delays are asynchronous. A user-requested pause is a separate state from Kueue admission suspension.
+Kueue's LocalQueue `Active` condition can identify some configuration
 problems, such as an inactive referenced ClusterQueue. Whether TaaS rejects an explicitly named queue on `Active=False`
 remains open. An existing queue that is `Active=True` can still have jobs waiting for quota; that does not delay or fail
 the POST. An omitted output is ephemeral, and a supplied output requires `destination_uri`. The DP Ray job name
 constraint is DNS-1035-compatible and at most 47 characters. The `kft` backend remains unimplemented and returns `501`.
-Cancel, pause, and resume are not exposed. Keep the stable JSON error format and the DP status distinctions (`400`,
-`401`, `403`, `404`, `409`, `410`, `415`, `422`, and `501`) unless the TP OpenAPI review changes them.
+Expose job-control progress and outcomes through GET. Keep the stable JSON error format and DP status distinctions
+(`400`, `401`, `403`, `404`, `409`, `410`, `415`, `422`, and `501`); confirm additional TP status values and response
+codes for cancel, pause, resume, and deletion in the TP OpenAPI review.
 
 ### Caller RBAC contract
 
@@ -259,7 +277,9 @@ preflight authorization check can improve error messages, but the operation itse
 | Submit                  | `create` on `rayjobs.ray.io` in `{project}`                                                                     | Kubernetes API server; CodeFlare request-scoped client                                                             |
 | List jobs               | `list` on `rayjobs.ray.io` in `{project}`                                                                       | Kubernetes API server                                                                                              |
 | Read job                | `get` on `rayjobs.ray.io` in `{project}`                                                                        | Kubernetes API server                                                                                              |
-| Delete terminal job     | `delete` on `rayjobs.ray.io` in `{project}` (and caller-readable state)                                         | Kubernetes API server; API checks terminal state before deletion                                                   |
+| Cancel job              | RayJob operation in `{project}`; exact Kubernetes mutation remains open                                         | Kubernetes API server applies the caller's RBAC; queued-job behavior is open (Question 14)                           |
+| Pause / resume job      | `patch` on `rayjobs.ray.io` in `{project}` if implemented through RayJob suspension                            | Kubernetes API server; coordinate with Kueue because it also controls `spec.suspend`                               |
+| Delete job              | `delete` on `rayjobs.ray.io` in `{project}`                                                                     | Kubernetes API server; allowed in any state and triggers cleanup for active workloads                               |
 | Validate supplied queue | `get` on `localqueues.kueue.x-k8s.io` in `{project}` when `queue_name` is supplied                              | Kubernetes API server; fail promptly if the queue is missing or the caller cannot read it                          |
 | Discover queues         | `list` on `localqueues.kueue.x-k8s.io` in `{project}`                                                           | Kubernetes API server; absence of Kueue is handled without cluster-scoped list permission                          |
 | Read logs               | At minimum `get` on the RayJob in `{project}`; the additional Ray dashboard authorization mapping is unresolved | Must be enforced at the protected Ray dashboard path; no shared credential is accepted as proof of caller identity |
@@ -296,14 +316,18 @@ Before TP release, owners must demonstrate:
 - CodeFlare client isolation with the pinned SDK: prove that concurrent requests cannot overwrite or reuse each other's
   caller credentials; do not use `set_api_client(...)` as per-request mutable global state unless the implementation
   provides and verifies isolation.
-- Caller authorization for RayJob create/list/get/delete and namespaced LocalQueue reads, with no service-account
-  fallback or cluster-scoped Kueue probe.
+- Caller authorization for RayJob create/list/get/patch/delete, job-control actions, and namespaced LocalQueue reads,
+  with no service-account fallback or cluster-scoped Kueue probe.
+- Cancel, pause, resume, and delete behavior verified against the exact supported Ray, KubeRay, CodeFlare, and Kueue
+  versions: Kubernetes RBAC authorizes each caller operation, active deletion stops the workload, user pause is
+  distinguishable from Kueue admission suspension, and resume behavior (including checkpoint/restart semantics) is
+  documented.
 - Verify the exact CodeFlare submission path does not require cluster-scoped Kueue, DataScienceCluster, or
   operator-version reads under the caller identity; disable or isolate any such optional probe rather than granting
   cluster-wide read to API callers.
 - An end-to-end CodeFlare SDK log path configured with the original caller bearer token, including proof that the
-  protected Ray dashboard route enforces caller/project authorization, that no TaaS service-account fallback or enhanced
-  Ray permission is required, and that log access does not grant unintended Ray job submission/stop authority.
+  protected Ray dashboard route enforces caller/project authorization and that no TaaS service-account fallback or
+  enhanced Ray permission is required. RayJob controls use the caller-token Kubernetes API path.
 - Snapshot and SSE behavior on the exact supported Ray image: memory/latency bounds, SSE backpressure and disconnect
   cleanup, and the image's worker-log redirection/deduplication behavior.
 - RHOAI 3.7 DSC/component lifecycle, Module CR API, supported OpenShift ingress, and bearer-token forwarding against the
@@ -529,6 +553,14 @@ credentials it is permitted to use, and TaaS must not use its own service-accoun
     approved, choose edge termination (HTTP to the API) or reencrypt termination (TLS to a native-HTTPS API). In either
     design, preserve the caller bearer token; EvalHub's SAR/identity-header flow is not a substitute for TaaS caller-token
     forwarding.
+14. **Control API semantics — TaaS API / Ray / KubeRay / Kueue owners:** Define the public outcomes and status TaaS
+    exposes for cancel, pause, and resume, including jobs still queued. TaaS sends RayJob operations to Kubernetes with
+    the caller's token; Kubernetes RBAC authorizes them. TaaS maps the resulting RayJob state but does not control
+    KubeRay's internal transitions or implement training checkpoints. Define whether resume restarts the entrypoint or
+    continues from a checkpoint; that capability belongs to the training runtime and must be supported by the job code.
+    Upstream KubeRay `spec.suspend` deletes the RayCluster and submitter, then creates a new cluster when cleared;
+    Kueue also controls this field. Confirm the supported KubeRay release's delete behavior and how pause/resume can
+    coexist with Kueue.
 
 The DP page states that list/detail operations return RayJobs readable by the caller in the explicit project, including
 resources not created by TaaS. It does not decide whether visibility is intended to be project-wide or per-user. A
@@ -546,8 +578,9 @@ other components. The TaaS controller only discovers Ray; Kueue is optional and 
 ### Submit jobs with a TaaS service account after a SAR check
 
 Not Recommended. This replaces the caller's authorization with the service account's permissions and creates a check/use gap.
-RayJob creation and Kubernetes reads/deletes must be sent to the Kubernetes API with the caller's token. Log retrieval
-is a separate unresolved read path and must not be treated as permission to use a shared Ray identity for submission.
+RayJob creation, updates, deletion, and Kubernetes reads must be sent to the Kubernetes API with the caller's token, so
+Kubernetes RBAC authorizes each operation. Log retrieval is not permission to use a shared Ray identity for submission
+or control.
 
 ### Depend on the shared AI Gateway for TaaS ingress
 
@@ -574,7 +607,7 @@ rank-specific contract would require the training runtime to identify or funnel 
 
 ## Security and Privacy Considerations
 
-- The Kubernetes API server must authenticate and authorize RayJob create/list/get/delete and LocalQueue list operations
+- The Kubernetes API server must authenticate and authorize RayJob create/list/get/patch/delete and LocalQueue operations
   using the caller's bearer token. Never submit as the TaaS service account after a TokenReview or SAR check.
 - Forward the original bearer token through the selected ingress path for caller-native Kubernetes calls.
   Identity headers alone cannot authorize downstream API operations.
@@ -584,9 +617,10 @@ rank-specific contract would require the training runtime to identify or funnel 
   behalf using a shared TaaS runtime token.
 - The Ray Jobs API is not a per-OpenShift-user API by default. Ray warns that access to the dashboard/Jobs services can
   allow arbitrary code execution; protect the Ray dashboard Route with the supported RHOAI authentication and
-  kube-rbac-proxy path, and verify the CodeFlare SDK log call uses and preserves the caller bearer token. Do not give the
-  TaaS service account enhanced Ray permissions for logs. Current upstream Ray token authentication is a single static cluster token, not
-  per-user identity; do not treat it as the caller's identity or expose it to API callers.
+  kube-rbac-proxy path, and verify CodeFlare log calls use and preserve the caller bearer token. RayJob controls use
+  caller-token Kubernetes operations, authorized by Kubernetes RBAC. Do not give the TaaS service account enhanced Ray
+  permissions for logs or control. Current upstream Ray token authentication is a
+  single static cluster token, not per-user identity; do not treat it as the caller's identity or expose it to API callers.
 - TaaS does not expose caller-selected ServiceAccounts or arbitrary Secret mounts and does not modify platform
   authorization or admission policy. Ray/KubeRay policy is managed and validated at the platform/component level, outside
   this ADR.
@@ -608,6 +642,9 @@ rank-specific contract would require the training runtime to identify or funnel 
 - **Streaming behavior is best-effort.** Ray's `tail_job_logs` is a WebSocket iterator; reconnect, resume cursor, and
   durable ordering are not guaranteed by the current API. Disconnect and backpressure behavior need implementation
   testing.
+- **Pause/resume may not preserve training progress.** KubeRay's current upstream suspension behavior deletes the
+  RayCluster and submitter; a new cluster is created on resume. Continuing from the prior training step may require
+  checkpoint support in the user-provided training code. Kueue also uses the RayJob suspension field for admission.
 - **3.7 platform interfaces may change.** Component lifecycle, ingress and token-forwarding support, and API shape need
   confirmation against the supported release.
 - **DSC schema and lifecycle behavior need platform confirmation.** The recommended 3.7 change adds Training with TaaS as
@@ -670,11 +707,17 @@ rank-specific contract would require the training runtime to identify or funnel 
   `tail_job_logs`](https://docs.ray.io/en/releases-2.55.1/cluster/running-applications/job-submission/doc/ray.job_submission.JobSubmissionClient.tail_job_logs.html)
 - [Ray security guidance](https://docs.ray.io/en/latest/ray-security/index.html) — Ray Dashboard/Jobs access must be
   restricted because it can expose arbitrary code execution and cluster control.
+- [Ray Jobs REST API](https://docs.ray.io/en/latest/cluster/running-applications/job-submission/rest.html) — documents
+  the job stop operation; verify that the supported Ray Jobs route and SDK preserve caller identity for TaaS control
+  requests.
 - [Ray token authentication design](https://docs.ray.io/en/master/core/internals/token-authentication.html) — current
   upstream documentation describes a single static cluster token; verify behavior in the exact supported TP Ray build.
 - [KubeRay RayJob API reference](https://docs.ray.io/en/latest/cluster/kubernetes/references/api.html) — current API
-  reference documents Kubernetes-delegated token auth as unsupported for RayJob; verify against the exact TP KubeRay
-  release.
+  reference documents Kubernetes-delegated token auth as unsupported for RayJob and `spec.suspend` behavior; verify
+  control and cleanup behavior against the exact TP KubeRay release.
+- [KubeRay RayJob controller](https://github.com/ray-project/kuberay/blob/master/ray-operator/controllers/ray/rayjob_controller.go)
+  — current upstream deletion handling requests a stop for a non-terminal Ray job before removing the RayJob finalizer;
+  verify this behavior in the RHOAI TP bundle.
 - [Kueue default LocalQueue setup](https://kueue.sigs.k8s.io/docs/tasks/manage/enforce_job_management/setup_default_local_queue/)
   and [Kueue RayJob integration](https://kueue.sigs.k8s.io/docs/tasks/run/rayjobs/) — upstream documents namespace-local
   `default` queue behavior and the `kueue.x-k8s.io/queue-name` label on RayJobs; verify the bundled RHOAI versions and
