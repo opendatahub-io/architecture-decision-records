@@ -299,25 +299,33 @@ authorization layer is added.
 
 ### Workload authority and data handling
 
-The TaaS request does not accept ServiceAccount names or Secret references in its payload. TaaS submits
-RayJobs as the caller, so matching platform authorization and admission controls continue to apply to those RayJobs as
-they do to direct submissions. TaaS does not install, configure, or modify Ray/KubeRay admission policy; standalone
+The TaaS request does not accept ServiceAccount names or raw credential values. It accepts project-scoped storage
+references: `hf://` identifies a Hugging Face repository URL and carries the name of its credential Secret; `s3://`
+identifies an S3 connection backed by a project Secret, and `pvc://` identifies a PVC. TaaS resolves these references
+using the caller's Kubernetes token and rejects submission if a resource is missing or inaccessible. TaaS submits
+RayJobs as the caller, so matching platform
+authorization and admission controls continue to apply to those RayJobs as they do to direct submissions. TaaS does not
+install, configure, or modify Ray/KubeRay admission policy; standalone
 Ray/KubeRay policy validation is outside this ADR. TaaS does not maintain its own durable job database or persist caller
-credentials, request payloads, or driver logs. The RayJob specification is stored by Kubernetes, and Ray retains job/log
-state only for its configured lifetime. Never log bearer tokens or credentials; treat driver logs as sensitive user
-content.
+credentials or driver logs. It does not persist the full request payload; it may retain an explicitly allow-listed subset
+of non-secret submission metadata, such as the submitter and selected training parameters, in RayJob metadata for
+caller-authorized job details. The RayJob specification is stored by Kubernetes, and Ray retains job/log state only for
+its configured lifetime. Never log bearer tokens or credentials; treat driver logs as sensitive user content.
 
 ### Release gates
 
 Before TP release, owners must demonstrate:
 
 - Original bearer-token propagation through the OpenShift ingress and TaaS proxy path to caller-native Kubernetes API
-  calls and the CodeFlare Kubernetes client.
+  calls and the CodeFlare Kubernetes client. Verify that the router-to-service hop is encrypted; edge termination is
+  acceptable only with platform documentation of backend-hop encryption, otherwise require reencrypt termination with a
+  validated backend certificate.
 - CodeFlare client isolation with the pinned SDK: prove that concurrent requests cannot overwrite or reuse each other's
   caller credentials; do not use `set_api_client(...)` as per-request mutable global state unless the implementation
   provides and verifies isolation.
-- Caller authorization for RayJob create/list/get/patch/delete, job-control actions, and namespaced LocalQueue reads,
-  with no service-account fallback or cluster-scoped Kueue probe.
+- Caller authorization for RayJob create/list/get/patch/delete, job-control actions, and namespaced LocalQueue reads.
+  Verify `hf://`, `s3://`, and `pvc://` reference resolution under the caller's identity and fail closed on missing or
+  unauthorized resources, with no service-account fallback or cluster-scoped Kueue probe.
 - Cancel, pause, resume, and delete behavior verified against the exact supported Ray, KubeRay, CodeFlare, and Kueue
   versions: Kubernetes RBAC authorizes each caller operation, active deletion stops the workload, user pause is
   distinguishable from Kueue admission suspension, and resume behavior (including checkpoint/restart semantics) is
@@ -547,12 +555,12 @@ credentials it is permitted to use, and TaaS must not use its own service-accoun
 13. **TaaS ingress and TLS termination — Architecture Board / platform owners:** The AI Gateway architect's guidance is
     that the shared AI Gateway is primarily used for inference and is not planned to support other API use cases in 3.7
     or 3.8. Recommendation: use a standard OpenShift Route for the TP, following EvalHub's current operator-managed
-    pattern, and revisit AI Gateway integration when it supports this use case. Which TLS termination pattern is
-    approved for TaaS: `kube-rbac-proxy` used only as a pod-side TLS terminator, with Kubernetes authorization still
-    performed using the caller's bearer token, or TLS termination at the OpenShift router? If router termination is
-    approved, choose edge termination (HTTP to the API) or reencrypt termination (TLS to a native-HTTPS API). In either
-    design, preserve the caller bearer token; EvalHub's SAR/identity-header flow is not a substitute for TaaS caller-token
-    forwarding.
+    pattern, and revisit AI Gateway integration when it supports this use case. Approve a TLS pattern that encrypts the
+    router-to-service hop carrying the caller bearer token. Edge termination is acceptable only if the supported
+    platform documents encryption on that hop; otherwise use reencrypt termination with a validated backend certificate.
+    Confirm whether `kube-rbac-proxy` is used as the TLS-enabled backend, with Kubernetes authorization still performed
+    using the caller's bearer token. Preserve the caller token; EvalHub's SAR/identity-header flow is not a substitute for
+    TaaS caller-token forwarding.
 14. **Control API semantics — TaaS API / Ray / KubeRay / Kueue owners:** Define the public outcomes and status TaaS
     exposes for cancel, pause, and resume, including jobs still queued. TaaS sends RayJob operations to Kubernetes with
     the caller's token; Kubernetes RBAC authorizes them. TaaS maps the resulting RayJob state but does not control
@@ -624,8 +632,10 @@ rank-specific contract would require the training runtime to identify or funnel 
 - TaaS does not expose caller-selected ServiceAccounts or arbitrary Secret mounts and does not modify platform
   authorization or admission policy. Ray/KubeRay policy is managed and validated at the platform/component level, outside
   this ADR.
-- Do not persist credentials, request payloads, or log contents. Avoid logging tokens or other credentials. Treat
-  returned driver logs as potentially sensitive user content.
+- Do not persist credentials or log contents in TaaS-owned storage. Do not persist the full request payload in RayJob
+  metadata; retain only an explicitly allow-listed subset of non-secret submission metadata, such as the submitter and
+  selected training parameters. Caller-authorized job details may return this subset, not the full request. Avoid logging
+  tokens or other credentials; treat returned driver logs as potentially sensitive user content.
 - Keep Kueue and Ray installation/lifecycle outside the TaaS controller. The module controller and API runtime have
   different permission needs; the API runtime must not inherit the module controller's privileges.
 
