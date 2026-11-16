@@ -77,7 +77,7 @@ flowchart LR
     aigc -- manages --> praxis_pod
     aigc -- manages --> budget_system
     praxis -- is allowed? --> sidecar
-    sidecar -- reserve / settle --> redis
+    sidecar -- check balance --> redis
     sidecar -- allow / deny --> praxis
     praxis -. OTEL Logs .-> otel_collector
     budget_service -- SQL --> postgres
@@ -93,7 +93,7 @@ flowchart LR
 Notes:
 - In the Praxis POD, AIGC also brings in the BSC (Budget Sidecar Container)
 - Praxis filter remains a PEP (Policy Enforcement Point). All budget calculations happen in the budgeting system (sidecar container and/or budget service)
-- Redis/Valkey is used for atomic balance counters, holds, and change notification Pub/Sub. The Budget Service publishes change notifications to Redis when configuration objects are updated; sidecars subscribe and fetch the changed objects from the Budget Service REST API. Configuration objects (policies, rates, budget definitions) are cached in the sidecar's memory, not stored in Redis.
+- Redis/Valkey is used for atomic balance counters and change notification Pub/Sub. The Budget Service publishes change notifications to Redis when configuration objects are updated; sidecars subscribe and fetch the changed objects from the Budget Service REST API. Configuration objects (policies, rates, budget definitions) are cached in the sidecar's memory, not stored in Redis.
 
 #### Inference Flow (budget check)
 
@@ -107,25 +107,22 @@ sequenceDiagram
     participant BudgetService as Budget Service
 
     Client->>Praxis: inference request
-    Praxis->>Sidecar: POST /v1/budget_check<br>(identity, resource, max_completion_tokens)
+    Praxis->>Sidecar: POST /v1/budget_check<br>(identity, resource)
 
     Note over Sidecar: Match policy & rate<br>from in-memory cache
 
-    Sidecar->>Redis: DECRBY balance (estimated BU cost)
-    Redis-->>Sidecar: remaining balance
+    Sidecar->>Redis: GET balance
+    Redis-->>Sidecar: current balance
 
     alt sufficient balance
-        Sidecar-->>Praxis: allowed: true, attempt_id
+        Sidecar-->>Praxis: allowed: true
         Praxis->>Praxis: dispatch to model
         Note over Praxis: model responds
-        Praxis->>Sidecar: settle(attempt_id, actual usage)
-        Sidecar->>Redis: adjust balance (actual vs estimated)
-        Sidecar->>Redis: remove hold
-        Sidecar-->>Praxis: settled
+        Praxis-->>Client: inference response
         Praxis-->>OTELCollector: OTEL Log (usage)
         OTELCollector->>BudgetService: CloudEvent (usage)
+        BudgetService->>Redis: DECRBY balance (actual BU cost)
         OTELCollector-->>OTELCollector: forward to Loki
-        Praxis-->>Client: inference response
     else insufficient balance (hard enforcement)
         Sidecar-->>Praxis: allowed: false, reason: budget_exhausted
         Praxis-->>Client: 429 Too Many Requests
@@ -134,6 +131,10 @@ sequenceDiagram
         Sidecar-->>Praxis: allowed: true, over_budget: true
         Note over Praxis: Set x-over-budget header,<br>dispatch to model
         Praxis-->>Client: inference response + x-over-budget
+        Praxis-->>OTELCollector: OTEL Log (usage)
+        OTELCollector->>BudgetService: CloudEvent (usage)
+        BudgetService->>Redis: DECRBY balance (actual BU cost)
+        Note over BudgetService: Balance may go negative<br>(overage tracked)
     end
 ```
 
@@ -172,7 +173,7 @@ sequenceDiagram
 
 #### Budget Service ↔ Sidecar Sync
 
-The sidecar fetches configuration objects (policies, rates, budget definitions) from the Budget Service REST API and caches them in memory. Redis is used only for balances, holds, and lightweight change notifications — not for storing configuration objects.
+The sidecar fetches configuration objects (policies, rates, budget definitions) from the Budget Service REST API and caches them in memory. Redis is used only for balance counters and lightweight change notifications — not for storing configuration objects.
 
 Each gateway serves exactly one tenant and may have multiple Praxis pods. All sidecars for the same tenant share Redis balance counters, which makes Redis the natural coordination point for multi-replica consistency.
 
@@ -189,7 +190,7 @@ On startup, the sidecar calls the Budget Service REST API to fetch all policies,
 | Store | Data | Role |
 |---|---|---|
 | Sidecar (in-memory) | Policies, rates, budget definitions | Cached configuration for admission decisions. Refreshed from the Budget Service API on startup and on change notifications |
-| Redis | Balances, holds, change notifications | Atomic counters for the hot path and lightweight Pub/Sub for cache invalidation |
+| Redis | Balances, change notifications | Atomic counters for the hot path and lightweight Pub/Sub for cache invalidation |
 | Budget Service (API) | Policies, rates, budget definitions, consumption | Authoritative source served from the durable backend. Sidecars fetch from here |
 
 ##### Consumption data
@@ -200,7 +201,7 @@ The sidecar does not report consumption back to the Budget Service. Consumption 
 
 | Scenario | Behavior |
 |---|---|
-| Redis unavailable | Sidecar serves decisions from its in-memory cache. Change notifications are missed — the sidecar continues with stale config until Redis recovers. Holds and reservations are unavailable — sidecar applies fail-open or fail-closed per operator configuration |
+| Redis unavailable | Sidecar serves decisions from its in-memory cache. Change notifications are missed — the sidecar continues with stale config until Redis recovers. Balance checks and deductions are unavailable — sidecar applies fail-open or fail-closed per operator configuration |
 | Budget Service unavailable | Sidecar continues with its in-memory cache and Redis balances. Config changes are delayed until the Budget Service recovers. Consumption data continues to flow via the OTEL pipeline independently |
 | Sidecar restarts | Sidecar fetches its tenant's full state from the Budget Service REST API and subscribes to Redis change notifications |
 
@@ -271,6 +272,7 @@ Binds a subject to a budget with a rate table and optional overage behavior.
 | `subject.kind` | one of | `user`, `group`, `organization`, or `tenant` |
 | `subject.name` | string | Identity of the subject |
 | `overage` | optional, one of | Behavior when the budget is exhausted (see below) |
+| `deduct_overage` | optional, boolean | If true, any overage from the previous period is deducted from the next period's balance at renewal. Defaults to false |
 
 If `overage` is absent, enforcement is **hard** — requests are rejected with 429 when the budget is exceeded.
 
@@ -351,7 +353,7 @@ If Praxis calls the Budget Service synchronously on every request, inference lat
 
 Each Praxis replica calls a localhost sidecar container provided and managed by the budget system. The sidecar runs in the same pod as Praxis.
 
-From Praxis's perspective, the contract is simple: call `localhost:port` with who, what model, and how many tokens. Get back allow or deny. Whether the sidecar answers from local state or calls the Budget Service is invisible to Praxis.
+From Praxis's perspective, the contract is simple: call `localhost:port` with who and what model. Get back allow or deny. After the model responds, call again with the actual token usage for deduction. Whether the sidecar answers from local state or calls the Budget Service is invisible to Praxis.
 
 #### Sidecar Responsibilities
 
@@ -379,7 +381,7 @@ The budget system owns the sidecar and controls all caching and sync behavior:
 |---|---|
 | Who | Tenant identity, resolved from headers or authentication |
 | What | Model and capabilities |
-| How much | Estimated token counts before dispatch, actual token counts after completion |
+| Usage emission | After the model responds, emit an OTEL Log with actual token counts. The Budget Service handles balance deduction via the CloudEvent pipeline |
 | Enforcement | Call the sidecar, honor the allow/deny decision, apply hard (429) or soft (`x-over-budget: true` header) behavior |
 
 Everything else — BU rates, balances, policies, discounts, pacing, fleet coordination, caching strategy — lives in the budget system and its sidecar.
@@ -401,60 +403,64 @@ Identity resolution happens entirely within Praxis, before the budget check call
 The fact that group and organization membership is only known at request time has implications for policy validation and ambiguity resolution (see [Validation Rules](#validation-rules)).
 
 
-### Reservation Flow
+### Admission and Deduction Flow
 
-The reservation flow has three phases: reserve before dispatch, settle after completion, and release on failure.
+The budget flow has two phases: check before dispatch, deduct after completion.
 
-#### Phase 1: Reserve (before dispatch)
+#### Phase 1: Check (before dispatch)
 
-Praxis sends the sidecar: "User A, model X, max_completion_tokens=1024."
-
-The sidecar:
-1. Looks up User A's budget policy
-2. Matches the resource (model) to the rate table, gets BU rates
-3. Computes estimated cost from output tokens only (e.g. `1024 * 15 = 15,360 BU`)
-4. Atomically decrements the Redis counter
-5. If sufficient balance: **allow**, store the hold with an attempt ID
-6. If insufficient: **deny** (or apply soft/overage logic)
-
-#### Phase 2: Settle (after model responds)
-
-Praxis sends: "attempt-xyz, actual usage: I=312, O=87, R=20, W=5, Q=30."
+Praxis sends the sidecar: "User A, model X."
 
 The sidecar:
-1. Retrieves the hold for attempt-xyz (15,360 BU reserved)
-2. Computes actual cost from all token types (e.g. 18,200 BU including input tokens)
-3. Adjusts the balance — if actual cost exceeds the reservation, the balance is further decremented
-4. Removes the hold, records the consumption
-5. Consumption data reaches the Budget Service via the OTEL pipeline (Praxis emits an OTEL Log → OTEL Collector forwards as CloudEvent → Budget Service persists to Postgres)
+1. Looks up User A's budget policy from its in-memory cache
+2. Reads the current balance from Redis
+3. If balance > 0: **allow**
+4. If balance <= 0: **deny** (hard enforcement) or **allow with `over_budget: true`** (soft/overage logic)
 
-#### Phase 3: Release (on failure, never dispatched)
+The check is a read operation — no balance modification occurs at this stage.
 
-If Praxis confirms the request was never sent to the model:
-1. Full refund of the reserved amount
-2. Remove the hold
-3. No consumption recorded
+#### Phase 2: Deduct (after model responds)
+
+After the model responds, Praxis emits an OTEL Log with the actual token usage. The OTEL Collector transforms it into a CloudEvent and delivers it to the Budget Service.
+
+The Budget Service:
+1. Receives the CloudEvent with identity, resource, and actual token usage
+2. Matches the resource (model) to the rate table, computes actual BU cost
+3. Atomically decrements the Redis balance by the actual cost
+4. Persists the consumption record to Postgres
+5. If the balance goes negative, the overage is tracked in the consumption ledger
+
+The sidecar is not involved in the deduction — the Budget Service owns all balance writes to Redis.
+
+#### Why No Reservation System
+
+This design intentionally avoids a reservation-based model (pre-decrementing an estimated cost before dispatch). The `max_completion_tokens` parameter is unreliable — clients may omit it, set it arbitrarily high, or the actual usage may diverge significantly from the estimate. A reservation system built on unreliable estimates introduces complexity (holds, settlements, releases, orphaned hold cleanup) without delivering accurate budget enforcement.
+
+Instead, the system uses a simpler check-then-deduct approach: the sidecar checks the current balance (read-only), and the Budget Service deducts the actual cost after the response. Overage is detected and tracked post-request rather than prevented pre-request.
+
+When the sidecar detects that a budget is over (balance <= 0 at check time), Praxis can strip the output stream back to the client and inject the `x-over-budget` header in the response, signaling to the caller that the budget has been exceeded.
+
+#### Overage Tracking and Period Carry-Forward
+
+When a deduction drives the Redis balance negative, the sidecar continues to operate — subsequent budget checks see a negative balance and apply hard or soft enforcement accordingly. The Budget Service tracks the cumulative overage for each budget from the consumption ledger in Postgres.
+
+At period renewal, the Budget Service resets the Redis balance to the budget limit. If the BudgetPolicy has `deduct_overage` enabled, the Budget Service subtracts the previous period's overage from the new balance:
+
+```
+new_balance = limit - previous_period_overage   (if deduct_overage is true)
+new_balance = limit                              (if deduct_overage is false or absent)
+```
+
+This ensures that overspend in one period is not silently forgiven — it reduces the next period's capacity. The `deduct_overage` field is optional on BudgetPolicy and defaults to false (overage is not carried forward).
 
 #### Edge Cases
 
 | Scenario | Behavior |
 |---|---|
-| Settle call fails | Retry with same attempt ID (idempotent) |
-| Request timed out, unknown if dispatched | Hold remains, never auto-refund, visible for operator reconciliation |
-| Actual usage exceeds estimate | Charge full actual amount, balance can go negative, block subsequent hard admissions |
-| Sidecar crashes with active holds | Budget Service re-issues balance from Postgres minus known consumption, unresolved holds flagged |
-
-#### Reservation Underestimation
-
-Reservations are computed from output tokens only (`max_completion_tokens * bu_output`) because the OpenAI-compatible API does not expose estimated input tokens at request time. This is a conscious design tradeoff:
-
-- **Reservations systematically underestimate** actual cost because input tokens, cache tokens, and reasoning tokens are not accounted for until settlement.
-- **Settlement corrects the balance** with actual usage across all token types. If actual cost exceeds the reservation, the balance is further decremented and may go negative.
-- **Negative balances block subsequent hard admissions** but do not retroactively reject the request that caused the overshoot.
-
-This means the system provides approximate reservation with exact settlement. The error budget is bounded by the input token cost of any single request — in practice, input-heavy requests (large prompts with short completions) produce the largest underestimates. Operators should set budget limits with this margin in mind.
-
-A zero-overspend guarantee would require tokenizer-based input counting before dispatch, which adds latency and complexity to the admission path. This is explicitly out of scope.
+| Redis unavailable during check | Sidecar applies fail-open or fail-closed per operator configuration |
+| Budget Service unavailable when CloudEvent arrives | OTEL Collector retries delivery. Redis balance update is delayed until the Budget Service processes the event |
+| Concurrent requests pass check before deductions land | Expected behavior — the deduction is asynchronous (via OTEL pipeline → Budget Service → Redis). Multiple requests may be allowed before any deduction occurs. Overage is tracked and corrected at the next check or period renewal |
+| Budget Service crashes after Postgres write, before Redis update | On recovery, the Budget Service reconciles the Redis balance from the Postgres consumption ledger |
 
 
 ### Storage Architecture: Redis + Postgres
@@ -464,25 +470,20 @@ Redis and Postgres serve different roles in the budget system:
 | Layer | Store | Purpose |
 |---|---|---|
 | Sidecar (in-memory) | Memory | Cached policies, rates, and budget definitions. Fetched from the Budget Service API, refreshed via Redis change notifications |
-| Hot path (shared) | Redis | Atomic balance counters, holds, and Pub/Sub change notifications |
+| Hot path (shared) | Redis | Atomic balance counters and Pub/Sub change notifications |
 | Durable (default backend) | Postgres | Authoritative ledger, budget/rate/policy definitions, consumption history, reconciliation |
 
-The sidecar caches configuration objects (policies, rates, budget definitions) in memory, fetched from the Budget Service REST API. Redis handles only what requires shared atomic state — balance counters and holds — plus lightweight Pub/Sub notifications for cache invalidation.
+The sidecar caches configuration objects (policies, rates, budget definitions) in memory, fetched from the Budget Service REST API. Redis handles only what requires shared atomic state — balance counters — plus lightweight Pub/Sub notifications for cache invalidation.
 
-Postgres is the default durable backend, but it is not the only option. When the Budget Service integrates with an external platform such as M360 or OpenMeter (see [Bring Your Own Metering](#bring-your-own-metering)), the external system can serve as the durable store instead of — or alongside — Postgres. In that scenario, the sidecars are unaffected because they fetch configuration from the Budget Service API (not from Postgres directly) and use Redis only for balances and holds.
+Postgres is the default durable backend, but it is not the only option. When the Budget Service integrates with an external platform such as M360 or OpenMeter (see [Bring Your Own Metering](#bring-your-own-metering)), the external system can serve as the durable store instead of — or alongside — Postgres. In that scenario, the sidecars are unaffected because they fetch configuration from the Budget Service API (not from Postgres directly) and use Redis only for balances.
 
 Consumption data reaches the Budget Service via the OTEL pipeline, not from the sidecar directly. See the [Storage Schema](#storage-schema-high-level) section for details on the Postgres and Redis schemas.
 
-Redis atomic check-and-decrement (Lua script):
+Redis operations:
 
-```lua
-local remaining = redis.call('DECRBY', key, cost)
-if remaining < 0 then
-    redis.call('INCRBY', key, cost)  -- rollback
-    return 0  -- denied
-end
-return remaining
-```
+- **Check (sidecar, before dispatch):** `GET {tenant}:balance:{budget_id}` — read the current balance to make an admission decision. The sidecar never writes to balance keys.
+- **Deduct (Budget Service, on CloudEvent receipt):** `DECRBY {tenant}:balance:{budget_id} <actual_bu_cost>` — atomically decrement by the actual BU cost. The balance may go negative (overage).
+- **Reset (Budget Service, on period renewal):** `SET {tenant}:balance:{budget_id} <new_balance>` — set balance to `limit` (or `limit - previous_overage` if `deduct_overage` is enabled on the policy).
 
 
 ### Pacing
@@ -570,7 +571,7 @@ The api group for these resources is `budget.aigateway.opendatahub.io`
 
 ### API: Sidecar
 
-The sidecar exposes local endpoints for Praxis to check budget, settle actual usage, and release holds. These are hot-path calls — localhost only, never exposed outside the pod.
+The sidecar exposes a local endpoint for Praxis to check budget availability. This is a hot-path call — localhost only, never exposed outside the pod. The sidecar is read-only for Redis balances; the Budget Service handles all balance writes via the CloudEvent pipeline.
 
 #### Check Budget
 
@@ -589,8 +590,7 @@ POST /v1/budget_check
   "resource": {
     "model": "claude-sonnet-5-5",
     "provider": "anthropic"
-  },
-  "max_completion_tokens": 1024
+  }
 }
 ```
 
@@ -602,9 +602,8 @@ POST /v1/budget_check
 | `identity.tenant` | string | Tenant identity |
 | `resource.model` | string | Model identifier |
 | `resource.provider` | string | Model provider |
-| `max_completion_tokens` | integer | Maximum output tokens (from the client request) |
 
-Input tokens are not available at reservation time — the OpenAI-compatible API only exposes `max_completion_tokens`. The reservation is computed using the output token rate only (`max_completion_tokens * bu_output`). The settlement phase corrects with full actual usage across all token types (input, output, cache_read, cache_write, reasoning). This means reservations systematically underestimate, but settlement adjusts the balance — which may go negative if the actual cost exceeds the reserved amount.
+The check is a read-only operation — the sidecar reads the current Redis balance to make an admission decision but does not modify it. No tokens are estimated or reserved. The actual deduction happens after the model responds (see [Deduct](#deduct)).
 
 Response (modeled after [OpenMeter's entitlement access API](https://openmeter.io/docs/api)):
 
@@ -615,8 +614,7 @@ Response (modeled after [OpenMeter's entitlement access API](https://openmeter.i
   "budget_ref": "team-alpha-monthly",
   "balance": 85000,
   "usage": 15000,
-  "overage": 0,
-  "attempt_id": "att-abc123"
+  "overage": 0
 }
 ```
 
@@ -625,10 +623,9 @@ Response (modeled after [OpenMeter's entitlement access API](https://openmeter.i
 | `allowed` | boolean | Whether the request should proceed (equivalent to OpenMeter's `hasAccess`) |
 | `over_budget` | boolean | Whether the budget is exceeded — Praxis uses this to set the `x-over-budget: true` header upstream |
 | `budget_ref` | string | Which budget was matched |
-| `balance` | integer | Remaining BU after this reservation |
+| `balance` | integer | Current BU balance |
 | `usage` | integer | Total BU consumed in the current period |
 | `overage` | integer | BU consumed past the budget limit (0 if within budget) |
-| `attempt_id` | string | Hold identifier for subsequent settle or release calls |
 
 When `allowed` is `false`, the response includes a `reason` field:
 
@@ -640,76 +637,7 @@ When `allowed` is `false`, the response includes a `reason` field:
   "balance": 0,
   "usage": 100000,
   "overage": 0,
-  "attempt_id": null,
   "reason": "budget_exhausted"
-}
-```
-
-#### Settle
-
-After the model responds, Praxis sends the actual token usage to settle the hold.
-
-```
-POST /v1/budget_settle
-```
-
-```json
-{
-  "attempt_id": "att-abc123",
-  "usage": {
-    "input_tokens": 312,
-    "output_tokens": 87,
-    "cache_read_tokens": 20,
-    "cache_write_tokens": 5,
-    "reasoning_tokens": 30,
-    "total_tokens": 454
-  }
-}
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `attempt_id` | string | Hold identifier from the budget check response |
-| `usage.input_tokens` | integer | Actual input tokens (I) |
-| `usage.output_tokens` | integer | Actual output tokens (O) |
-| `usage.cache_read_tokens` | integer | Input tokens served from cache (R) |
-| `usage.cache_write_tokens` | integer | Input tokens written to cache (W) |
-| `usage.reasoning_tokens` | integer | Output tokens used for reasoning (Q) |
-| `usage.total_tokens` | integer | Sum of all tokens |
-
-The sidecar computes the actual BU cost from the usage and the rate table, adjusts the Redis balance (the difference between reserved and actual), and removes the hold. If actual cost exceeds the reservation, the balance is further decremented and may go negative.
-
-Response:
-
-```json
-{
-  "attempt_id": "att-abc123",
-  "reserved_bu": 15360,
-  "actual_bu": 18200,
-  "adjustment": -2840,
-  "balance": 82160
-}
-```
-
-The settle call is idempotent — retrying with the same `attempt_id` returns the same result.
-
-#### Release
-
-If the request was never dispatched to the model (e.g., upstream routing failure), Praxis calls release to refund the reservation.
-
-```
-POST /v1/budget_release/{attempt_id}
-```
-
-No request body. The sidecar refunds the full reserved amount to the Redis balance, removes the hold, and records no consumption. The release call is idempotent.
-
-Response:
-
-```json
-{
-  "attempt_id": "att-abc123",
-  "released_bu": 15360,
-  "balance": 100360
 }
 ```
 
@@ -717,7 +645,7 @@ Response:
 
 ### Consumption Emission
 
-After a model responds, Praxis emits an OTEL Log record containing the resource identification and actual token usage. The OTEL Collector forwards this as a CloudEvent to the Budget Service for durable persistence in Postgres.
+After a model responds, Praxis emits an OTEL Log record containing the resource identification and actual token usage. The OTEL Collector forwards this as a CloudEvent to the Budget Service. On receipt, the Budget Service computes the actual BU cost, atomically decrements the Redis balance, and persists the consumption record to Postgres. This is the sole path for balance deductions — the sidecar never writes to Redis balance keys.
 
 The OTEL Log record carries the following attributes:
 
@@ -727,7 +655,7 @@ The OTEL Log record carries the following attributes:
   "SeverityText": "INFO",
   "Body": "inference_usage",
   "Attributes": {
-    "attempt_id": "att-abc123",
+    "request_id": "req-abc123",
     "identity.user": "alice",
     "identity.groups": ["engineering", "ml-team"],
     "identity.organization": "research",
@@ -752,7 +680,7 @@ The OTEL Log record carries the following attributes:
 
 | Field | Description |
 |---|---|
-| `attempt_id` | Correlates with the sidecar's hold for reconciliation |
+| `request_id` | Unique request identifier for correlation and deduplication |
 | `identity.*` | Full identity context of the request |
 | `resource.model` | Model identifier — matches rate table resource keys |
 | `resource.provider` | Model provider |
@@ -764,7 +692,7 @@ The OTEL Log record carries the following attributes:
 | `usage.reasoning_tokens` | Output tokens used for reasoning (Q) |
 | `usage.total_tokens` | Sum of all tokens |
 
-The Budget Service uses the `attempt_id` to correlate with the sidecar's settlement. The `resource.*` fields are matched against rate tables to compute BU cost. The `usage.*` fields provide the actual token counts for the consumption formula:
+The `resource.*` fields are matched against rate tables to compute BU cost. The `usage.*` fields provide the actual token counts for the consumption formula:
 
 ```
 cost_bu = (I - R - W) * bu_input + R * bu_cache_read + W * bu_cache_write
@@ -786,7 +714,7 @@ The OTEL Collector transforms the Log record into a CloudEvent and sends it to t
   "time": "2026-11-16T14:32:05.123Z",
   "datacontenttype": "application/json",
   "data": {
-    "attempt_id": "att-abc123",
+    "request_id": "req-abc123",
     "identity": {
       "user": "alice",
       "groups": ["engineering", "ml-team"],
@@ -817,12 +745,12 @@ The OTEL Collector transforms the Log record into a CloudEvent and sends it to t
 | `source` | Originating Praxis instance |
 | `type` | Event type — `io.opendatahub.aigateway.usage.v1` |
 | `time` | Timestamp of the inference completion |
-| `data.attempt_id` | Correlates with the sidecar's hold |
+| `data.request_id` | Unique request identifier for correlation and deduplication |
 | `data.identity` | Full identity context from the OTEL Log |
 | `data.resource` | Resource keys matching rate tables |
 | `data.usage` | Actual token counts for BU cost computation |
 
-The Budget Service persists the CloudEvent data to Postgres and exposes it via the metering APIs for external systems (Bring Your Own Metering).
+The Budget Service persists the CloudEvent data to Postgres, updates the consumption ledger, and exposes it via the metering APIs for external systems (Bring Your Own Metering). The consumption records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)).
 
 ### Storage Schema (high level)
 
@@ -837,11 +765,10 @@ All tables include a `tenant_id` column for multi-tenancy.
 | `rates` | Rate definitions — name, and the list of rate items (resource keys + cost keys). Stored as JSONB for flexibility |
 | `budgets` | Budget definitions — name, BU limit, period (start + duration), renewal type (drain/rollover + max_carry) |
 | `budget_policies` | Policy bindings — references a budget and a rate, subject (kind + name), overage configuration |
-| `consumption` | Append-only ledger of settled consumption records — attempt ID, subject, budget ref, BU consumed, token breakdown, timestamp |
-| `holds` | Active reservations — attempt ID, budget ref, reserved BU, created timestamp. Rows are deleted on settle or release. Orphaned holds are visible for operator reconciliation |
-| `period_balances` | Current period state per budget — current balance, period start, period end, rollover carry. Updated on settlement and period reset |
+| `consumption` | Append-only ledger of consumption records — request ID, subject, budget ref, BU consumed, token breakdown, timestamp |
+| `period_balances` | Current period state per budget — current balance, period start, period end, rollover carry, overage amount. Updated on deduction and period reset |
 
-The `consumption` table is the durable record that feeds reporting, reconciliation, and the metering APIs. It is append-only — rows are never updated or deleted.
+The `consumption` table is the durable record that feeds reporting, reconciliation, overage tracking, and the metering APIs. It is append-only — rows are never updated or deleted. The Budget Service computes the cumulative overage per budget from this ledger for period carry-forward.
 
 **Important:** We use a hybrid approach where we keep JSONB structures in Postgres. Dynamic fields like rate keys or resource keys are represented as JSONB (natively supported by Postgres). Reference fields, `tenant_id`, timestamps, `limit`, etc. are represented as separate columns.
 
@@ -852,11 +779,10 @@ Redis handles atomic shared state and change notifications. Configuration object
 
 | Key pattern | Type | Description |
 |---|---|---|
-| `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented atomically on reservation, adjusted on settlement |
-| `{tenant}:hold:{attempt_id}` | hash | Active hold — budget ref, reserved BU, timestamp. TTL set to a configurable max hold duration. Deleted on settle or release |
+| `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented atomically on deduction after each response. May go negative (overage) |
 | `{tenant}:changes` | Pub/Sub channel | Change notifications published by the Budget Service when a policy, rate, or budget is created, updated, or deleted. Payload contains the object type and ID. Sidecars subscribe to this channel and fetch the changed object from the Budget Service API |
 
-The balance key is the critical path — the Lua atomic check-and-decrement script (see Storage Architecture section) operates on this key.
+The balance key is the critical path — the sidecar reads it for admission checks and atomically decrements it on deduction.
 
 **Note:** The low-level schema details are intentionally omitted from this document as they tend to change as the design and implementation evolve, risking this information becoming outdated. For this reason we aim to cover only the high-level aspects here.
 
@@ -870,7 +796,7 @@ The Budget Service is designed as a self-contained solution that works out of th
 All external metering integration happens exclusively at the Budget Service level. The rest of the stack — Praxis, the sidecar, Redis, the OTEL pipeline — remains completely unchanged and unaware of any external backend. This is a deliberate architectural choice:
 
 - **Praxis** continues to call the sidecar for admission decisions. It does not know whether consumption data is forwarded elsewhere.
-- **The sidecar** continues to fetch config from the Budget Service API and use Redis for balances and holds. Its sync protocol is unchanged.
+- **The sidecar** continues to fetch config from the Budget Service API and use Redis for balances. Its sync protocol is unchanged.
 - **The OTEL pipeline** continues to emit logs and CloudEvents to the Budget Service. No additional collectors or exporters are needed.
 
 The Budget Service acts as the single integration point, translating its internal consumption data into the format expected by the external system.
@@ -910,10 +836,9 @@ The sidecar and Budget Service expose Prometheus metrics for monitoring:
 |---|---|---|
 | Budget utilization | Sidecar | Current balance as a percentage of the budget limit, per budget |
 | Admission decisions | Sidecar | Counter of allow/deny decisions, labeled by tenant, subject, and reason (sufficient, soft overage, hard deny) |
-| Reservation accuracy | Sidecar | Histogram of the difference between reserved and actual BU cost |
-| Hold age | Sidecar | Histogram of hold durations. Long-lived holds indicate settle/release failures |
-| Orphaned holds | Sidecar | Gauge of holds that exceeded their TTL without settlement |
+| Deduction latency | Budget Service | Histogram of Redis balance deduction latency on CloudEvent processing |
 | Overage events | Sidecar | Counter of requests that triggered overage logic |
+| Overage amount | Budget Service | Cumulative BU overage per budget in the current period |
 | Config refresh latency | Sidecar | Latency of config fetches from the Budget Service API |
 | CloudEvent ingestion | Budget Service | Counter and latency of CloudEvent processing |
 
@@ -925,7 +850,7 @@ Operators can configure alerts based on these metrics. Recommended alert conditi
 |---|---|---|
 | Budget utilization > 80% | Warning | Tenant approaching budget limit |
 | Budget utilization > 95% | Critical | Tenant near exhaustion |
-| Orphaned holds > threshold | Warning | Settle/release calls being lost — may indicate Praxis issues |
+| Overage exceeds threshold | Warning | Budget overage growing — may indicate runaway consumption or misconfigured rates |
 | Config refresh failures | Warning | Sidecar cannot reach Budget Service API — serving stale config |
 | Ambiguous policy match | Warning | Multiple group/org policies matched for a user — operator should create a direct user policy |
 
@@ -944,11 +869,10 @@ The RHOAI UI can query the Budget Service metering APIs to display:
 | # | Question | Context |
 |---|---|---|
 | 1 | **Fail-open or fail-closed default?** | When Redis is unreachable, should the sidecar allow requests (fail-open) or reject them (fail-closed)? This is operator-configurable, but the default affects out-of-the-box behavior. Fail-open risks overspend; fail-closed risks blocking legitimate requests |
-| 2 | **Hold TTL duration** | How long should a hold remain in Redis before it expires? Too short risks premature expiry during slow model responses (e.g., long reasoning chains). Too long risks stale holds blocking budget capacity. Needs to account for the longest expected inference latency |
-| 3 | **Maximum negative balance tolerance** | When settlement drives a balance negative, how far negative is acceptable before the system takes corrective action? A small negative is expected (reservation underestimation), but unbounded negative balances could indicate a problem |
-| 4 | **Redis persistence strategy** | Should Redis use AOF, RDB snapshots, or both? This affects how much balance/hold data is lost on a Redis restart and how quickly it can be rebuilt from Postgres |
-| 5 | **Pub/Sub delivery guarantees** | Redis Pub/Sub is fire-and-forget — if a sidecar misses a notification (e.g., during a brief disconnect), it will serve stale config. Should the sidecar also poll the Budget Service API periodically as a fallback? If so, at what interval? |
-| 6 | **Budget period boundary handling** | When a budget period resets (e.g., monthly rollover), who resets the Redis balance counter — the Budget Service or the sidecar? The Budget Service is the natural owner since it has the authoritative period state in Postgres |
+| 2 | **Maximum negative balance tolerance** | When deductions drive a balance negative, how far negative is acceptable before the system takes corrective action? Concurrent requests between check and deduction can cause overshoot. Unbounded negative balances could indicate a problem |
+| 3 | **Redis persistence strategy** | Should Redis use AOF, RDB snapshots, or both? This affects how much balance data is lost on a Redis restart and how quickly it can be rebuilt from Postgres |
+| 4 | **Pub/Sub delivery guarantees** | Redis Pub/Sub is fire-and-forget — if a sidecar misses a notification (e.g., during a brief disconnect), it will serve stale config. Should the sidecar also poll the Budget Service API periodically as a fallback? If so, at what interval? |
+| 5 | **Budget period boundary handling** | When a budget period resets (e.g., monthly rollover), who resets the Redis balance counter — the Budget Service or the sidecar? The Budget Service is the natural owner since it has the authoritative period state in Postgres |
 
 
 ## Alternatives
@@ -988,7 +912,7 @@ The hybrid approach uses each store for what it does best: Redis for the latency
 All communication between components happens exclusively within the Kubernetes cluster network over TLS:
 
 - **Sidecar → Budget Service** (REST API calls to fetch config) — in-cluster only, never exposed publicly
-- **Sidecar → Redis** (balance counters, holds, Pub/Sub subscriptions) — in-cluster only
+- **Sidecar → Redis** (balance counters, Pub/Sub subscriptions) — in-cluster only
 - **Budget Service → Redis** (balance updates, change notifications) — in-cluster only
 
 The Praxis-to-sidecar communication is localhost only (same pod), so it does not traverse the network at all and requires no authentication. Both containers share the same pod security boundary — if one is compromised, the other is already accessible.
@@ -1013,18 +937,17 @@ The `identity` object (user, groups, organization, tenant) flows through the OTE
 
 ### Redis Data Security
 
-Redis holds balances, holds, and Pub/Sub change notifications. It does not store configuration objects or consumption records. Redis should be configured with TLS for in-transit encryption and access restricted to the sidecar and Budget Service via network policies. Redis does not store long-term PII — identity information is only present transiently in hold records and is removed on settlement or TTL expiry.
+Redis holds balance counters and Pub/Sub change notifications. It does not store configuration objects, consumption records, or identity information. Redis should be configured with TLS for in-transit encryption and access restricted to the sidecar and Budget Service via network policies.
 
 
 ## Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **Redis data loss** — Redis restart or crash loses balance counters and active holds | Medium | High | Redis persistence (AOF/RDB). Budget Service reconciliation rebuilds balances from Postgres consumption records. Orphaned holds are flagged for operator review |
-| **Redis balance corruption** — Redis balance becomes incorrect due to a partial failure (e.g., settle adjusts balance but hold deletion fails) | Low | Medium | Budget Service can rebuild Redis balances from Postgres consumption records on demand. Hold TTLs prevent permanent capacity loss |
+| **Redis data loss** — Redis restart or crash loses balance counters | Medium | High | Redis persistence (AOF/RDB). Budget Service reconciliation rebuilds balances from Postgres consumption records |
+| **Redis balance corruption** — Redis balance becomes incorrect due to a partial failure (e.g., Budget Service crashes after Postgres write but before Redis DECRBY) | Low | Medium | Budget Service can rebuild Redis balances from Postgres consumption records on demand |
 | **Missed Pub/Sub notifications** — Sidecar misses a Redis change notification and serves stale config (wrong rates or policies) | Low | Medium | Optional periodic polling of the Budget Service API as a fallback. Sidecar restart triggers a full config fetch |
-| **Orphaned holds accumulation** — Settle/release calls are lost (Praxis crash, network failure), holds accumulate and reduce available budget | Medium | Medium | Hold TTL in Redis auto-expires orphaned holds. Budget Service flags holds that exceed TTL for operator reconciliation |
-| **Reservation underestimation** — Input-heavy requests cause significant underestimates, leading to balances going negative after settlement | High | Low | Documented tradeoff (see [Reservation Underestimation](#reservation-underestimation)). Operators set limits with margin. Negative balances block subsequent hard admissions |
+| **Concurrent request overshoot** — Multiple requests pass the balance check before deductions land via the CloudEvent pipeline, causing the balance to go significantly negative | Medium | Low | Expected behavior — deductions are asynchronous. Negative balances block subsequent hard admissions. Operators set budgets with margin. The `deduct_overage` policy option ensures overshoot is recovered in the next period |
 | **Sidecar memory pressure** — Tenants with many policies, rates, or budget definitions cause high memory usage in the sidecar | Low | Low | Config objects are small (KV maps). Monitor sidecar memory usage. If needed, limit the number of objects per tenant |
 | **Budget Service as single point for config** — Budget Service outage prevents config refresh for all sidecars | Medium | Low | Sidecars continue with in-memory cached config. Only new config changes are delayed. Admission decisions and Redis balances are unaffected |
 
