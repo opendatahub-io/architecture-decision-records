@@ -939,6 +939,9 @@ The `identity` object (user, groups, organization, tenant) flows through the OTE
 
 Redis holds balance counters and Pub/Sub change notifications. It does not store configuration objects, consumption records, or identity information. Redis should be configured with TLS for in-transit encryption and access restricted to the sidecar and Budget Service via network policies.
 
+## Implementation notes
+
+We recommend that the BudgetService and the BudgetSidecar to be implemented in Rust not Go. Tokenomics support is a critical part of the system so we need to optimize system resources in terms of memory foot print an CPU. This also avoids potential CPU spikes caused by a garbage collector.
 
 ## Risks
 
