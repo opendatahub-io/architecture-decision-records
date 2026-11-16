@@ -872,7 +872,6 @@ The RHOAI UI can query the Budget Service metering APIs to display:
 | 2 | **Maximum negative balance tolerance** | When deductions drive a balance negative, how far negative is acceptable before the system takes corrective action? Concurrent requests between check and deduction can cause overshoot. Unbounded negative balances could indicate a problem |
 | 3 | **Redis persistence strategy** | Should Redis use AOF, RDB snapshots, or both? This affects how much balance data is lost on a Redis restart and how quickly it can be rebuilt from Postgres |
 | 4 | **Pub/Sub delivery guarantees** | Redis Pub/Sub is fire-and-forget — if a sidecar misses a notification (e.g., during a brief disconnect), it will serve stale config. Should the sidecar also poll the Budget Service API periodically as a fallback? If so, at what interval? |
-| 5 | **Budget period boundary handling** | When a budget period resets (e.g., monthly rollover), who resets the Redis balance counter — the Budget Service or the sidecar? The Budget Service is the natural owner since it has the authoritative period state in Postgres |
 
 
 ## Alternatives
