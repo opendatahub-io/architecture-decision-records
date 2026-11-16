@@ -957,9 +957,13 @@ We recommend that the BudgetService and the BudgetSidecar to be implemented in R
 
 ## Stakeholder Impacts
 
-| Group                         | Key Contacts     | Date       | Impacted? |
-| ----------------------------- | ---------------- | ---------- | --------- |
-|                               |                  |            |           |
+| Group                         | Key Contacts         | Date       | Impacted? |
+| ----------------------------- | -------------------- | ---------- | --------- |
+| Tokenmics                     |   Marius Danciu      |            |     Y     |
+| Praxis                        |   Shane Utt          |            |     Y     |
+| Dashboard                     |   Andrew Ballantine  |            |     Y     |
+| MaaS                          |   Jamie Lang         |            |    TBD    |
+
 
 
 ## References
