@@ -1459,7 +1459,7 @@ We recommend that the Budget Service and the Budget Sidecar be implemented in Ru
 | Tokenomics                    |   Marius Danciu      |            |     Y     |
 | Praxis                        |   Shane Utt          |            |     Y     |
 | Dashboard                     |   Andrew Ballantine  |            |     Y     |
-| MaaS                          |   Jamie Lang         |            |    TBD    |
+| MaaS                          |   Jamie Land         |            |    TBD    |
 
 
 
