@@ -1,562 +1,604 @@
-# Open Data Hub - MaaS Usage Dashboard OIDC Authorization and Data Scoping
+# Open Data Hub - MaaS Usage Dashboard Authentication, Authorization, and Data Scoping
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-10-24 |
+| Date           | 2026-11-14 |
 | Scope          | model-serving, MaaS consumer portal, usage dashboard |
 | Status         | Draft |
 | Authors        | Lindani Phiri |
-| Supersedes     | N/A |
+| Supersedes     | ADR-0007 usage visibility restriction only, pending approval |
 | Superseded by: | N/A |
 | Tickets        | RHAI-10635, RHAI-8074 |
-| Other docs:    | ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md, ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md |
+| Other docs:    | [Agreed requirements](ai-grid-auth-design.md), [ADR-0007](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md), [ADR-0008](ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md) |
 
 ## What
 
-The MaaS usage dashboard shows Loki usage logs that are scoped to the signed-in user and selected organization. Tenant Users see their personal usage and token usage logs. Organization Admins see usage for their organization. Authorized Super Admins can view one selected organization at a time. Browser users sign in with the same OIDC access as the consumer portal and do not need a Kubernetes account. CLI or API clients use bearer tokens.
+The gateway authenticates OIDC and Kubernetes credentials for the MaaS usage dashboard.
+The shared MaaS usage proxy authorizes requests through the trusted identity envelope defined in ADR-0007.
+`AITenant` admins see tenant-wide usage, AI Grid organization admins see organization-wide usage through the OIDC route, and ordinary users see personal usage.
+The release supports the consumer portal through an OIDC route and a separate Kubernetes route.
+An `AITenant` is MaaS's top-level access boundary.
 
 ## Why
 
-Tenant Users need personal usage and token usage logs. Organization Admins need organization-wide usage to manage consumption and access. The dashboard must not expose the usage backend directly to browsers. This continues the ODH-ADR-MS-0008 requirement that users use the same OIDC access and do not need a Kubernetes account. Reusing the existing RHOAI Dashboard gateway also avoids a second OpenShift authentication path.
+OIDC and Kubernetes identities supply different information.
+AI Grid supplies organization membership through OIDC, while standard RHOAI requires no organization.
+An organization requirement must not block Kubernetes users or standard RHOAI OIDC users.
+The Kubernetes route lets existing Kubernetes users access the consumer portal without onboarding them to an external OIDC identity provider.
+Legacy standard-RHOAI OIDC configurations that provide only username and groups, without `org_id`, remain supported.
+
+Usage records need consistent ownership across producers and queries.
+OIDC ownership uses issuer and subject, while this release uses username-based Kubernetes ownership with the limitations below.
+Readable names make historical records understandable after resources disappear.
+Both browser entry points and direct APIs need the same access boundaries.
 
 ## Goals
 
-* Show scoped usage to Tenant Users, Organization Admins, and authorized Super Admins.
-* Give OIDC users dashboard access without Kubernetes accounts through the gateway, Dashboard BFF, Perses, and MaaS usage proxy.
-* Enforce token validation, role checks, and label scoping in the MaaS usage proxy.
-* Isolate usage data with one LokiStack tenant per organization boundary.
-* Support direct CLI and API clients with bearer-token authentication.
+- Support the agreed deployment and authentication combinations from the first release.
+- Enforce `AITenant`, organization, and personal boundaries on the server.
+- Include an `AITenant` Admin view in the MaaS dashboard.
+- Capture immutable IDs for `AITenant` resources, organizations, and OIDC users, with readable names for every identity source.
+- Use tenant-scoped Kubernetes usernames for this release and document the next-release UID gap.
+- Apply role and membership removal to new queries within five minutes.
+- Preserve inference availability and usage records when identity metadata is incomplete.
 
 ## Non-Goals
 
-* Define usage dashboard queries or implement dashboard components.
-* Implement usage aggregation, metering, or Provider Admin dashboards.
-* Integrate additional usage data backends.
-* Remove existing CLI or non-dashboard API access.
-* Change the identity-provider, gateway, or LokiStack integration model.
+- Add organization support to standard RHOAI, including identities that contain organization claims.
+- Create Kubernetes identities for AI Grid organization users.
+- Change model or subscription eligibility, implement metering, or calculate quota from usage logs.
+- Define Provider Admin dashboards or replace existing OpenShift and ACM access.
+- Add ID and name requirements for subscriptions, models, API keys, or sites.
+- Require historical migration, multiple organization memberships, or portals for non-default `AITenant` resources in the first release.
+- Implement immutable Kubernetes user ownership in this release.
 
 ## How
 
-In this ADR, an AITenant is the top-level MaaS tenant boundary. An organization is a boundary inside an AITenant. In AI Grid, an organization is an AI Grid organization. In a non-AI Grid deployment, the AITenant is the authorization boundary. An organization can still exist inside that AITenant. An Organization Admin is a user with the `admins` role for the selected organization. A Tenant User is any other valid organization member.
+### Deployment modes and browser entry points
 
-The usage data uses these labels:
+Trusted deployment configuration selects AI Grid or standard RHOAI.
+Token claims do not select the deployment mode.
+Standard RHOAI does not create an artificial organization or activate organization permissions when an OIDC token contains an organization claim.
 
-| Level | Label | Meaning |
-| ----- | ----- | ------- |
-| AITenant | `maas_tenant_id` | The top-level MaaS tenant identifier. |
-| Organization | `organization_id` | The selected organization boundary inside the AITenant. Required for AI Grid; optional for non-AI Grid. |
-| User | `user_id` | The stable user identifier derived from `iss` and `sub`. |
+| Deployment | Authentication | Available boundaries |
+| --- | --- | --- |
+| AI Grid organization access | OIDC | `AITenant`, organization, and user |
+| AI Grid organization access | OpenShift/Kubernetes | `AITenant` and user |
+| Standard RHOAI | OIDC | `AITenant` and user |
+| Standard RHOAI | OpenShift/Kubernetes | `AITenant` and user |
 
-API-key-authenticated inference requests resolve the key's stored subscription binding first. Subscription selection then returns the subscription's `organization_id`. For a legacy subscription without a stable organization association, it returns `tokenMetadata.organizationId`. The inference path must use that verified subscription-selection result and must not trust a client-supplied organization header.
+#### Consumer portal OIDC route
 
-In a non-AI Grid deployment without a finer organization boundary, subscription selection can return an empty `organization_id`. The usage path then uses `maas_tenant_id` as the authorization boundary. If an AI Grid subscription cannot resolve to one organization boundary, the inference request must fail.
+The consumer portal follows ADR-0008 and uses the tenant's MaaS `Gateway` and configured authentication mode.
+The initial portal serves only the default `AITenant`.
+The authorization model applies to any `AITenant`, and AI Grid initially permits one organization per user.
 
-Dashboards can group and filter usage by `maas_tenant_id`, `organization_id`, and `user_id`. The usage proxy enforces the labels that the selected persona requires.
+#### Consumer portal Kubernetes route
+
+The consumer portal can also mount on a completely separate `HTTPRoute` with Kubernetes authentication only.
+This separate route can serve AI Grid or standard RHOAI.
+Its behavior is the same in both deployments: it provides `AITenant` and personal boundaries only.
+That route can attach to a separate `Gateway`, including the existing RHOAI Dashboard `Gateway`.
+It does not require the portal's OIDC route or its OIDC session.
+The route lets existing Kubernetes users use the consumer portal without onboarding them to an external OIDC identity provider.
+
+The gateway authenticates the UI's Kubernetes credential through `TokenReview`, which asks Kubernetes to authenticate a token.
+It uses existing OpenShift/Kubernetes identities and the same tenant and personal boundaries in both deployments.
+It does not map Kubernetes groups to AI Grid organizations.
+
+The route always uses Kubernetes `TokenReview`, even when the portal for the same `AITenant` uses OIDC.
+Trusted route configuration names the cluster that performs `TokenReview` and the `AITenant` whose data the route serves.
+The route does not accept the portal's OIDC session cookie or ID token.
+
+Each route binds requests to one `AITenant` through operator-controlled configuration.
+The usage proxy resolves that `AITenant`'s immutable identity, authentication policy, and actual tenant namespace.
+It rejects conflicting tenant context and ignores client-supplied tenant headers.
+
+The UI BFF is the UI's backend service.
+Both browser routes use this service and can have separate datasource proxy prefixes.
 
 ```mermaid
 flowchart LR
-  user["Person<br/>Portal user"]
-  ui["Software System<br/>Consumer UI with embedded Perses dashboard"]
-  gateway["Container: Authenticated gateway<br/>OIDC or OpenShift validation"]
-  bff["Software System<br/>Dashboard BFF<br/>Backend service for the dashboard client"]
-  perses["Software System<br/>Perses server<br/>Datasource proxy mode"]
-  usage["Software System<br/>MaaS usage proxy<br/>Authorization and query rewriting"]
-  loki["Software System<br/>LokiStack static gateway<br/>Usage logs"]
-
-  user --> ui
-  ui --> gateway
-  gateway -- "Authenticated request" --> bff
-  bff -- "Proxied browser request" --> perses
-  perses -- "Datasource request" --> usage
-  usage -- "mTLS query" --> loki
+  Portal[Consumer portal] --> MG[MaaS Gateway]
+  Separate[Consumer portal Kubernetes route] --> KR[HTTPRoute]
+  MG --> BFF[UI BFF]
+  KR --> BFF
+  BFF --> Perses[Perses datasource proxy]
+  Perses --> Usage[MaaS usage proxy]
+  API[Direct API client] --> AG[Authenticated usage API route]
+  AG --> Usage
+  Usage --> Loki[LokiStack usage tenant]
 ```
 
-### Request sequences
+Both browser routes share the UI BFF and usage proxy.
+The proxy applies the same ownership and scope semantics after authentication.
+The separate UI mount is an additional entry point, not a replacement for the portal layout in ADR-0008.
+Existing Provider Admin routes remain outside this request path.
 
-The following sequence diagrams show the request path for each authentication mode and persona. They omit the browser sign-in details because ODH-ADR-MS-0007 and ODH-ADR-MS-0008 define them.
+### Roles and current authority
 
-The gateway is shown only for the browser UI path. CLI and non-dashboard API clients call the usage proxy directly with a bearer token. The usage proxy validates that token and applies the same scoping rules.
+Kubernetes RBAC assigns permissions through `RoleBinding` resources.
+`AITenant` administration reuses the existing MaaS capability: `create` on `maasauthpolicies` in API group `maas.opendatahub.io`.
+The permission review uses the selected `AITenant`'s actual tenant namespace, rather than one global namespace.
 
-#### AI Grid shared OIDC mode
+A `SubjectAccessReview` evaluates a named subject's permissions.
+The gateway submits the verified caller's RBAC username and groups through its authorized review service identity.
+It never substitutes its own `ServiceAccount` as the subject whose tenant permissions determine caller access.
+The gateway uses `TokenReview` to authenticate Kubernetes credentials and supplies the verified username and groups through the identity envelope.
+The production authorization path does not use `SelfSubjectAccessReview`.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor User as Portal user
-  participant UI as Consumer UI with embedded Perses dashboard
-  participant Gateway as MaaS Gateway
-  participant BFF as Dashboard BFF
-  participant Perses as Perses server in proxy mode
-  participant Usage as MaaS usage proxy
-  participant Loki as LokiStack
+The shared identity envelope applies to all MaaS management paths, including API-key management, subscription APIs, dashboard requests, and direct read-only usage APIs.
+Operator-controlled route configuration selects the gateway's authentication method.
+The gateway emits `X-MaaS-Identity` with `source: "oidc"` or `source: "kubernetes"` after authentication.
+The source follows the authentication method in AI Grid and standard RHOAI.
+Client-supplied headers cannot select or change that method.
 
-  User->>UI: Open usage dashboard
-  UI->>Gateway: Send query to the Perses datasource proxy route
-  Gateway->>Gateway: Exchange OIDC session for user token
-  Gateway->>BFF: Forward query and trusted identity headers
-  BFF->>Perses: Proxy the request to the Perses server
-  Perses->>Usage: Forward the datasource request to maas-usage-proxy
-  Usage->>Usage: Validate user token, claims, and requested usage_scope
+The usage proxy accepts the envelope only through trusted internal paths and enforces usage permissions.
+It validates the envelope's structure and permitted source without authenticating the caller's token again.
+The gateway removes supplied identity headers before injection, and internal services preserve that trust across every hop.
+The gateway resolves tenant administration, while the proxy continues to enforce usage scope.
 
-  alt Requested organization scope
-    Usage->>Usage: Rewrite query with maas_tenant_id and organization_id
-  else Requested user scope
-    Usage->>Usage: Rewrite query with maas_tenant_id, organization_id, and user_id
-  end
+Existing management endpoints also retain their trusted flat-header paths through ADR-0007's shared identity adapter.
+The adapter preserves their permissions and legacy ownership behavior.
+Envelope-enabled usage paths require the envelope and never fall back to flat headers after an invalid envelope.
+Inference authentication retains its existing contract.
 
-  Usage->>Loki: Query logs with the full-access service identity
-  Loki-->>Usage: Return scoped logs
-  Usage-->>Perses: Return scoped data
-  Perses-->>BFF: Return scoped data
-  BFF-->>Gateway: Return scoped data
-  Gateway-->>UI: Return dashboard data
-  UI-->>User: Show usage dashboard
+OIDC permission reviews require an issuer-aware mapping into Kubernetes RBAC.
+The canonical OIDC user ID provides a source-qualified subject, while operator-controlled mappings can authorize existing RBAC aliases and groups.
+Raw display names, subjects, or groups never imply membership in a same-name Kubernetes identity.
+
+If a trusted RBAC mapping is unavailable, the gateway emits no tenant-admin role for that OIDC principal.
+Personal access still follows the valid canonical identity and the applicable membership rules.
+This mapping creates no Kubernetes `User` or `Group` objects for AI Grid members.
+
+For both identity sources, the gateway derives `tenant_roles` from a `SubjectAccessReview` for the route-selected `AITenant`.
+An allowed review produces `["tenant-admin"]`, and a denied review produces `[]`.
+A failed review returns an error, without a role or scope fallback.
+Backend services consume the assertion without repeating the tenant-admin review and retain their endpoint permission rules.
+
+An allowed review establishes `AITenant` administration only.
+It grants no AI Grid organization membership or role.
+The review uses the mapped or verified username and groups, without a user UID.
+The assertion is valid only for the route-selected tenant and stays separate from organization roles in `claims.roles`.
+
+Authorino's native `authorization.kubernetesSubjectAccessReview` rejects a request when the permission review denies access.
+Using it as an unconditional tenant-admin gate therefore blocks ordinary users from personal usage.
+The following fragment uses [HTTP metadata](https://docs.kuadrant.io/latest/authorino/docs/features/) to obtain the review result before authorization.
+The authorization rules require a completed review, without requiring administrative permission.
+
+```yaml
+rules:
+  authentication:
+    kubernetes:
+      kubernetesTokenReview:
+        audiences:
+          - https://kubernetes.default.svc
+      credentials:
+        authorizationHeader:
+          prefix: Bearer
+  metadata:
+    tenant_admin_review:
+      http:
+        url: https://kubernetes.default.svc/apis/authorization.k8s.io/v1/subjectaccessreviews
+        method: POST
+        contentType: application/json
+        sharedSecretRef:
+          name: authorino-sar-client
+          key: token
+        timeout: 2000
+        body:
+          expression: |
+            {
+              "apiVersion": "authorization.k8s.io/v1",
+              "kind": "SubjectAccessReview",
+              "spec": {
+                "user": auth.identity.user.username,
+                "groups": ["system:authenticated"] + (
+                  has(auth.identity.user.groups)
+                    ? auth.identity.user.groups.filter(group, group != "system:authenticated")
+                    : []
+                ),
+                "resourceAttributes": {
+                  "namespace": "TENANT_NAMESPACE",
+                  "group": "maas.opendatahub.io",
+                  "resource": "maasauthpolicies",
+                  "verb": "create"
+                }
+              }
+            }
+  authorization:
+    identity:
+      patternMatching:
+        patterns:
+          - predicate: 'auth.identity.authenticated == true'
+          - predicate: 'auth.identity.user.username != ""'
+    tenant_review_complete:
+      patternMatching:
+        patterns:
+          - predicate: |
+              has(auth.metadata.tenant_admin_review.status.allowed) &&
+              type(auth.metadata.tenant_admin_review.status.allowed) == bool
+          - predicate: |
+              !has(auth.metadata.tenant_admin_review.status.evaluationError) ||
+              auth.metadata.tenant_admin_review.status.evaluationError == ""
+  response:
+    success:
+      headers:
+        X-MaaS-Identity:
+          json:
+            properties:
+              source:
+                value: kubernetes
+              tenant_roles:
+                expression: 'auth.metadata.tenant_admin_review.status.allowed ? ["tenant-admin"] : []'
+              user:
+                expression: |
+                  {
+                    "username": auth.identity.user.username,
+                    "groups": ["system:authenticated"] + (
+                      has(auth.identity.user.groups)
+                        ? auth.identity.user.groups.filter(group, group != "system:authenticated")
+                        : []
+                    )
+                  }
+    unauthorized:
+      code: 503
+      message:
+        value: Unable to establish management authorization
 ```
 
-#### MVP OpenShift mode
+Authorino's [JSON header injection](https://docs.kuadrant.io/latest/authorino/docs/features/) serializes the envelope into `X-MaaS-Identity` after authentication and a completed review.
+The envelope contains `source: "kubernetes"`, gateway-derived `tenant_roles`, and the verified username and groups under `user`.
+After successful authentication, the gateway includes `system:authenticated` exactly once.
+If Kubernetes supplies no groups, the group list contains only `system:authenticated`.
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor User as Portal user
-  participant UI as Existing consumer portal mount with embedded Perses dashboard
-  participant Gateway as RHOAI Dashboard gateway
-  participant BFF as Dashboard BFF
-  participant Perses as Perses server in proxy mode
-  participant Usage as MaaS usage proxy
-  participant Loki as LokiStack
+An authenticated non-admin passes the completion rules and receives `tenant_roles: []`.
+A missing result, malformed `allowed` value, or non-empty `evaluationError` prevents a success envelope and returns HTTP 503.
+The gateway must remove client-supplied identity headers before it injects the envelope.
+The usage proxy derives the user ID and enforces the requested scope from the trusted assertion.
 
-  User->>UI: Open usage dashboard
-  UI->>Gateway: Send query to the Perses datasource proxy route
-  Gateway->>Gateway: Exchange OpenShift OAuth session for user token
-  Gateway->>BFF: Forward query and trusted identity headers
-  BFF->>Perses: Proxy the request to the Perses server
-  Perses->>Usage: Forward the datasource request to maas-usage-proxy
-  Usage->>Usage: Validate user token, claims, and requested usage_scope
+Replace `TENANT_NAMESPACE` with the route-selected tenant's actual namespace through operator-controlled rendering.
+Set `audiences` to the audience accepted by the deployment's Kubernetes API.
+The `authorino-sar-client` `Secret`, in Authorino's namespace, must provide a valid review service token under `token`.
+The operator must maintain that credential, and Authorino must trust the Kubernetes API certificate authority.
+The review service identity needs `create` on `subjectaccessreviews` in API group `authorization.k8s.io`.
+The caller needs no permission to create a general `SubjectAccessReview`.
 
-  alt Requested organization scope
-    Usage->>Usage: Rewrite query with maas_tenant_id and organization_id
-  else Requested user scope
-    Usage->>Usage: Rewrite query with maas_tenant_id, organization_id, and user_id
-  end
+The fragment configures no review cache, so each request obtains a new decision.
+OIDC management paths use the same completion and role rules after trusted mapping into RBAC.
+An OIDC identity without a trusted mapping receives `tenant_roles: []` without a review.
+Neither a browser session nor a forwarded envelope can preserve tenant authority beyond the five-minute removal deadline.
 
-  Usage->>Loki: Query logs with the full-access service identity
-  Loki-->>Usage: Return scoped logs
-  Usage-->>Perses: Return scoped data
-  Perses-->>BFF: Return scoped data
-  BFF-->>Gateway: Return scoped data
-  Gateway-->>UI: Return dashboard data
-  UI-->>User: Show usage dashboard
-```
+AI Grid organization administration requires the verified `admins` role for the requested organization.
+It grants visibility across that organization, including subscriptions that the administrator does not personally administer.
+An organization role never grants `AITenant` administration or expands inference eligibility.
 
-### CLI and non-dashboard API access
+| Persona | Usage visibility | Authority |
+| --- | --- | --- |
+| `AITenant` Admin | All usage within the selected `AITenant` | Gateway-reviewed tenant RBAC capability in `tenant_roles` |
+| Organization Admin | All usage within one AI Grid organization | Current organization membership and `admins` role |
+| User | Personal usage within the authorized boundaries | Valid tenant authentication and, in AI Grid, current organization membership |
 
-CLI and non-dashboard clients do not use Perses. They continue to call the supported MaaS usage API surface with `Authorization: Bearer <token>`.
+In standard RHOAI, ordinary users need no separate MaaS membership assignment after they pass the `AITenant` authentication policy.
+Kubernetes `ServiceAccount` identities use the same personal scope and require explicit tenant RBAC permissions for tenant-wide access.
+`AITenant` Admin and Provider Admin remain distinct roles with separate interfaces.
 
-CLI and non-dashboard clients present the bearer token directly to the MaaS usage proxy. The gateway is not required on this path. The usage proxy routes every usage log query to LokiStack. Direct access to the Loki usage instance is not supported.
+This decision replaces only ADR-0007's subscription-limited observability visibility after approval.
+ADR-0007 continues to govern its other organization administration and inference permissions.
+The usage proxy does not infer organization administration from a group name or the PoC's generic `admin` header.
 
-Use the public MaaS usage proxy route and the same `/api/maas/usage` path prefix. For example, send the bearer token to `https://maas-usage.example.com/api/maas/usage/loki/api/v1/query_range`. The browser path uses the gateway, the Dashboard BFF, and the Perses server. The CLI path uses the public usage proxy host. Both paths reach the same MaaS usage proxy.
+### User identity and readable names
 
-The usage proxy validates the token and derives the same AITenant, organization, role, and user identity used by the dashboard path. The same authorization and label-scoping rules apply. This path does not require an API key.
+MaaS uses one identity normalizer for authentication, API-key ownership, producers, and usage queries.
+An immutable ID stays unchanged for one resource's lifetime.
+A UID identifies one creation of a resource.
+Tenant, organization, and OIDC identities remain stable under their authoritative identity contracts.
+OIDC display names and email addresses never establish ownership or join authentication sources.
+Kubernetes ownership uses the verified username in this release, with the limits below.
 
-### Perses datasource layout
+| Record field | Authoritative source | Requirement |
+| --- | --- | --- |
+| `maas_tenant_id` | Trusted tenant ID string | Required for every scoped record |
+| `maas_tenant_name` | Captured display name, otherwise `AITenant` resource name | Required readable name |
+| `organization_id` | Existing stable AI Grid organization identity | Required for AI Grid organization and personal scope |
+| `organization_name` | Captured trusted display name, otherwise organization resource name | Required when organization ownership applies |
+| `user_id` | OIDC issuer and subject, or trusted tenant ID and verified Kubernetes username | Required for personal scope |
+| `user_name` | Trusted OIDC profile name, or authenticated Kubernetes username | Required readable name |
 
-Run a Perses server behind the Dashboard BFF. Run the embedded Perses dashboard inside the Consumer UI. The dashboard sends datasource requests to the gateway origin. In the AI Grid default, the gateway is the MaaS Gateway. In the MVP OpenShift path, the gateway is the existing RHOAI Dashboard gateway and portal mount.
-
-The gateway validates the session, removes client-supplied identity headers, and injects the trusted identity headers defined by ODH-ADR-MS-0007. The gateway then routes the request to the Dashboard BFF.
-
-Create project-scoped Perses datasources. Do not set `directUrl`. A direct URL would expose the internal MaaS usage proxy hostname to the browser. When `directUrl` is absent, the Perses frontend calls the Perses server proxy endpoint. Configure the embedded dashboard's `DatasourceApi.buildProxyUrl()` method to return the gateway-relative Perses server path. The Perses Loki plugin appends the standard `/loki/api/v1/...` API path.
-
-| Item | Value |
-| ---- | ----- |
-| Browser origin | The consumer portal or RHOAI Dashboard origin. |
-| Browser-visible Perses proxy path | `/perses/proxy/projects/<project>/datasources/<datasource>` |
-| Gateway route | `/perses/*` |
-| Internal gateway upstream | The Dashboard BFF service URL. |
-| Dashboard BFF upstream | The Perses server service URL. |
-| Datasource target | The MaaS usage proxy service URL. |
-
-The gateway reverse-proxies `/perses/*` to the Dashboard BFF. The Dashboard BFF proxies the request to the internal Perses server. The browser resolves the relative URL against the gateway origin, so the different internal hostnames do not cause cross-origin requests. CORS is therefore not required on the browser path.
-
-The Loki datasource uses `LokiDatasource`. Its server-side target is the MaaS usage proxy. Because `directUrl` is not set, the browser sends the query to the Perses server through the Dashboard BFF. The Perses server then forwards the request to the MaaS usage proxy.
-
-The gateway injects these headers. The Dashboard BFF forwards them to Perses. Perses forwards only these headers to the MaaS usage proxy:
-
-| Header | Use |
-| ------ | --- |
-| `x-forwarded-access-token` | Verified JWT for the usage proxy. |
-| `x-maas-username` | Stable subject identity. |
-| `x-maas-orgid` | Selected organization ID. |
-| `x-maas-roles` | Organization roles. |
-| `x-maas-group` | Organization-qualified groups. |
-
-Perses must use `allowHeaders`, not `dropHeaders`. This prevents unlisted browser headers from reaching the usage proxy. The datasource must also use `allowedEndpoints` and allow only read-only query endpoints.
-
-The Dashboard BFF, Perses server, and MaaS usage proxy hostnames are not published to the browser. The gateway route is the only browser-visible route.
-
-### MaaS usage proxy
-
-The MaaS usage proxy is the authorization and query-rewriting boundary. It is not a simple reverse proxy. Its service identity has full data access to the Loki backend. LokiStack does not authorize individual portal users. The proxy must reduce every query to an allowed tenant and label scope before it calls LokiStack.
-
-RHAI-8074 proposed a read-only Loki proxy in `maas-api` and later discussed an Observatorium API fork. This ADR consolidates that work into the MaaS usage proxy. The proxy can reuse the proven LogQL parser and label-matcher enforcement approach from Observatorium API, but it is not exposed as a `maas-api` endpoint.
-
-RHAI-8074 and this ADR both use `organization_id` as the organization label.
-
-This ADR does not depend on an ACM OPA endpoint. On the browser path, the authenticated gateway supplies the verified identity and organization claims. On the direct API path, the usage proxy derives them from the validated bearer token. The usage proxy enforces the required matchers on both paths.
-
-Each query carries an explicit `usage_scope` request parameter. Valid values are `user`, `organization`, and `platform`. The parameter is request intent, not authorization. The proxy validates the requested scope against the verified identity and role. `user` is available to every authenticated organization member and always adds the caller's `user_id`. `organization` requires the organization `admins` role and adds only the AITenant and organization labels unless the Organization Admin selects one exact user. `platform` requires a verified Kubernetes identity, an allowed `SubjectAccessReview` result, and exactly one selected organization tenant.
-
-An administrator can request either scope. Requesting `user` does not use the administrator role and does not expose another user's data.
-
-For each request, the proxy:
-
-1. Validates the user access token.
-2. Compares the token claims with the trusted gateway headers on the browser path.
-3. Rejects the request if the claims and headers disagree.
-4. Ignores client-supplied identity headers on the direct API path.
-5. Derives the AITenant, user identity, organization, roles, and groups.
-6. Checks the requested `usage_scope` against the verified organization role.
-7. Rewrites the LogQL query with the required label matchers.
-8. Selects the organization's LokiStack tenant.
-9. Calls the backend with the proxy's authenticated service identity.
-
-The proxy never trusts a client-supplied `X-Scope-OrgID` header. It derives that value from the verified organization claim. It also derives `maas_tenant_id` from the verified AITenant context and does not accept that value from the browser.
-
-The proxy applies these filters:
-
-| Persona | LokiStack tenant | Required labels |
-| ------- | ---------------- | --------------- |
-| Organization Admin | Organization ID | `maas_tenant_id` and `organization_id` |
-| Tenant User | Organization ID | `maas_tenant_id`, `organization_id`, and `user_id` |
-| Kubernetes Super Admin | One selected organization tenant | `maas_tenant_id` and `organization_id` |
-
-`maas_tenant_id` is the AITenant identifier. `organization_id` is the selected organization boundary. `user_id` is a stable, non-email identifier derived from the canonical `iss` and `sub` pair. A role from one organization never grants authority in another organization.
-
-In a non-AI Grid deployment that does not emit `organization_id`, the usage proxy uses `maas_tenant_id` as the organization boundary. It does not require the optional label.
-
-The proxy rewrites selectors to these forms:
+MaaS serializes identity tuples with [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) and hashes the resulting UTF-8 bytes with SHA-256.
+The version and identity kind form a readable prefix.
+The following forms define the common encoding:
 
 ```text
-Organization Admin LogQL: {maas_tenant_id="<maas-tenant-id>", organization_id="<organization-id>"}
-Tenant User LogQL:  {maas_tenant_id="<maas-tenant-id>", organization_id="<organization-id>", user_id="<user-id>"}
+digest(parts) = lowercase_hex(SHA256(canonical_json(parts)))
+maas_tenant_id = "maas-v1-" + digest([tenant_id])
+OIDC user_id = "oidc-v1-" + digest([iss, sub])
+Kubernetes user_id = "k8s-username-v1-" + digest([tenant_id, username])
 ```
 
-The proxy replaces any client-supplied matcher for these labels. It rejects a query that tries to broaden the enforced scope.
+OIDC issuer and subject comparisons preserve the exact verified strings.
+The deployment must guarantee that `tenant_id` is globally unique and never reused.
+Distinct active accounts must have unique usernames within each `AITenant`, across accepted authentication sources and clusters.
+The Kubernetes user ID identifies a tenant-scoped username, not one creation of an account.
+The gateway does not require a user UID for this release.
 
-An Organization Admin can narrow the organization-wide query by user. The UI passes one selected user ID to the usage proxy. The proxy then rewrites the query to use `maas_tenant_id`, `organization_id`, and exactly one `user_id` matcher. If no user is selected, the proxy keeps the AITenant and organization filters.
+A Kubernetes username change splits personal usage history.
+If a deleted account's username is reused, the new account can access the previous account's usage within its current authorized scope.
+Tenant boundaries and current permissions still apply.
+UID-based Kubernetes ownership and the transition from username-based records are gaps to fix in the next release.
 
-The user filter is a query refinement. It does not grant access and does not replace the AITenant and organization scope. The proxy rejects a client-supplied regular expression, multiple user values, or a user matcher that conflicts with the selected value.
+The same organization ID always appears with its `AITenant` boundary.
+Different authentication sources retain separate user histories unless an explicit trusted association links them.
+Readable user names require no legal name or email address.
 
-### Super Admin access
+### Producer attribution and incomplete records
 
-Super Admin access is Kubernetes-only. An external OIDC identity cannot request `usage_scope=platform`. The organization `admins` role also cannot request it.
+Producers capture IDs, names, and ownership when usage occurs.
+Historical records retain their original values after a rename, deletion, or ownership reassignment.
+The dashboard does not require a current resource lookup to interpret those names.
 
-A Super Admin must not receive a LokiStack identity that bypasses tenant selection. The usage proxy remains the only LokiStack client.
+The `AITenant` controller supplies trusted tenant identity to its producers.
+For API-key inference, the stored canonical key owner supplies user identity, and verified subscription selection supplies AI Grid organization ownership.
+Client identity headers and the current dashboard viewer never supply event ownership.
 
-For `usage_scope=platform`, the proxy:
+Key creation must persist the canonical owner identity from the verified sign-in context.
+Existing username-only keys need authoritative ownership data before their records qualify for personal access.
+Legacy subscription organization metadata remains usable only through the existing verified selection path.
 
-1. Validates the Kubernetes bearer token with `TokenReview`.
-2. Checks Super Admin authority with `SubjectAccessReview`.
-3. Resolves the one selected `organization_id` through a trusted MaaS tenancy catalog.
-4. Rejects a missing, unknown, or multi-valued organization selection.
-5. Adds the exact `maas_tenant_id` and `organization_id` matchers.
-6. Queries only that organization's LokiStack tenant.
+Standard RHOAI does not require organization attribution or organization resources.
+An incidental organization claim or stored organization value does not enable organization permissions there.
+The existing MaaS model and subscription authorization rules continue to govern inference.
 
-The `SubjectAccessReview` checks the `get` verb on the `/api/maas/usage/loki` non-resource URL. The proxy does not accept a client-supplied tenant list. The selected `organization_id` names the target tenant but does not authorize the request. Optional AITenant and user filters narrow the query. They never broaden it.
+If required IDs or names are unavailable, inference continues and the producer preserves available usage.
+The producer reports a data-quality failure and never guesses ownership or silently drops the record.
+Missing names do not grant or remove access when the required ownership IDs are trustworthy.
 
-Super Admin requests do not query multiple tenants at once. A Super Admin changes the selected organization to view another tenant. The query results retain `maas_tenant_id` and `organization_id`.
+A view excludes records that lack the IDs required for its boundary.
+An `AITenant` Admin can therefore inspect tenant-attributed records that lack a user or organization ID.
+Organization and personal views cannot include records with missing ownership at their respective levels.
 
-The browser Super Admin path must use the OpenShift-authenticated RHOAI Dashboard gateway. The direct CLI path sends the Kubernetes bearer token to the usage proxy. The MaaS Gateway OIDC path returns HTTP 403 for `usage_scope=platform`.
+Older records appear only when authoritative data establishes their original IDs and ownership.
+Otherwise, visible history starts when the producer emits the required information.
+The first release requires no historical backfill.
 
-The following example grants the Super Admin permission to the usage route. Bind an existing OpenShift group to the role. Do not create identities for external OIDC users:
+Trusted producers stamp `identity_schema_version=v1` on records that meet the canonical ownership contract.
+The proxy requires that provenance or an authoritative migration result before admitting records to the corresponding scoped view.
+An ID that resembles the new encoding does not prove original ownership.
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: maas-usage-super-admin
-rules:
-  - nonResourceURLs:
-      - /api/maas/usage/loki
-      - /api/maas/usage/loki/*
-    verbs:
-      - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: maas-usage-super-admins
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: maas-usage-super-admin
-subjects:
-  - apiGroup: rbac.authorization.k8s.io
-    kind: Group
-    name: maas-usage-super-admins
+### Storage tenancy and scope enforcement
+
+Use one Loki usage tenant per `AITenant`, with `maas_tenant_id` as its backend tenant ID.
+The identifier format uses Loki-compatible characters and stays within the [150-byte limit](https://grafana.com/docs/loki/latest/operations/multi-tenancy/).
+The usage proxy derives the backend tenant from trusted configuration and overwrites any client-supplied `X-Scope-OrgID`.
+
+`LokiStack` authenticates the usage proxy service identity and grants it read access to configured MaaS usage tenants.
+Producers use a separate write identity.
+The deployment uses a supported service-authentication profile, with static tenancy as the reference `LokiStack` integration.
+
+Individual users do not become `LokiStack` authorization subjects.
+The usage proxy enforces business permissions before it calls `LokiStack`.
+`AITenant`-wide queries use one backend tenant, so organization administration requires no cross-tenant query federation.
+
+Index `maas_tenant_id` and the AI Grid `organization_id` as stream labels.
+Structured metadata stores fields without index entries.
+Keep `user_id` and readable names in that metadata.
+TSDB is Loki's time-series index format.
+The Loki profile must support [structured metadata](https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/) with TSDB and schema v13 or newer.
+
+Every request names `usage_scope=user`, `usage_scope=organization`, or `usage_scope=tenant`.
+This parameter expresses intent and never grants permission.
+An unavailable scope returns HTTP 403 instead of silently broadening or downgrading the request.
+
+| Deployment and scope | Required authority | Enforced ownership |
+| --- | --- | --- |
+| Standard RHOAI, `user` | Valid tenant authentication | `AITenant` and caller user ID |
+| Standard RHOAI, `tenant` | `AITenant` Admin | `AITenant` ID |
+| AI Grid, `user` | Current member of the requested organization | `AITenant`, organization, and caller user ID |
+| AI Grid, `organization` | Organization Admin or `AITenant` Admin | `AITenant` and organization ID |
+| AI Grid, `tenant` | `AITenant` Admin | `AITenant` ID |
+
+For example, the proxy enforces these LogQL forms before user-controlled processing:
+
+```text
+Standard personal: {maas_tenant_id="<T>"} | user_id="<U>"
+Standard tenant:   {maas_tenant_id="<T>"}
+AI Grid personal:  {maas_tenant_id="<T>", organization_id="<O>"} | user_id="<U>"
+AI Grid org:       {maas_tenant_id="<T>", organization_id="<O>"}
+AI Grid tenant:    {maas_tenant_id="<T>"}
 ```
 
-### LokiStack integration
+The proxy parses LogQL and constrains every stream selector, including selectors inside aggregations, subqueries, and binary expressions.
+It places the immutable user filter immediately after each selector, before parsers, label transformations, or aggregation.
+It rejects conflicting ownership filters and unsupported query forms.
 
-LokiStack runs in `static` mode. Each organization boundary gets one Loki tenant. The tenant ID is the `organization_id`. The MaaS usage proxy is the only component that calls LokiStack. It authenticates with its own mTLS service identity. That service identity has full data access to the Loki backend. The proxy selects one organization tenant and rewrites the query before each call.
+An administrator can narrow an authorized view by one exact user ID or organization ID within that boundary.
+The proxy resolves readable-name searches only against authorized records.
+The selected name or filter never grants additional access.
 
-Deploy the Loki usage instance so that only the MaaS usage proxy can reach its query endpoint. Browsers, the Perses server, `maas-api`, CLI clients, and other platform services must not connect to LokiStack directly. Use a restrictive `NetworkPolicy`, mTLS, or an equivalent authenticated service boundary to enforce this rule.
+The same boundary covers query results, user lists, label values, series metadata, and error responses.
+Loki label and series endpoints cannot directly enforce a personal filter stored outside the index.
+The proxy derives safe metadata from scoped queries or denies that endpoint.
 
-LokiStack `static` mode supports OIDC or mTLS authentication per tenant, and a tenant uses one mechanism rather than both. This design uses mTLS because the usage proxy already validates the portal identity and rewrites the query. LokiStack does not need to know whether the portal used shared OIDC or OpenShift OAuth.
+Only approved read-only paths and methods are available.
+The proxy does not expose ingestion, deletion, arbitrary upstream URLs, or query statistics that reveal other callers' data.
+It sanitizes backend errors without changing the authorized scope.
 
-The following example shows the static policy for one organization:
+### Perses and identity forwarding
 
-```yaml
-tenants:
-  mode: static
-  authentication:
-    - tenantName: maas-usage-42c3e46f
-      tenantId: 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
-      mTLS:
-        ca:
-          caName: maas-usage-proxy-ca
-  authorization:
-    roles:
-      - name: maas-usage-reader
-        resources:
-          - logs
-        tenants:
-          - 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
-        permissions:
-          - read
-    roleBindings:
-      - name: maas-usage-42c3e46f-readers
-        roles:
-          - maas-usage-reader
-        subjects:
-          - kind: user
-            name: maas-usage-proxy
-```
+Run the embedded Perses dashboard behind the UI's authenticated `HTTPRoute`.
+The backend for each UI forwards datasource requests to an internal Perses server.
+Project-scoped Loki datasources target the MaaS usage proxy.
 
-The following example shows the Organization Admin RBAC configuration. LokiStack authorizes only the MaaS usage proxy service identity. It does not bind end-user groups:
+The browser uses a relative path on its UI origin.
+The portal can mount `/maas-portal/perses`, while the separate UI route uses its own configured prefix.
+The BFF maps that prefix to Perses's project datasource proxy endpoint.
 
-```yaml
-tenants:
-  mode: static
-  authorization:
-    roles:
-      - name: maas-usage-admin
-        resources:
-          - logs
-        tenants:
-          - 42c3e46f-2477-44d7-a85b-d3b43f6b31fa
-        permissions:
-          - read
-    roleBindings:
-      - name: maas-usage-42c3e46f-admin-access
-        roles:
-          - maas-usage-admin
-        subjects:
-          - kind: user
-            name: maas-usage-proxy
-```
+| Perses field or route | Required value |
+| --- | --- |
+| `spec.plugin.kind` | `LokiDatasource` |
+| `spec.plugin.spec.proxy.kind` | `HTTPProxy` |
+| `proxy.spec.url` | Internal MaaS usage proxy URL, bound to the selected `AITenant` |
+| `directUrl` | Omitted |
+| `proxy.spec.allowHeaders` | Explicit list containing `X-MaaS-Identity` |
+| `proxy.spec.allowedEndpoints` | Exact read-only query paths and methods |
+| Perses server route | `/proxy/projects/<project>/datasources/<datasource>/<datasource_api_path>` |
 
-The `maas-usage-admin` role grants the usage proxy read access to the organization's Loki tenant. It does not broaden the query scope by itself. The MaaS usage proxy checks the `admins` organization role and applies `maas_tenant_id` and `organization_id`. It adds `user_id` only when the Organization Admin selects one user.
+Use Perses v0.55 or newer, which supports the explicit header allowlist.
+The browser path forwards the gateway's identity envelope through `X-MaaS-Identity` over trusted internal hops.
+The [Perses proxy contract](https://perses.dev/docs/perses/latest/concepts/proxy/) also strips cookies and supports endpoint restrictions.
 
-The static OPA rule grants the `read` permission on the organization tenant to the MaaS usage proxy service identity. It does not inspect LogQL label matchers and cannot return a filter. This is a LokiStack static-mode constraint, not a MaaS limitation.
+The gateway removes supplied identity headers before it forwards verified identity.
+The BFF and Perses preserve the trusted envelope only over authenticated internal hops.
+The usage proxy derives OIDC ownership from `claims.iss` and `claims.sub` in the `source: "oidc"` envelope.
+For `source: "kubernetes"`, it uses `user.username` for ownership.
+For both sources, it consumes gateway-derived `tenant_roles` for tenant administration without repeating the review.
+Both sources use the common management identity contract from ADR-0007.
 
-In a deployment that enables Super Admin access, the proxy service identity receives read access to every usage tenant. This does not grant every user cross-tenant access. The usage proxy validates the end-user token, requires an allowed Kubernetes authorization result, and allows only one selected tenant per request.
+The envelope's source must agree with the authentication method permitted by trusted route configuration.
+The usage proxy does not authorize through a bare username, role header, or client-supplied JSON envelope.
+Network policies and service authentication prevent callers from bypassing the intended internal path.
 
-The MaaS usage proxy calls the organization tenant at `/api/logs/v1/<organization-id>/loki/api/v1/query_range`. It authenticates with its own mTLS service identity. LokiStack validates that identity and applies the static OPA rule. The usage proxy has already rewritten the LogQL selector with the required labels.
+Direct clients send `Authorization: Bearer <token>` to the authenticated usage API route.
+The gateway authenticates that credential, removes supplied identity headers, and forwards the trusted envelope to the usage proxy.
+These requests use the same identity and scope logic without a browser cookie or Perses.
+The usage API rejects inference API keys as usage credentials.
 
-Organization Admin authority comes from the `admins` role in the MaaS organization claim. It does not come from the LokiStack role name. LokiStack grants the MaaS usage proxy read access to the organization tenant. The usage proxy decides whether to add `user_id`.
+### Permission changes and errors
 
-### Optional OpenShift portal identity mode
+Current permissions govern historical queries.
+Role or organization membership removal must affect new queries within five minutes, including existing browser sessions and direct API tokens.
+Token lifetime, identity-provider propagation, and authorization caches share this end-to-end budget.
 
-The default AI Grid path uses shared OIDC at the portal and LokiStack `static` mode with mTLS from the usage proxy. For the MVP, a tenant with existing Kubernetes identities uses the existing consumer portal mount on the main RHOAI Dashboard gateway. That gateway already performs OpenShift authentication. The MaaS Gateway route is not enabled for this mode.
+A valid token signature alone does not prove current membership.
+The deployment must refresh claims or consult current authority within the removal deadline.
+The proxy denies access when it cannot establish sufficiently fresh authority.
 
-| Mode | Portal authentication | LokiStack mode | Identity source |
-| ---- | --------------------- | -------------- | --------------- |
-| AI Grid default | Shared OIDC | `static` | `iss` and `sub` |
-| MVP OpenShift | OpenShift OAuth | `static` | Existing Kubernetes identity |
+Losing organization membership removes the historical access granted by that membership, including personal usage in that organization.
+Independent current `AITenant`-admin authority still permits tenant-wide access.
+Losing model or subscription access preserves personal history when the required tenant and organization access remains valid.
 
-In this mode, the consumer portal uses `AITenant.spec.authentication.mode: openshift`, as defined by ODH-ADR-MS-0008. The existing RHOAI Dashboard gateway authenticates the browser with OpenShift OAuth and injects the same trusted identity-header contract. OpenShift RBAC does not authorize usage-log access in this design.
+The gateway returns HTTP 401 for an invalid, expired, or inappropriate credential on direct usage APIs.
+Browser routes invoke their own login integration when authentication expires.
+Unauthorized scope requests return HTTP 403, and backend outages return an error without a scope fallback.
 
-LokiStack remains in `static` mode. The MaaS usage proxy authenticates to LokiStack with its own mTLS identity, and OPA grants that service identity read access to the organization tenant. The end-user OpenShift identity is used only by the proxy for label rewriting. It is not used as the LokiStack authorization subject.
+Usage responses are not cached for reuse across requests.
+The UI clears protected results when the session expires or authorization fails.
+The five-minute requirement applies to new queries and does not promise removal of data that a caller already downloaded.
 
-This avoids `openshift-logging` namespace-based RBAC. The authenticated gateway first maps the verified OpenShift identity to the selected organization and MaaS role. The usage proxy then enforces `maas_tenant_id`. When an organization boundary exists, it also enforces `organization_id`. For Tenant Users, it also enforces `user_id`.
+### Rollout and implementation evidence
 
-An OpenShift or Kubernetes token does not contain `maas_tenant_id` by default. The gateway or usage proxy must resolve the verified identity to an AITenant through a trusted MaaS tenancy mapping. The exact mapping source and ownership are unresolved. Until that contract is defined and tested, the optional OpenShift mode remains disabled.
+The MaaS team owns the authorization policy, canonical identity propagation, and usage scope enforcement.
+The UI owner manages each browser mount, and the portal follows ADR-0008's resource ownership.
+The separate Kubernetes route requires its own `AuthPolicy`, trusted tenant binding, and backend transport controls.
 
-This optional mode does not create Kubernetes identities. It only uses identities that already exist. It is not valid for the AI Grid shared-OIDC tenant because that tenant must not create Kubernetes users, groups, or role bindings.
+The original PoC demonstrated a route and identity-header pattern but contained an invalid administrator inquiry.
+The production design replaces that inquiry with a gateway-submitted `SubjectAccessReview` and tenant-scoped roles in the trusted envelope.
+Kubernetes usage ownership remains username-based until the next-release UID work.
+The existing token-forwarding, UID-based prototype requires alignment with this revised contract before it can demonstrate the current design.
+Local policy tests do not prove deployed token audiences, backend TLS, header delivery, or query isolation.
 
-### Upgrade and compatibility
+The rollout requires the following evidence:
 
-Current AI Grid deployments expose existing proxy Loki query routes. These tenancy and dashboard features are being developed concurrently, and no legacy `grid_tenant_id` label is in use today.
+1. Make sure that the product's `LokiStack` profile supports the chosen service authentication and structured metadata.
+2. Deploy producers that capture the agreed ownership IDs and names, with visible failures for incomplete records.
+3. Make sure that management adapters, API-key ownership, producers, and usage queries use consistent identities while preserving trusted flat-header compatibility.
+4. Test browser access through both `HTTPRoute` mounts and direct OIDC and Kubernetes requests.
+5. Test that gateways replace client-supplied identity headers and that backend services reject untrusted or malformed envelopes without a compatibility fallback.
+   Test allowed and denied tenant reviews, review outages, malformed results, unmapped OIDC identities, and assertions forwarded with conflicting tenant context.
+6. Test tenant and organization isolation, `ServiceAccount` self-view, OIDC identity stability, active username uniqueness, forged headers, and aggregation queries.
+7. Test metadata endpoints, missing ownership IDs, authorization outages, and five-minute permission removal with existing sessions and tokens.
+8. Retain existing query routes only while they enforce the same boundaries, then retire them after functional parity.
 
-The upgrade must:
+Record Kubernetes username changes and account recreation as known ownership limitations in this release.
+Implement UID-based ownership and migration tests in the next release before claiming protection against Kubernetes username reuse.
 
-1. Deploy the MaaS usage proxy and Perses datasources beside the existing query routes.
-2. Keep the existing Loki proxy routes until the new path is validated.
-3. Preserve existing dashboards, bookmarks, and OpenShift OAuth deployments.
-4. Use `organization_id` in every new AI Grid producer from the start.
-5. Remove the old paths only after query parity and authorization tests pass.
-
-No `grid_tenant_id` to `organization_id` migration is required. Only AI Grid producers must emit `organization_id` before the dashboard is enabled.
-
-### Cloud Provider Admin compatibility
-
-The Cloud Provider Admin persona is outside this ADR. The existing AI Grid contract gives that persona vanilla ACM admin access, and `RHAISTRAT-2883` owns the Provider Admin observability dashboards.
-
-The MaaS usage proxy must not replace or gate standard OpenShift dashboards. Standard OpenShift and ACM dashboards remain on their existing routes and use their existing authorization model. During the upgrade, preserve those routes and do not route them through the MaaS usage proxy.
-
-### Quota position
-
-Quota and subscription state is business state, not observability data. The dashboard has two supported options:
-
-* The MaaS usage proxy reads a materialized quota view from the usage data source.
-* The consumer portal BFF calls `maas-api` for quota and renders it beside the Perses panels.
-
-The dashboard must not calculate quota from usage logs. The quota source must remain scoped to the same verified AITenant, organization, and user.
-
-### Session expiry and errors
-
-When the OIDC session is missing or expired, the gateway redirects the browser to SSO. The dashboard does not render partial usage data.
-
-When a valid user requests data outside the selected AITenant or organization, the usage proxy returns HTTP 403. When a user without the `admins` role requests Organization Admin data, the usage proxy returns HTTP 403.
-
-When LokiStack fails, the dashboard shows an error state and does not change the authorization scope.
-
-## Open Questions
-
-* What is the exact encoding of `user_id` from the `iss` and `sub` pair?
-* Which existing OpenShift group owns the `maas-usage-super-admins` binding?
-* How is `maas_tenant_id` derived and propagated for each AITenant?
-* What value does a non-AI Grid AITenant use for `organization_id` when it has no finer organization boundary?
-* Does the productized OpenShift Logging release support LokiStack `static` mode?
-* Does the first release need the optional Kubernetes identity mode?
-* How is `maas_tenant_id` derived from a verified OpenShift or Kubernetes token, and which component owns that mapping?
-* How do OpenShift groups map to MaaS organization roles in the optional mode?
-* Does the Consumer UI embed Perses, or does it link to a standalone dashboard?
-* Where is the quota read model materialized?
-* Which existing dashboards and query routes must remain available during the upgrade?
-* Which standard OpenShift dashboards does the Cloud Provider Admin require?
-* Does the Cloud Provider Admin continue to use the OpenShift Console or ACM, or is a separate Perses project required?
+There is no `grid_tenant_id` migration requirement.
+Standard OpenShift and ACM dashboards keep their existing routes and authorization.
+Quota and subscription state stay in `maas-api`.
+The BFF can render that state beside usage panels under the same boundaries.
 
 ## Alternatives
 
-### Route all usage queries through `maas-api`
-
-The consumer portal BFF would call `maas-api`, and `maas-api` would query the usage data. This keeps business authorization in one service, but it duplicates the Perses datasource proxy model and makes `maas-api` own LogQL query rewriting.
-
-This option remains useful for quota and subscription state. It is not the primary path for usage log queries.
-
-### Reuse RHAI-8074’s `GET /v1/logs`
-
-This option would expose a read-only Loki proxy through `maas-api`, inject an organization matcher, and defer user-level scoping to a follow-up story. It reuses existing API routing and a proven LogQL parser.
-
-This option is rejected as the dashboard data path because it couples dashboard queries to `maas-api` and leaves Tenant User scoping incomplete. The MaaS usage proxy absorbs the parser and matcher-enforcement work.
-
-### Authorize the original query without rewriting it
-
-This option would classify a query as admin-scoped or user-scoped. It would ask an OPA service for an allow or deny decision. It would then forward the original query unchanged.
-
-This option is rejected because a Tenant User query that omits `user_id` would still be organization-wide. Query-shape classification also cannot prove that every selector is scoped. Enforced matchers are stronger than intent checks.
-
-### Use static OPA to rewrite label matchers
-
-The LokiStack static OPA policy would inspect the LogQL query and add `organization_id` and `user_id`. This option keeps filtering in one policy engine, but the static OPA contract returns only allow or deny. It receives the subject, groups, resource, permission, and tenant. It does not receive the query or return matchers.
-
-This option is rejected because LokiStack static OPA cannot rewrite LogQL. The MaaS usage proxy performs that work after OPA grants tenant access.
-
-### Connect Perses directly to LokiStack
-
-Perses would use a Loki datasource that points directly to the static LokiStack gateway. This would require a separate service identity, but it bypasses the required organization and username query rewriting.
-
-This option is rejected because OPA tenant access alone does not enforce the `organization_id` and `user_id` label matchers.
-
-### Use one Loki tenant per user
-
-Each user would receive a separate Loki tenant. This provides user isolation at the storage boundary, but it creates many tenants and makes retention, querying, and administration expensive.
-
-This option is rejected because organization tenancy plus server-side LogQL rewriting provides the required scope with fewer tenants.
-
-### Use `openshift-logging` for the optional identity mode
-
-LokiStack would use `openshift-logging` and authorize log access through OpenShift RBAC. This mode is designed for application, infrastructure, and audit logs with namespace-scoped permissions.
-
-This option is rejected for the usage dashboard because it cannot enforce the custom `maas_tenant_id`, `organization_id`, and `user_id` label scope. The optional OpenShift identity mode therefore stays at the portal, while LokiStack remains behind the MaaS usage proxy.
-
-### Use API keys for the dashboard
-
-The dashboard would create or use an API key for usage queries. This option reuses the existing programmatic path, but it mixes browser identity with subscription credentials. It also does not meet the SSO-only consumer portal requirement.
-
-This option is rejected because the dashboard must show data for the signed-in OIDC user.
+| Alternative | Tradeoff and decision |
+| --- | --- |
+| Require an organization in every deployment | Reject. It blocks supported standard RHOAI identities and creates an unnecessary mapping system. |
+| Use separate authorization rules for each UI route | Reject. Authentication differs, but ownership and role semantics must remain consistent. |
+| Infer tenant administration from the dashboard `Route` permission | Reject. That permission does not establish administration of the selected `AITenant`. |
+| Use one Loki tenant per organization or user | Reject. It multiplies tenant configuration and complicates `AITenant`-wide queries. |
+| Authorize a query without constraining its inputs | Reject. Missing user filters and nested selectors can expose broader data before aggregation. |
+| Connect Perses directly to `LokiStack` | Reject. Storage credentials alone do not enforce caller-level ownership. |
+| Route all queries through `maas-api` | Retain its business-state APIs, while the dedicated usage proxy owns LogQL and datasource authorization. |
+| Use inference API keys for usage queries | Reject. Key possession does not establish current dashboard permissions or membership. |
 
 ## Security and Privacy Considerations
 
-On the browser path, only the authenticated gateway can inject trusted identity headers. The gateway removes client-supplied copies before it injects verified values. Browser traffic must reach the Dashboard BFF only through that gateway. The Dashboard BFF must send Perses requests only to the Perses server. Perses must send datasource requests only to the MaaS usage proxy.
+The usage proxy is the business authorization boundary for both UI mounts and direct APIs.
+Each public route binds the caller to a trusted tenant, and the gateway authenticates the credential before it constructs the identity envelope.
+Internal service credentials grant backend access without granting callers access to every record.
 
-The browser-visible Perses proxy URL is relative to the gateway origin. The browser does not learn the internal Dashboard BFF, Perses server, or MaaS usage proxy hostname. The request stays same-origin.
+Tenant and organization authority remain distinct.
+The standard RHOAI mode does not activate organization access through OIDC claims.
+AI Grid organization onboarding creates no Kubernetes identities or per-user `RoleBinding` resources.
 
-CLI and non-dashboard API requests must present a valid bearer token to the usage proxy. The usage proxy validates that token before it derives identity or applies query scoping. Client-supplied identity headers remain untrusted on this path.
+Display names describe records and never authorize access.
+The verified Kubernetes username supplies ownership identity for this release.
+The ID derivation separates authentication sources.
+OIDC retains issuer-and-subject ownership, while Kubernetes username reuse remains the documented next-release gap.
+The normalizer preserves event ownership and accepts legacy associations only when their provenance is authoritative.
 
-The usage proxy must validate every user access token. On the browser path, it must also reject any mismatch between token claims and trusted gateway headers. It must parse LogQL with a supported parser and must not concatenate untrusted query strings.
-
-The proxy must not expose the access token, trusted identity headers, or usage data to the browser. Usage responses contain user activity, so the UI must render only the fields required by each role.
-
-Tenant User data is personal usage data. Organization Admin data can contain usage by AITenant, organization, and user. Access to these responses must remain scoped to the selected AITenant and organization.
-
-The dashboard does not create Kubernetes identities. Tenant User and Organization Admin paths do not call `TokenReview` or `SubjectAccessReview`. Only the optional Super Admin path uses these authorization requests. In the MVP OpenShift mode, the authenticated gateway validates the browser session and the usage proxy enforces the label scope.
-
-The MaaS usage proxy ServiceAccount needs permission to create `TokenReview` and `SubjectAccessReview` objects. These permissions let the proxy ask the Kubernetes API server to authenticate and authorize a Super Admin. They do not grant usage data access by themselves.
+Names and user activity require the existing retention and data-access controls.
+Tokens, session cookies, and internal authentication headers must not appear in usage records, logs, or browser responses.
+Perses datasource configuration and upstream URLs require operator control to preserve the trusted forwarding path.
 
 ## Risks
 
 | Risk | Mitigation |
-| ---- | ---------- |
-| JWT claims and trusted headers disagree. | Reject the request and test claim-to-header mapping at the gateway. |
-| Productized OpenShift Logging does not support LokiStack `static` mode. | Confirm support before implementation and keep the LokiStack integration isolated behind the usage proxy. |
-| The LokiStack mTLS certificate or CA is misconfigured. | Automate certificate rotation and test the proxy-to-LokiStack trust chain before rollout. |
-| Organization onboarding does not update the static tenant and role binding. | Reconcile the LokiStack tenant, role, and role binding from the organization resource. |
-| The optional OpenShift mode is enabled for the AI Grid tenant. | Reject the configuration and test that the AI Grid tenant uses shared OIDC at the portal and mTLS to LokiStack. |
-| The MVP OpenShift mode is confused with LokiStack `openshift-logging`. | Keep OpenShift OAuth at the portal and keep LokiStack behind the MaaS usage proxy. |
-| CLI requests send an invalid or wrong-audience bearer token. | Validate the issuer and audience in the usage proxy and return HTTP 401. |
-| LogQL rewriting is incomplete. | Use the supported Loki parser and test selectors, pipelines, and aggregation expressions. |
-| The `user_id` label increases Loki cardinality. | Use one stable user identifier, measure cardinality, and set retention limits. |
-| Organization Admin data is overexposed. | Enforce the `admins` role and the AITenant and organization scope in the usage proxy, not only in the UI. |
-| Super Admin data is overexposed. | Use Kubernetes RBAC, reject organization-admin escalation, and keep the tenant list server-owned. |
-| A Super Admin request names an invalid tenant. | Resolve the organization through the trusted MaaS tenancy catalog and return HTTP 400 or HTTP 404. |
-| Existing query routes are removed before the new path reaches parity. | Keep the old routes until query parity and authorization tests pass. |
-| Concurrent AI Grid producer work emits inconsistent organization labels. | Contract-test `organization_id` on every AI Grid producer before the dashboard is enabled. |
-| Standard OpenShift dashboards are routed through the MaaS usage proxy. | Keep the Cloud Provider Admin on the existing OpenShift Console or ACM routes. |
-| Quota data and usage data use different identities. | Use one canonical user identity and contract-test both data paths. |
-| Expired sessions show stale dashboard data. | Do not cache usage responses and redirect expired sessions to SSO. |
+| --- | --- |
+| A separate UI route bypasses authorization | Require route-specific authentication and the shared usage proxy on every path. |
+| Token claims activate an unintended deployment mode | Resolve mode and tenant from trusted deployment configuration. |
+| A stale group claim still passes tenant RBAC | Apply the five-minute budget to claim freshness and RBAC inputs together. |
+| A Kubernetes username changes or is reused after deletion | This release splits history on rename and can expose prior usage after reuse. Add UID-based ownership in the next release. |
+| Distinct active accounts share a username | Enforce unique usernames within each `AITenant` across accepted authentication sources and clusters. |
+| Producer and query identities use different ownership inputs | Align key-owner metadata, producers, and queries with the agreed identity contract before enabling personal views. |
+| A query aggregates unauthorized records | Constrain every selector before user-controlled stages and reject unsupported forms. |
+| Metadata or statistics expose other users | Derive responses from scoped records or deny the endpoint. |
+| The product backend lacks required Loki features | Make supported service authentication and structured metadata release prerequisites. |
+| Claim layouts differ between approved ADRs and current code | Align the common identity adapter and contract-test both producers and readers before rollout. |
 
 ## Stakeholder Impacts
 
 | Group | Key Contacts | Date | Impacted? |
-| ----- | ------------ | ---- | --------- |
-| Model-as-a-Service | Marius Danciu | 2026-10-24 | Yes |
-| Dashboard | Andrew Ballantyne | 2026-10-24 | Yes |
-| Observability | Kevin Howell, Arik Hadas | 2026-10-24 | Maybe |
-| AI Grid | RHAISTRAT-2875 owners | 2026-10-24 | Maybe |
-| Cloud Provider Admin | RHAISTRAT-2883 owners | 2026-10-24 | Maybe |
+| --- | --- | --- | --- |
+| Model-as-a-Service | Marius Danciu | 2026-11-14 | Yes |
+| Dashboard | Andrew Ballantyne | 2026-11-14 | Yes |
+| Observability | Kevin Howell, Arik Hadas | 2026-11-14 | Yes |
+| AI Grid | RHAISTRAT-2875 owners | 2026-11-14 | Yes |
 
-* **Model-as-a-Service**: owns the usage proxy, query rewriting, and backend mode selection.
-* **Dashboard**: owns the Tenant User and Organization Admin usage views.
-* **Observability**: owns LokiStack and the supported product log authorization modes.
-* **AI Grid**: owns the multi-site usage aggregation contract and site attribution data.
-* **Cloud Provider Admin**: owns the standard OpenShift and ACM dashboard access path.
+- MaaS owns identity normalization, API-key owner metadata, producers, gateway tenant reviews, and the usage proxy.
+- Dashboard owns the portal integration, separate Kubernetes UI mount, and views for all three access levels.
+- Observability owns the supported `LokiStack` profile, service identities, structured metadata, retention, and backend tenancy.
+- AI Grid owns organization identity, membership freshness, and consistent attribution across serving sites.
 
 ## References
 
-* [RHAI-10635](https://redhat.atlassian.net/browse/RHAI-10635)
-* [RHAI-8074](https://redhat.atlassian.net/browse/RHAI-8074?focusedCommentId=19101141)
-* [RHAISTRAT-2883](https://redhat.atlassian.net/browse/RHAISTRAT-2883)
-* [ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md](https://github.com/lphiri/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
-* [ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md](https://github.com/lphiri/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
-* [Perses datasource proxy](https://perses.dev/perses/docs/concepts/proxy/)
-* [LokiStack tenancy modes](https://github.com/grafana/loki/blob/main/operator/docs/user-guides/tenancy-modes.md)
-* [Observatorium API](https://github.com/observatorium/api)
+- [Agreed usage dashboard requirements](ai-grid-auth-design.md)
+- [ADR-0007: shared OIDC identity contract](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
+- [ADR-0008: consumer portal gateway layout](ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
+- [API research and current-source evidence](ai-grid-auth-adr-research.md)
+- [Kubernetes PoC review](ai-grid-auth-kubernetes-poc-review.md)
+- [RHAI-10635](https://redhat.atlassian.net/browse/RHAI-10635)
+- [RHAI-8074](https://redhat.atlassian.net/browse/RHAI-8074?focusedCommentId=19101141)
+- [RHAISTRAT-2883](https://redhat.atlassian.net/browse/RHAISTRAT-2883)
+- [Perses datasource proxy](https://perses.dev/docs/perses/latest/concepts/proxy/)
+- [Loki Operator tenancy modes](https://loki-operator.dev/docs/user-guides/tenancy-modes/)
+- [Loki tenant isolation](https://grafana.com/docs/loki/latest/operations/multi-tenancy/)
+- [Loki structured metadata](https://grafana.com/docs/loki/latest/get-started/labels/structured-metadata/)
+- [Kubernetes `TokenReview` types](https://github.com/kubernetes/api/blob/master/authentication/v1/types.go)
+- [RFC 8785: canonical JSON](https://www.rfc-editor.org/rfc/rfc8785)
+- [RFC 6234: SHA algorithms](https://www.rfc-editor.org/rfc/rfc6234)
 
 ## Reviews
 
 | Reviewed by | Date | Notes |
-| ----------- | ---- | ----- |
+| --- | --- | --- |
 | | | |
