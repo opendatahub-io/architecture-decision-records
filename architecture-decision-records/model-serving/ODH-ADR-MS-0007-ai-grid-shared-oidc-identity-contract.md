@@ -1,9 +1,9 @@
-# Open Data Hub - MaaS Management Identity and AI Grid Shared-OIDC Contract
+# Open Data Hub - AI Grid Shared-OIDC Identity Contract
 
 |                |            |
 | -------------- | ---------- |
 | Date           | 2026-10-31 |
-| Scope          | model-serving, AI Grid identity, MaaS management identity |
+| Scope          | model-serving, AI Grid identity contract |
 | Status         | Approved |
 | Authors        | Lindani Phiri, Pierangelo Di Pilato |
 | Supersedes     | N/A |
@@ -17,13 +17,6 @@
   `https://redhat.com/maas/orgs` array of objects with the flat claims `org_id`,
   `org_name`, and `roles`. Made the group claim plain on the wire. Clarified that the broker mints the organization identity.
 * 2026-11-01: Made the AI Grid organization claims separate from vanilla RHOAI.
-* 2026-11-15: Added the trusted `X-MaaS-Identity` JSON envelope. Separated
-  immutable identity IDs from readable display names. Marked the legacy flat
-  headers as compatibility-only.
-* 2026-11-16: Extended the envelope to all MaaS management paths in AI Grid and standard RHOAI.
-  Added a Kubernetes source and preserved trusted flat-header compatibility.
-  Deferred immutable Kubernetes ownership to the next release.
-  Added gateway-derived tenant roles for both identity sources.
 
 ## What
 
@@ -31,13 +24,7 @@ Define the shared-OIDC identity contract for AI Grid users on MaaS. One OIDC
 issuer and one MaaS `AITenant` serve multiple AI Grid organizations. Authorization
 uses flat, organization-scoped OIDC claims. The broker mints the organization
 identity. The gateway makes sure that the broker-signed token is valid. It injects
-one trusted JSON identity envelope, keeps legacy flat headers for compatibility,
-and creates no Kubernetes identity for organization users.
-
-The envelope also supports Kubernetes identities across MaaS management APIs in AI Grid and standard RHOAI.
-Management paths include API-key management, subscription APIs, dashboard requests, and direct read-only usage APIs.
-The gateway authenticates credentials, and management services consume the trusted envelope.
-Existing flat-header paths and inference authentication retain their contracts.
+trusted identity headers and creates no Kubernetes identity for organization users.
 
 ## Why
 
@@ -58,8 +45,6 @@ can be used.
 * Use one shared OIDC issuer for all AI Grid users in that `AITenant`.
 * Use one shared MaaS `AITenant` for all AI Grid organizations in that `AITenant`.
 * Treat the `iss` and `sub` claim pair as the stable user identity.
-* Separate immutable identity IDs from readable display names.
-* Carry `preferred_username` and `name` as optional display-only claims.
 * Use the `org_id`, `org_name`, and `roles` claims to carry organization membership and roles.
 * Use plain group names on the wire. Qualify them internally to `org_id/group_name` for comparison.
 * Make the broker mint the organization identity. No upstream identity provider sets it.
@@ -68,9 +53,6 @@ can be used.
 * Validate OIDC tokens at the gateway before MaaS receives the request.
 * Inject trusted identity headers only after the gateway makes sure that the token is valid.
 * Strip client-supplied identity headers before the gateway injects trusted values.
-* Support one trusted JSON identity envelope across all MaaS management paths.
-* Support OIDC and Kubernetes sources in AI Grid and standard RHOAI.
-* Preserve trusted flat-header paths through a shared identity adapter.
 * Preserve API-key authentication and existing SSO-based MaaS APIs.
 * Create no Kubernetes identity for AI Grid organization users.
 
@@ -80,7 +62,6 @@ can be used.
 * Define the complete OIDC token shape beyond the claims MaaS consumes.
 * Define the Envoy filter chain or `kube-auth-proxy` deployment.
 * Define the consumer UI gateway layout.
-* Require immutable Kubernetes user UIDs in this release.
 * Implement the shared PostgreSQL isolation schema.
 * Add per-organization OIDC configuration.
 * Replace API-key authentication for inference and tools.
@@ -105,7 +86,6 @@ The OIDC ID token contains:
 * `aud`: the intended MaaS audience.
 * `iat` and `exp`: the token issue and expiry times.
 * `email`: an optional display and notification identity.
-* `preferred_username` and `name`: optional display-only user names.
 * `groups`: plain access group names.
 * `org_id`: the AI Grid organization identifier.
 * `org_name`: an optional organization display name.
@@ -121,8 +101,6 @@ The following example shows one valid ID token shape:
   "iat": 1791288000,
   "exp": 1791291600,
   "email": "alex@grid-org-1.com",
-  "preferred_username": "alex",
-  "name": "Alex Example",
   "groups": ["ai-grid-admins", "ai-grid-users"],
   "org_id": "42c3e46f-2477-44d7-a85b-d3b43f6b31fa",
   "org_name": "acme",
@@ -241,94 +219,18 @@ still mints `org_id`, so the mapping can not let an upstream claim set the
 organization. When a deployment sets no mapping, the default claim names stay
 `sub`, `email`, `groups`, `roles`, `org_id`, and `org_name`.
 
-### Gateway validation and identity transport
+### Gateway validation and headers
 
-The gateway authenticates credentials before it forwards management requests to MaaS.
-Operator-controlled route configuration selects OIDC validation or Kubernetes `TokenReview`.
-Before injection, the gateway removes every client-supplied copy of the identity headers.
-It then builds one trusted `X-MaaS-Identity` JSON envelope from the authenticated identity.
-The source follows the authentication method, not the deployment mode or a client-supplied header.
+The gateway makes sure that the OIDC token is valid before it forwards a request to
+MaaS. After the gateway accepts the token, it injects trusted identity headers from
+the accepted claims. Before injection, it removes every client-supplied copy of
+those headers.
 
-For OIDC, the gateway builds this envelope from the accepted claims:
-
-```json
-{
-  "source": "oidc",
-  "tenant_roles": [],
-  "claims": {
-    "iss": "https://identity.example.com/",
-    "sub": "00u7a1b2c3d4e5f6g7h8",
-    "aud": "maas-api",
-    "azp": "maas-api",
-    "name": "Alex Example",
-    "given_name": "Alex",
-    "family_name": "Example",
-    "preferred_username": "alex",
-    "email": "alex@grid-org-1.com",
-    "groups": ["ai-grid-admins", "ai-grid-users"],
-    "org_id": "42c3e46f-2477-44d7-a85b-d3b43f6b31fa",
-    "org_name": "acme",
-    "roles": ["admins"]
-  }
-}
-```
-
-For OIDC in either deployment, the `iss` and `sub` pair is the only user ownership identity. The profile claims
-are display-only. MaaS derives the readable user name from `preferred_username`,
-then `name`. If both are absent, MaaS records no readable user name and reports a
-data-quality failure. It does not use `sub` as a readable name.
-
-The `org_id` is the only organization ownership key. MaaS derives the readable
-organization name from `org_name`, with the authoritative organization resource
-name as fallback. The envelope carries no `AITenant` ID or name. Route configuration
-binds the `AITenant`, and the controller supplies authoritative tenant identity.
-
-For Kubernetes, the gateway builds this envelope from the authenticated `TokenReview` user:
-
-```json
-{
-  "source": "kubernetes",
-  "tenant_roles": ["tenant-admin"],
-  "user": {
-    "username": "alex",
-    "groups": ["system:authenticated", "maas-users"]
-  }
-}
-```
-
-The Kubernetes source applies in AI Grid and standard RHOAI, including AI Grid's separate Kubernetes route.
-The username is a non-empty string, and groups are a JSON array of strings.
-For authenticated Kubernetes identities, the gateway prepends `system:authenticated` once and preserves all other group values.
-Kubernetes identities use existing tenant permissions and personal ownership without AI Grid organization membership or roles.
-The gateway authenticates the token, while each management service enforces its own permissions.
-
-For both sources, the gateway derives `tenant_roles` from a `SubjectAccessReview` against the route-selected tenant's administrative capability.
-An allowed review produces `["tenant-admin"]`, and a denied review produces `[]`.
-Review failures return an error without a role fallback.
-OIDC reviews require an operator-controlled, issuer-aware mapping into Kubernetes RBAC.
-Without a trusted mapping, an OIDC identity receives `tenant_roles: []`.
-
-The gateway-derived field stays separate from organization roles in `claims.roles`.
-Its authority applies only to the route-selected `AITenant`, whose trusted binding must survive every internal hop.
-Management services consume that assertion without repeating the tenant-admin review and retain their endpoint permission rules.
-They reject an envelope forwarded with conflicting tenant context.
-The gateway refreshes tenant authority for new requests within ADR-0009's five-minute removal deadline.
-ADR-0009 provides the capability, review completion rules, and an `AuthPolicy` example that preserves non-admin access.
-
-This release identifies a Kubernetes usage owner by trusted tenant identity and verified username.
-Distinct active accounts must have unique usernames within each `AITenant`, across accepted authentication sources.
-A username change splits usage history.
-Reusing a deleted account's username can give the new account access to its previous usage history.
-UID-based ownership and the transition from username-based records are gaps to fix in the next release.
-
-Existing trusted flat-header paths remain supported through a shared identity adapter.
-The adapter converts trusted identity input into the representation that each management endpoint uses.
-It preserves existing endpoint permissions and legacy ownership behavior.
-The existing OIDC flat headers remain:
+The identity-header contract is:
 
 | Header | Source | Value |
 | ------ | ------ | ----- |
-| `x-maas-username` | `sub` | The compatibility-only stable subject identifier. |
+| `x-maas-username` | `sub` | The stable subject identifier. |
 | `x-maas-group` | `groups` | A JSON array of the user's groups. |
 | `x-maas-orgid` | `org_id` | The organization ID. |
 | `x-maas-roles` | `roles` | A JSON array of roles for the organization. |
@@ -338,21 +240,10 @@ All values are exact strings. JSON array headers contain valid JSON. The gateway
 does not trim, case-fold, or otherwise normalize values. It overwrites these
 headers only after the gateway accepts the OIDC token.
 
-New management paths use the JSON envelope.
-Existing paths retain their trusted flat-header contract, including Kubernetes username and group headers.
-Operator-controlled configuration selects compatibility handling.
-An invalid envelope never triggers a fallback to flat headers.
-New OIDC usage ownership requires authoritative issuer and subject values, including when a compatibility adapter handles the request.
-
-MaaS trusts only gateway-injected identity transport. It does not trust identity
-headers supplied by a client. It rejects duplicate, empty, malformed, or oversized
-`X-MaaS-Identity` values. Gateway-to-MaaS and gateway-to-BFF traffic must use
+MaaS trusts only gateway-injected identity headers. It does not trust identity
+headers supplied by a client. Gateway-to-MaaS and gateway-to-BFF traffic must use
 mTLS, a restrictive `NetworkPolicy`, or an equivalent authenticated in-cluster
 channel. Direct client access to MaaS and the BFF must be denied.
-
-Usage producers persist the canonical user ID and readable user name at the time
-of the event. They do not join historical records to current user metadata. This
-ownership contract is defined in ADR-0009.
 
 RHAI-10605 defines the gateway layout that injects these headers.
 
@@ -361,11 +252,6 @@ RHAI-10605 defines the gateway layout that injects these headers.
 SSO requests use the accepted OIDC identity. Existing MaaS APIs remain usable with
 SSO-based access, subject to the organization-scoped authorization rules described
 in this ADR.
-
-The envelope contract covers API-key creation, search and revocation, subscription APIs, and usage observability.
-Direct management clients present accepted credentials to the configured gateway, which supplies the trusted envelope to the backend.
-Existing API-key-authenticated paths retain their current behavior.
-The envelope changes identity transport without broadening endpoint permissions or inference eligibility.
 
 For the browser SSO flow, the client presents the proxy session cookie. If the
 request does not present an API key, the gateway makes sure that the OIDC ID token
@@ -444,17 +330,10 @@ harder.
 
 ## Security and Privacy Considerations
 
-* For OIDC routes, the gateway accepts tokens only from the configured issuer.
-* The gateway makes sure that the OIDC ID token signature, audience, issuer, and expiry are valid.
-* For Kubernetes routes, the gateway authenticates tokens through the configured cluster's `TokenReview` API.
-* Management services accept envelopes only through trusted internal paths and enforce their own authorization rules.
-* Only the gateway derives `tenant_roles`, after a tenant-scoped permission review using verified subject attributes.
-* Tenant roles never grant AI Grid organization membership or change inference eligibility.
+* The gateway accepts tokens only from the configured shared OIDC issuer.
+* The gateway makes sure that the ID token signature, audience, issuer, and expiry are valid.
 * The broker mints `org_id` from the identity-provider binding, not from an upstream claim.
-* The gateway strips client-supplied `X-MaaS-Identity` and legacy identity headers before it injects trusted values.
-* MaaS rejects duplicate, empty, malformed, or oversized identity envelopes.
-* Display-only claims never establish ownership or administrative authority.
-* The identity envelope must not appear in usage records, logs, or browser responses.
+* The gateway strips client-supplied identity headers before it injects trusted values.
 * The SSO flow strips client-supplied identity headers and non-API-key
   `Authorization` headers before it injects trusted values.
 * Outside the UI path, the API-key flow uses `Authorization: Bearer sk-oai-*`.
@@ -466,8 +345,7 @@ harder.
   sure that the API key is valid.
 * Gateway-to-MaaS and gateway-to-BFF traffic uses an authenticated in-cluster
   channel. Direct client access is denied.
-* AI Grid OIDC authorization applies groups and roles only within the requested organization.
-* Kubernetes identity grants no AI Grid organization role.
+* Authorization applies groups and roles only within the requested organization.
 * Upstream-mapped roles affect only the organization that owns the identity provider.
 * The deployment owns the claim mapping, and the broker still mints `org_id`.
 * API-key requests do not inherit SSO admin claims.
@@ -481,12 +359,7 @@ harder.
 * A broker that assigns the organization from an upstream claim, instead of the
   identity-provider binding, lets a tenant fake an organization.
 * A failure to strip inbound identity headers can permit identity spoofing.
-* A missing readable-name claim can leave a usage record without a required display value.
-* The JSON envelope adds a trusted-header surface that must remain strictly parsed and size-bounded.
-* Current gateway and MaaS implementations must be contract-tested against this envelope before it becomes authoritative.
 * Existing MaaS APIs must preserve owner, API-key, and platform-admin behavior.
-* Kubernetes username reuse can expose prior usage history to a recreated account. Immutable ownership remains a next-release gap.
-* Gateway and backend adapters must enforce unique usernames for distinct active accounts within each `AITenant`.
 
 ## Stakeholder Impacts
 
