@@ -27,6 +27,8 @@ Usage metering and budget enforcement is a major feature of AI Gateway and a ver
 
 * Define the architecture for the Budget Service
 * Define the Budget Service APIs
+* Define the contract between Praxis and the Budget Service for looking up the budget and quota status of a request's identity. Praxis asks with the identity it already resolved and receives an admission state; it does not evaluate policies, compute cost, or read counters itself.
+* Deliver that lookup as a crate the Budget Service publishes, so Praxis depends on the lookup API and not on how or where the status is stored.
 * Define end-to-end flows
 * Define the high-level integration with third-party solutions like M360 or OpenMeter, but the actual integration details may be subject to different ADRs in later phases
 * This is meant to be a usage metering solution as part of MaaS that works out of the box without bringing in new dependencies (such as Kafka) that customers need to install and manage. Customers don't need to perform extra installation steps in order to have usage metering and budget quota enforcement enabled.
@@ -90,6 +92,7 @@ flowchart LR
 Notes:
 - The Praxis pod runs Praxis and the OTEL Collector; no budget component runs alongside the proxy.
 - Praxis is the PEP (Policy Enforcement Point), and its entire budget input is an admission flag maintained in Redis by the Budget Service. Policy resolution, rate matching, cost computation, balance updates, and period renewal all happen in the Budget Service.
+- Praxis reads that flag through a crate published by the Budget Service. The crate owns the Redis key layout, value encoding, and key escaping, so no Praxis code names a key, and a layout change does not require a Praxis release.
 - Redis/Valkey holds the admission flags Praxis reads, plus the balance counters the Budget Service derives those flags from. The Budget Service is the only writer; Praxis holds a read-only credential. Configuration objects (policies, rates, budget definitions) are never stored in Redis.
 - Accounting is asynchronous: Praxis emits a usage event after the response, and the Budget Service prices and persists it. Enforcement therefore reflects state as of the last accounted event rather than the current request (see [Admission Contract](#admission-contract)).
 - To limit the number of dependencies, this proposal does not assume the existence of a pub/sub system such as Kafka. However, adding one later can be considered as a mechanism to control back pressure and provide ordering for deduplication. The OTEL Collector could also be a candidate for deduplication, but this ADR does not prescribe an OTEL Collector design. We assume that an existing OTEL Collector is used and that it is at least capable of receiving the usage events and propagating them to both the SoR as OTEL logs and to the Budget Service as CloudEvents.
@@ -106,7 +109,7 @@ sequenceDiagram
     participant Postgres
 
     Client->>Praxis: inference request
-    Praxis->>Redis: MGET {tenant}:admit:{kind}:{name}<br>(user, groups, org, tenant)
+    Praxis->>Redis: admission read via crate<br>(user, groups, org, tenant)
     Redis-->>Praxis: admission states
 
     alt all identities allow (or have no budget)
@@ -149,7 +152,7 @@ sequenceDiagram
     BudgetService->>Redis: SET {tenant}:admit:{kind}:{name}
     BudgetService-->>Operator: 200 OK
 
-    Praxis->>Redis: MGET admission flags (per request)
+    Praxis->>Redis: admission read via crate (per request)
     Redis-->>Praxis: current states
 ```
 
@@ -374,25 +377,27 @@ Praxis needs an admission decision inside the request path, but that decision de
 
 #### The Contract
 
-The only synchronous interface between Praxis and the Budget Service is a key space of admission flags in Redis. Usage flows the other way, as events:
+The only synchronous interface between Praxis and the Budget Service is the admission read, exposed by a crate the Budget Service publishes. Praxis passes a typed identity and receives an admission state; the crate owns the storage layout, value encoding, and key escaping, so Praxis contains no key names and a layout change does not reach it. Usage flows the other way, as events.
 
-| Key | Value | Writer | Reader |
+The crate models one admission flag per identity object, aggregated across every budget that applies to it:
+
+| Object | Value | Written by | Read by |
 |---|---|---|---|
-| `{tenant}:admit:user:{name}` | `allow` \| `over` \| `deny` | Budget Service | Praxis (read-only) |
-| `{tenant}:admit:group:{name}` | `allow` \| `over` \| `deny` | Budget Service | Praxis (read-only) |
-| `{tenant}:admit:organization:{name}` | `allow` \| `over` \| `deny` | Budget Service | Praxis (read-only) |
-| `{tenant}:admit:tenant:{name}` | `allow` \| `over` \| `deny` | Budget Service | Praxis (read-only) |
+| `user` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `group` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `organization` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `tenant` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
 
 There is one flag per identity object, not one per user. That matters because group and organization membership is only known at request time: the Budget Service never has to enumerate members, and Praxis already holds the memberships it needs for routing and authorization.
 
 Per request, Praxis:
 
 1. Resolves the identity it already resolves for routing and authorization (user, groups, organization, tenant)
-2. Reads the flag for each identity dimension it resolved, in one `MGET`
-3. Applies the most restrictive state read — `deny` beats `over` beats `allow` — and treats an absent key as "no budget applies to this identity"
+2. Calls the crate with that identity; the crate fetches the state for every dimension in one round trip
+3. Applies the most restrictive state returned — `deny` beats `over` beats `allow` — and treats absent state as "no budget applies to this identity"
 4. Forwards the request, setting `x-praxis-over-budget: true` when the result is `over`
 
-An absent key is not a failed read: absence means the identity has no budget, whereas an error or timeout from Redis is what the operator's fail-open or fail-closed policy governs.
+Absent state is not a failed read: absence means the identity has no budget, whereas an error or timeout from the crate is what the operator's fail-open or fail-closed policy governs.
 
 That is the entire contract. Praxis performs no policy resolution, no rate lookup, no cost computation, and no balance arithmetic, and it never writes to Redis. The state is the outcome of policy resolution, not the state of a single budget: `over` is written only for policies configured with soft overage, hard enforcement writes `deny`, and a fallback overage (`group`, `organization`, `tenant`) keeps the identity `allow` for as long as the fallback budget has capacity.
 
@@ -423,7 +428,7 @@ This is accepted deliberately: the metering plane is a cost-control mechanism, n
 | Concern | Praxis responsibility |
 |---|---|
 | Who | Resolve user, groups, organization, and tenant from the request (already done for routing and authorization) |
-| Admission | Read the flags for those identities in one `MGET` and apply the most restrictive state |
+| Admission | Call the admission crate with those identities and apply the most restrictive state it returns |
 | Enforcement | `deny` → 429; `over` → forward with `x-praxis-over-budget: true`; `allow` → forward |
 | Usage emission | Emit an OTEL Log with identity, resource, usage, and request id after the response |
 | Flag read failure | Apply the configured fail-open or fail-closed behavior |
@@ -442,7 +447,7 @@ The `identity` object contains the full context needed for both admission and po
 | `organization` | SelfTokenReview or OIDC token claims | Organization the user belongs to. Only known at request time |
 | `tenant` | Gateway configuration | The tenant served by this gateway. Fixed per gateway — not resolved per request |
 
-Identity resolution happens entirely within Praxis. Praxis uses the resolved identities to select which flags to read, and the Budget Service receives the same identities inside the usage event; neither component performs authentication or identity lookup on the other's behalf. The flag read set is exactly the identity set: one key per user, group, organization, and tenant carried by the request.
+Identity resolution happens entirely within Praxis. Praxis passes the resolved identities to the admission read, and the Budget Service receives the same identities inside the usage event; neither component performs authentication or identity lookup on the other's behalf. The read set is exactly the identity set: one flag per user, group, organization, and tenant carried by the request.
 
 The fact that group and organization membership is only known at request time has implications for policy validation and ambiguity resolution (see [Validation Rules](#validation-rules)).
 
@@ -550,7 +555,7 @@ Consumption data reaches the Budget Service via the OTEL pipeline. See the [Stor
 
 Redis operations:
 
-- **Admit (Praxis, per request):** `MGET {tenant}:admit:{kind}:{name}` — read the flags for the request's identities. Read-only; Praxis has no write permission.
+- **Admit (Praxis, per request):** the admission crate reads the state for the request's identities. Read-only; Praxis has no write permission.
 - **Account (Budget Service, per event):** `DECRBY {tenant}:balance:{budget_id} <actual_bu_cost>` followed by `SET` on the flags that changed. The balance may go negative (overage).
 - **Renew (Budget Service, per period):** `SET {tenant}:balance:{budget_id} <new_balance>` — set balance to `limit`, or to `limit - previous_overage` when `deduct_overage` is enabled on the policy.
 - **Reconcile (Budget Service, on demand):** recompute balances from the ledger and republish the affected flags. Safe to run at any time because the Budget Service is the only writer of balances and flags.
@@ -934,36 +939,44 @@ A tenant admin automatically has the RBAC permissions to manage these objects. F
 The api group for these resources is `budget.aigateway.opendatahub.io`
 
 
-### API: Admission State
+### API: Admission Read
 
-The complete data-plane contract is a small key space in Redis that Praxis reads and only the Budget Service writes.
+The data-plane contract is a single read operation, provided by a crate the Budget Service publishes and Praxis links. Praxis passes an identity and receives the admission state; it never names a Redis key.
 
-#### Key Space
+#### The crate
 
-| Key | Value | Description |
-|---|---|---|
-| `{tenant}:admit:user:{name}` | `allow` \| `over` \| `deny` | Aggregated state across every budget that applies to this user |
-| `{tenant}:admit:group:{name}` | `allow` \| `over` \| `deny` | Same, for a group |
-| `{tenant}:admit:organization:{name}` | `allow` \| `over` \| `deny` | Same, for an organization |
-| `{tenant}:admit:tenant:{name}` | `allow` \| `over` \| `deny` | Same, for the tenant |
-| `{tenant}:balance:{budget_id}` | integer | Balance the Budget Service derives flags from, keyed by the budget's internal id (resolved from a policy's `budget_ref`). Not read by Praxis |
+| Aspect | Contract |
+|---|---|
+| Ownership | Published and versioned by the Budget Service; linked by Praxis |
+| Direction | Read-only. There is no API that writes, expires, or deletes budget state |
+| Input | A typed identity: user, groups, organization, tenant |
+| Output | `allow`, `over`, or `deny`, plus a distinct error for a failed read |
+| Absent state | An identity with no budget reads as `allow`, never as an error |
+| Layout | Key names, value encoding, and escaping are internal. A compatible release may change them without a Praxis change |
+| Escaping | The crate builds keys from the identity, so a name containing a separator or wildcard cannot address another identity's state |
+| Platforms | Redis and Valkey |
+
+#### State the crate models
+
+The crate reads one admission flag per identity object, aggregated across every budget that applies to it:
+
+| Object | Value | Written by | Read by |
+|---|---|---|---|
+| `user` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `group` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `organization` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `tenant` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
 
 Two rules make this safe to read without any budget knowledge:
 
-- **One flag per identity object, aggregated across budgets.** If a user has a BU budget and a token budget, both are folded into `{tenant}:admit:user:alice` with the most restrictive outcome. Praxis reads one key per identity and never learns how many budgets exist.
+- **One flag per identity object, aggregated across budgets.** If a user has a BU budget and a token budget, the crate returns a single state that folds both together with the most restrictive outcome. Praxis never learns how many budgets exist.
 - **Derived, never patched.** The Budget Service recomputes a flag from the ledger and configuration on every accounting pass and overwrites it in place. A stale `deny` cannot outlive the debt that produced it, because the next pass rewrites it.
 
-#### Reading the Flags
+The balance counters the Budget Service derives flags from are internal to it and are not part of this contract; see [Storage Schema](#storage-schema).
 
-Praxis reads the flags for the identities it resolved in a single round trip:
+#### Reading the state
 
-```
-MGET {tenant}:admit:user:alice
-     {tenant}:admit:group:engineering
-     {tenant}:admit:group:ml-team
-     {tenant}:admit:organization:research
-     {tenant}:admit:tenant:acme-corp
-```
+Praxis calls the crate once per request with the identity it resolved, and the crate reads every dimension in one round trip.
 
 Decision rule:
 
@@ -971,9 +984,9 @@ Decision rule:
 |---|---|
 | Any `deny` | Return `429 Too Many Requests`; the request is not forwarded |
 | No `deny`, any `over` | Forward with `x-praxis-over-budget: true` |
-| Only `allow`, or keys absent | Forward normally |
+| Only `allow`, or absent | Forward normally |
 
-An absent key means no budget applies to that identity, which is the same outcome as `allow`. The common case — budgets on only some subjects — therefore needs no keys for every possible subject.
+Absent state means no budget applies to that identity, which is the same outcome as `allow`. The common case — budgets on only some subjects — therefore needs no flag for every possible subject.
 
 #### Why not per-budget flags
 
@@ -1159,9 +1172,11 @@ Append-only ledger of usage records. This is the durable record that feeds repor
 
 Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Budget Service. All keys are namespaced by tenant ID and protected by per-tenant ACLs.
 
+The layout below is owned by the admission crate. It is documented here for operators; it is not a contract Praxis depends on, and it can change in a compatible crate release.
+
 | Key pattern | Type | Description |
 |---|---|---|
-| `{tenant}:admit:{kind}:{name}` | string | Admission state (`allow` / `over` / `deny`) for one identity object, aggregated across every budget that applies to it. Read by Praxis; written only by the Budget Service |
+| `{tenant}:admit:{kind}:{name}` | string | Admission state (`allow` / `over` / `deny`) for one identity object, aggregated across every budget that applies to it. Read by Praxis through the crate; written only by the Budget Service |
 | `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented by the Budget Service during accounting and reset on period renewal. Not read by Praxis |
 
 The critical path is `admit:*`: Praxis reads it on every request and touches nothing else in Redis. Balances are internal to the Budget Service — they exist so flags can be recomputed cheaply from a counter rather than by re-aggregating the ledger on every event.
@@ -1342,7 +1357,7 @@ Redis holds admission flags and balance counters. It does not store configuratio
 
 ## Implementation notes
 
-We recommend that the Budget Service be implemented in Rust rather than Go. Tokenomics is a critical part of the system: the Budget Service rates, aggregates, and writes admission state for every inference event, so memory footprint and CPU efficiency matter, and Rust avoids garbage-collection pauses on that ingest path. The only component to implement is the Budget Service; Praxis only reads flags.
+We recommend that the Budget Service be implemented in Rust rather than Go. Tokenomics is a critical part of the system: the Budget Service rates, aggregates, and writes admission state for every inference event, so memory footprint and CPU efficiency matter, and Rust avoids garbage-collection pauses on that ingest path. The only component to implement is the Budget Service; Praxis only reads flags. Shipping the admission crate from the same Rust codebase also keeps one implementation of the storage layout, and one set of tests for it, rather than two that could drift.
 
 ## Risks
 
@@ -1353,6 +1368,7 @@ We recommend that the Budget Service be implemented in Rust rather than Go. Toke
 | **Flag staleness** — the Budget Service stalls or loses Redis, so admission keeps serving the last flags written | Medium | Medium | Alert on flag recompute age and usage-event lag. Bound the acceptable staleness (see Open Questions) rather than assuming flags are always current |
 | **Accepted overshoot** — requests admitted between a budget's exhaustion and the flag write are charged but not prevented | Medium | Low | Bounded by usage-event pipeline latency and recorded as overage; `deduct_overage` carries the debt into the next period. Tune the pipeline and alert on overshoot above the accepted threshold |
 | **Budget Service as a single writer** — an outage freezes flags for every tenant | Medium | Low | Admission continues from the last-known flags; usage buffers in the collector and is priced on recovery. The blast radius is stale enforcement, not lost traffic |
+| **Crate release coupling** — Praxis cannot adopt a storage-layout change, or pick up a fix in the read path, without a new release of the crate it links | Low | Medium | Semver with a compatibility window; the crate is tested against Redis and Valkey in its own CI before Praxis bumps it, and its read API is small enough to stay stable |
 
 
 ## Stakeholder Impacts
