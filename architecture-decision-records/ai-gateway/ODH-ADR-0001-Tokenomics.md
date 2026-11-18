@@ -54,25 +54,28 @@ Usage metering and budget enforcement is a major feature of AI Gateway and a ver
 
 ```mermaid
 flowchart LR
+
+ subgraph obs["Observability"]
+       otel_collector["OTEL Collector"]
+       loki["Loki"]
+ end
  subgraph redis_system["Redis system"]
         redis[("Redis - admission flags")]
-  end
+ end
  subgraph praxis_pod["Praxis Pod"]
-    direction TB
-        praxis["Praxis<br>(proxy)"]
-        otel_collector["OTEL Collector"]
+       direction TB
+       praxis["Praxis<br>(proxy)"]
   end
  subgraph control_plane["Control Plane"]
-        aigc["AI Gateway Controller"]
+       aigc["AI Gateway Controller"]
  end
+
  subgraph budget_system["Budget System"]
-    direction TB
-        postgres[("PostgreSQL")]
+       direction TB
+       postgres[("PostgreSQL")]
         budget_service["Budget Service"]
  end
- subgraph obs["Observability"]
-        loki["Loki"]
- end
+
 
     aigc -- manages --> praxis_pod
     aigc -- manages --> budget_system
