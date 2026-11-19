@@ -16,9 +16,9 @@
 
 Shared MaaS identity middleware validates OIDC and Kubernetes credentials and creates a common `X-MaaS-Identity` representation.
 The middleware in `identity.go` makes this identity reusable across MaaS handlers and forwards it to `maas-usage-proxy`.
-The usage proxy reviews tenant permissions and enforces usage boundaries for both identity sources.
+The usage proxy enforces usage boundaries for both identity sources and reviews Kubernetes tenant permissions.
 
-`AITenant` admins see tenant-wide usage, OIDC organization admins see organization-wide usage, and ordinary users see personal usage.
+Kubernetes-authenticated `AITenant` admins see tenant-wide usage, OIDC organization admins see organization-wide usage, and ordinary users see personal usage.
 The release supports the consumer portal through an OIDC route and a separate Kubernetes route.
 An `AITenant` is MaaS's top-level access boundary.
 
@@ -36,16 +36,16 @@ Readable names make historical records understandable after resources disappear.
 Both browser entry points and direct APIs need the same access boundaries.
 
 Shared middleware gives MaaS handlers one authenticated identity representation for OIDC and Kubernetes callers.
-The usage proxy applies the same tenant permission rules across browser routes and direct APIs.
+The usage proxy applies the same authorization rules across browser routes and direct APIs.
 
 ## Goals
 
 - Support the agreed deployment and authentication combinations from the first release.
 - Enforce `AITenant`, organization, and personal boundaries on the server.
-- Keep tenant permission reviews for OIDC and Kubernetes in `maas-usage-proxy` by default.
+- Keep Kubernetes tenant permission reviews in `maas-usage-proxy`.
 - Validate OIDC and Kubernetes tokens in shared MaaS identity middleware.
 - Reuse one `X-MaaS-Identity` representation across MaaS handlers and the usage proxy.
-- Include an `AITenant` Admin view in the MaaS dashboard.
+- Include a Kubernetes-authenticated `AITenant` Admin view in the MaaS dashboard.
 - Capture immutable IDs for `AITenant` resources, organizations, and OIDC users, with readable names for every identity source.
 - Use tenant-scoped Kubernetes usernames for this release and document the next-release UID gap.
 - Preserve inference availability and usage records when identity metadata is incomplete.
@@ -59,6 +59,7 @@ The usage proxy applies the same tenant permission rules across browser routes a
 - Add ID and name requirements for subscriptions, models, API keys, or sites.
 - Require historical migration, multiple organization memberships, or portals for non-default `AITenant` resources in the first release.
 - Implement immutable Kubernetes user ownership in this release.
+- Implement Kubernetes organization scope in this release.
 - Choose dashboard technology, storage layout, or query-language implementation.
 
 ## How
@@ -70,13 +71,13 @@ Token claims do not select the deployment mode.
 Standard RHOAI activates organization permissions only when an OIDC token presents the complete ADR-0007 organization shape.
 It does not create an artificial organization for identities without that shape.
 
-| Deployment | Authentication | Available boundaries |
+| Deployment | Authentication | Available scopes |
 | --- | --- | --- |
-| AI Grid organization access | OIDC | `AITenant`, organization, and user |
-| AI Grid organization access | OpenShift/Kubernetes | `AITenant` and user |
-| Standard RHOAI | OIDC with ADR-0007 organization shape | `AITenant`, organization, and user |
-| Standard RHOAI | OIDC without organization shape | `AITenant` and user |
-| Standard RHOAI | OpenShift/Kubernetes | `AITenant` and user |
+| AI Grid organization access | OIDC | Organization and user |
+| AI Grid organization access | OpenShift/Kubernetes | Tenant and user |
+| Standard RHOAI | OIDC with ADR-0007 organization shape | Organization and user |
+| Standard RHOAI | OIDC without organization shape | User |
+| Standard RHOAI | OpenShift/Kubernetes | Tenant and user |
 
 #### Consumer portal OIDC route
 
@@ -138,13 +139,13 @@ Kubernetes RBAC assigns permissions through `RoleBinding` resources.
 The permission review uses the selected `AITenant`'s actual tenant namespace, rather than one global namespace.
 
 A `SubjectAccessReview` evaluates a named subject's permissions.
-The proxy submits the caller's verified Kubernetes username and groups, or trusted OIDC RBAC mapping, through its authorized review service identity.
+The proxy submits the caller's verified Kubernetes username and groups through its authorized review service identity.
 It never substitutes its own `ServiceAccount` as the subject whose tenant permissions determine caller access.
 The production authorization path does not use `SelfSubjectAccessReview`.
 
 One shared helper decides whether a caller can access a tenant.
 For example, the helper can expose `hasAccessToTenant(context, tenantId)`.
-The helper hides the `SubjectAccessReview` details for Kubernetes and the trusted mapping details for OIDC.
+The helper hides the `SubjectAccessReview` details for Kubernetes.
 Usage handlers do not branch on the authentication source.
 
 #### Shared MaaS identity middleware
@@ -167,25 +168,19 @@ The detailed payload fields and serialization remain implementation choices with
 
 The middleware removes supplied copies of `X-MaaS-Identity` and constructs a new value only after successful token validation.
 The usage proxy accepts that value only through the trusted middleware path and makes sure that its structure and source are valid.
-It uses the authenticated identity without repeating token validation and performs its own tenant permission reviews.
+It uses the authenticated identity without repeating token validation and performs its own authorization decisions.
 Other MaaS handlers can reuse the same middleware and identity representation while retaining their own permission rules.
 This ADR amends ADR-0007's organization claim scope for usage authorization.
 
-OIDC permission reviews require an issuer-aware mapping into Kubernetes RBAC.
-The canonical OIDC user ID provides a source-qualified subject, while operator-controlled mappings can authorize existing RBAC aliases and groups.
-Raw display names, subjects, or groups never imply membership in a same-name Kubernetes identity.
-This mapping creates no Kubernetes `User` or `Group` objects for AI Grid members.
+#### Kubernetes tenant permission review
 
-#### Tenant permission review
-
-For both OIDC and Kubernetes, the proxy determines tenant administration through a `SubjectAccessReview` for the route-selected `AITenant`.
+For Kubernetes callers, the proxy determines tenant administration through a `SubjectAccessReview` for the route-selected `AITenant`.
 An allowed review establishes tenant administration, while a denied review grants no tenant-admin authority.
-An OIDC identity without a trusted RBAC mapping receives no tenant-admin authority and requires no review.
-Personal access still follows the valid canonical identity and the applicable membership rules.
+OIDC callers never use `SubjectAccessReview` and never receive tenant scope.
+Their personal access still follows the valid canonical identity and applicable membership rules.
 
-The proxy requests a review only when a caller may satisfy a scope through tenant-admin authority.
+The proxy requests a review only when a Kubernetes caller requests tenant scope.
 Personal scope never requests a review.
-Organization scope requests one only when organization authority is not already present.
 
 This ADR keeps tenant permission review in the usage proxy for this release.
 The existing data-science-gateway uses custom Envoy filters.
@@ -193,7 +188,7 @@ Attaching Kuadrant authorization policies to that gateway needs a separate desig
 
 An allowed review establishes `AITenant` administration only.
 It grants no AI Grid organization membership or role.
-The review uses the mapped OIDC username and groups or the verified Kubernetes username and groups, without a user UID.
+The review uses the verified Kubernetes username and groups, without a user UID.
 Tenant authority applies only to the route-selected tenant and stays separate from verified OIDC organization roles.
 The proxy uses the permission review result to authorize usage access.
 
@@ -209,7 +204,7 @@ An organization role never grants `AITenant` administration or expands inference
 
 | Persona | Usage visibility | Authority |
 | --- | --- | --- |
-| `AITenant` Admin | All usage within the selected `AITenant` | Tenant RBAC capability reviewed by `maas-usage-proxy` for either identity source |
+| `AITenant` Admin | All usage within the selected `AITenant` | Kubernetes authentication and tenant RBAC capability reviewed by `maas-usage-proxy` |
 | Organization Admin | All usage within one verified organization | Current organization membership and `admins` role |
 | User | Personal usage within the available boundary | Valid tenant authentication; OIDC callers with an organization additionally require current organization membership |
 
@@ -226,7 +221,8 @@ The usage proxy does not infer organization administration from a group name.
 
 The Kubernetes path retains the existing gateway's browser authentication and token forwarding.
 The shared MaaS middleware authenticates the forwarded token and creates `X-MaaS-Identity` for downstream handlers.
-The usage proxy consumes that identity and applies the same tenant and personal boundaries as the OIDC path.
+The usage proxy consumes that identity and applies the same personal boundary as the OIDC path.
+Tenant scope is available only on this Kubernetes path.
 
 The request follows these steps:
 
@@ -245,7 +241,9 @@ The usage proxy's service identity needs permission to create `SubjectAccessRevi
 Both components require trusted tenant configuration and the Kubernetes API trust bundle for their respective reviews.
 The usage proxy receives the common identity rather than the raw Kubernetes token.
 
-This path grants no AI Grid organization scope and changes no legacy management or inference interface.
+This path grants no organization scope in this release.
+Kubernetes organization scope is planned for a future release and will require a trusted organization mapping.
+This path changes no legacy management or inference interface.
 The existing organization-only `/v1/logs/*` authorization still needs adaptation before it can serve this path.
 
 ### User identity and readable names
@@ -283,16 +281,17 @@ The proxy validates the parameter after the middleware authenticates the caller.
 It expresses intent and never grants permission.
 An unavailable scope returns HTTP 403 instead of silently broadening or downgrading the request.
 
-| Deployment and scope | Authorization level | Required authority | Enforced ownership |
-| --- | --- | --- | --- |
-| Standard RHOAI without organization shape, `user` | User | Valid tenant authentication | `AITenant` and caller user ID |
-| Standard RHOAI with ADR-0007 OIDC shape, `user` | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
-| Standard RHOAI with ADR-0007 OIDC shape, `organization` | Organization Admin or `AITenant` Admin | Verified `admins` role or tenant-admin review | `AITenant` and organization ID |
-| Standard RHOAI, `tenant` | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
-| AI Grid OIDC, `user` | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
-| AI Grid Kubernetes, `user` | User | Valid tenant authentication | `AITenant` and caller user ID |
-| AI Grid, `organization` | Organization Admin or `AITenant` Admin | Verified `admins` role or tenant-admin review | `AITenant` and organization ID |
-| AI Grid, `tenant` | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
+| Deployment and scope | Authentication type | Authorization level | Required authority | Enforced ownership |
+| --- | --- | --- | --- | --- |
+| Standard RHOAI, `user` | OIDC without organization shape | User | Valid tenant authentication | `AITenant` and caller user ID |
+| Standard RHOAI, `user` | Kubernetes | User | Valid tenant authentication | `AITenant` and caller user ID |
+| Standard RHOAI, `user` | OIDC with ADR-0007 organization shape | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
+| Standard RHOAI, `organization` | OIDC with ADR-0007 organization shape | Organization Admin | Verified `admins` role | `AITenant` and organization ID |
+| Standard RHOAI, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
+| AI Grid, `user` | OIDC | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
+| AI Grid, `user` | Kubernetes | User | Valid tenant authentication | `AITenant` and caller user ID |
+| AI Grid, `organization` | OIDC | Organization Admin | Verified `admins` role | `AITenant` and organization ID |
+| AI Grid, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
 
 Standard RHOAI grants organization scope only through the complete ADR-0007 OIDC shape.
 An incomplete organization claim grants no organization visibility.
@@ -322,7 +321,8 @@ The identity header never grants access independently of the trusted forwarding 
 
 OIDC usage ownership derives from the authenticated issuer and subject.
 Kubernetes usage ownership derives from the username returned by the middleware's `TokenReview`.
-For both identity sources, the proxy reviews tenant permissions and enforces the requested usage boundary.
+For Kubernetes callers, the proxy reviews tenant permissions and enforces the requested usage boundary.
+For OIDC callers, the proxy enforces the requested personal or organization boundary without a tenant review.
 Caller-supplied identity and role assertions never grant usage authority.
 
 Direct API clients present accepted OIDC or Kubernetes credentials to the designated usage API route.
@@ -336,7 +336,7 @@ The usage API rejects inference API keys as usage credentials.
 | --- | --- |
 | Require an organization in every deployment | Reject. It blocks supported standard RHOAI identities and creates an unnecessary mapping system. |
 | Use separate authorization rules for each UI route | Reject. Authentication differs, but ownership and role semantics must remain consistent. |
-| Perform OIDC and Kubernetes tenant reviews in the usage proxy | Selected. The usage proxy owns these reviews. Revisiting their placement in the future requires a new ADR. |
+| Perform Kubernetes tenant reviews in the usage proxy | Selected. The usage proxy owns these reviews. Revisiting their placement in the future requires a new ADR. |
 | Infer tenant administration from the dashboard `Route` permission | Reject. That permission does not establish administration of the selected `AITenant`. |
 | Authorize a query without constraining its inputs | Reject. Missing user filters and nested selectors can expose broader data before aggregation. |
 | Let the dashboard access usage storage without the usage proxy | Reject. Backend service credentials do not enforce caller-level ownership. |
@@ -352,6 +352,8 @@ The proxy accepts `X-MaaS-Identity` only from that middleware through a trusted 
 Internal service credentials grant backend access without granting callers access to every record.
 
 Tenant and organization authority remain distinct.
+Tenant scope is available only to Kubernetes callers in this release.
+Organization scope is available only to OIDC callers with the verified organization shape in this release.
 The standard RHOAI mode activates organization access only through the complete ADR-0007 OIDC shape.
 AI Grid organization onboarding creates no Kubernetes identities or per-user `RoleBinding` resources.
 
