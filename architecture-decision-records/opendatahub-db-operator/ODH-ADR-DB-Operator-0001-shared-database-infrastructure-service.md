@@ -189,7 +189,7 @@ The cost is accepted and stated plainly: **a generic kind name over-promises whi
 
 The `postgres` connection-type protocol and its field names defined here are intended as the standard contract for PostgreSQL credentials going forward, informed by CloudNativePG conventions rather than one-off naming for this service.
 
-[ODH-ADR-Operator-0009](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md) defines the Connection API: annotated `Secret` resources carrying credentials for external data sources, with an `opendatahub.io/connection-type-protocol` annotation driving validation and routing. It is normative for connection surfaces, and it explicitly permits custom protocols. [RHAISTRAT-176](https://redhat.atlassian.net/browse/RHAISTRAT-176) ("Connections 2.0") tracks its evolution. This section records why this service introduces new resources rather than reusing that API, and where it conforms to it instead.
+[ODH-ADR-Operator-0009](../operator/ODH-ADR-Operator-0009-connection-api.md) defines the Connection API: annotated `Secret` resources carrying credentials for external data sources, with an `opendatahub.io/connection-type-protocol` annotation driving validation and routing. It is normative for connection surfaces, and it explicitly permits custom protocols. [RHAISTRAT-176](https://redhat.atlassian.net/browse/RHAISTRAT-176) ("Connections 2.0") tracks its evolution. This section records why this service introduces new resources rather than reusing that API, and where it conforms to it instead.
 
 **A new API group is warranted for the claim and provider resources.** The two surfaces solve disjoint problems:
 
@@ -598,7 +598,7 @@ Depend on a mature PostgreSQL operator for both instance lifecycle and access ma
 ## References
 
 - [POC: opendatahub-db-operator](https://github.com/lburgazzoli/opendatahub-module-operator/tree/db-service/modules/opendatahub-db-operator): proof of concept implementation with full CRD definitions, controller logic, and integration tests
-- [ODH-ADR-Operator-0009: Connection API and Connection Type Protocol](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
+- [ODH-ADR-Operator-0009: Connection API and Connection Type Protocol](../operator/ODH-ADR-Operator-0009-connection-api.md)
 - [RHAIRFE-1141: Unified storage configuration for RHOAI components](https://redhat.atlassian.net/browse/RHAIRFE-1141)
 - [RHAISTRAT-176: Connections 2.0](https://redhat.atlassian.net/browse/RHAISTRAT-176)
 - [RHAISTRAT-2656: Unified storage configuration for RHOAI components](https://redhat.atlassian.net/browse/RHAISTRAT-2656)
