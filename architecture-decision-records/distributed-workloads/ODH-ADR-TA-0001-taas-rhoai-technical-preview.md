@@ -72,9 +72,9 @@ yet publicly specified.
    removes backend components. Kueue remains separately administered and optional.
 3. **Request identity and SDK boundary:** TaaS uses the existing CodeFlare Python SDK as its entry point for supported
    Ray operations; the caller-facing interface is the TaaS REST API. Use CodeFlare SDK v0.44.1 for supported submission,
-   job-listing, and log operations, configured with the original caller's bearer token. Use direct caller-token
-   Kubernetes API calls for operations the SDK does not expose, including
-   full RayJob detail reads, queue validation/discovery, and job control or deletion where no SDK operation is available.
+   job-listing, job-detail, and log operations, configured with the original caller's bearer token. Use direct
+   caller-token Kubernetes API calls for operations the SDK does not expose, including queue validation/discovery and
+   job control or deletion where no SDK operation is available.
    For SDK operations that call Kubernetes, configure its Kubernetes client explicitly from the incoming caller bearer
    token. Do not use in-cluster credential auto-detection, which can
    select the TaaS pod's service account. Kubernetes independently authorizes each Kubernetes operation.
@@ -160,7 +160,7 @@ sequenceDiagram
     participant KubeRay as KubeRay
     participant Kueue as Kueue (optional)
     participant RayHTTP as Ray Jobs API via protected Ray dashboard route
-    Note over API,CF: Use CodeFlare for submit, list, and log operations - use direct Kubernetes calls for SDK gaps
+    Note over API,CF: Use CodeFlare for submit, list, job details, and logs - use direct Kubernetes calls for SDK gaps
     Note over Gateway,API: Gateway adoption and TLS termination need Architecture Board confirmation - see Question 7
     Caller ->> Gateway: HTTPS request with caller bearer token
     Gateway ->> API: Forward request with caller token
@@ -191,8 +191,10 @@ sequenceDiagram
             loop while the caller wants updated status
                 Caller ->> Gateway: GET /api/v1/projects/{project}/training-jobs/{job_id} with bearer token
                 Gateway ->> API: Forward GET with caller token
-                API ->> K8s: Caller-token GET full RayJob for details and status
-                K8s -->> API: RayJob metadata, specification, and status
+                API ->> CF: Get RayJob details with caller token
+                CF ->> K8s: Caller-token GET RayJob
+                K8s -->> CF: RayJob metadata, specification, and status
+                CF -->> API: RayJob details and current status
                 API -->> Gateway: 200 job details and current status
                 Gateway -->> Caller: 200 job details and current status
             end
@@ -250,7 +252,7 @@ The pinned DP OpenAPI remains authoritative for request schemas and detailed res
 |-------------------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Submit training         | `POST /projects/{project}/training-jobs`              | Create a RayJob with CodeFlare using caller's bearer token. If `queue_name` is supplied, first verify that the caller can read the LocalQueue, then apply it as `kueue.x-k8s.io/queue-name`; if omitted, Kueue applies its default behavior and TaaS does not choose a queue. Return `202 Accepted`, the API training-job ID, and `Location` as soon as Kubernetes accepts the RayJob; do not wait for Kueue admission or job start. |
 | List jobs               | `GET /projects/{project}/training-jobs`               | Use CodeFlare SDK v0.44.1's native list behavior with the caller identity to return all jobs in `{project}`; do not apply a submitter filter.                                                                                                                                                                                                                                                                                                                                   |
-| Read job details/status | `GET /projects/{project}/training-jobs/{job_id}`      | Read the RayJob in the requested project using the caller's token; map provisioning, waiting, and Kueue-suspended states to `PENDING`, and expose user-requested cancel/pause/resume progress separately.                                                                                                                                                                                                                                                                    |
+| Read job details/status | `GET /projects/{project}/training-jobs/{job_id}`      | Read the RayJob through CodeFlare using the caller's token; map provisioning, waiting, and Kueue-suspended states to `PENDING`, and expose user-requested cancel/pause/resume progress separately.                                                                                                                                                                                                                                                                                 |
 | Read/follow driver logs | `GET /projects/{project}/training-jobs/{job_id}/logs` | Driver logs only. A request-scoped CodeFlare client configured with the caller bearer token retrieves logs; TaaS relays chunks as SSE. Snapshot uses `follow=false`; follow mode uses SSE. `409` if logs are not ready; `410` if the managed RayCluster is gone. CodeFlare enforces caller authorization for log retrieval. |
 | Cancel job              | `POST /projects/{project}/training-jobs/{job_id}/cancel`  | Request cancellation of a queued or running job while retaining its RayJob for status inspection. Return `202 Accepted`; expose the eventual terminal state through GET as defined by the API spec.                                                                                                                                                                                                                                                                               |
 | Pause job               | `POST /projects/{project}/training-jobs/{job_id}/pause`   | Request a pause while retaining the RayJob. Return `202 Accepted`; expose pause progress and state through GET as defined by the API spec.                                                                                                                                                                                                                                                                                                                                      |
@@ -284,7 +286,7 @@ not replace authorization by the SDK's downstream Ray API or by the Kubernetes A
 |-------------------------|-----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
 | Submit                  | `create` on `rayjobs.ray.io` in `{project}`                                                                     | Kubernetes API server; CodeFlare request-scoped client                                                             |
 | List jobs               | List all jobs in `{project}`; no submitter filter                                                                | CodeFlare SDK with caller identity; verify the protected Ray Jobs path enforces caller/project authorization        |
-| Read job                | `get` on `rayjobs.ray.io` in `{project}`                                                                        | Kubernetes API server                                                                                              |
+| Read job                | `get` on `rayjobs.ray.io` in `{project}`                                                                        | Kubernetes API server through CodeFlare SDK with caller identity                                                   |
 | Cancel job              | RayJob operation in `{project}`                                                                                  | Kubernetes API server applies the caller's RBAC; behavior follows the API spec                                        |
 | Pause / resume job      | `patch` on `rayjobs.ray.io` in `{project}` if implemented through RayJob suspension                            | Kubernetes API server; coordinate with Kueue because it also controls `spec.suspend`                               |
 | Delete job              | `delete` on `rayjobs.ray.io` in `{project}`                                                                     | Kubernetes API server; allowed in any state and triggers cleanup for active workloads                               |
@@ -500,9 +502,10 @@ rank-specific contract would require the training runtime to identify or funnel 
 
 ## Security and Privacy Considerations
 
-- The Kubernetes API server authorizes RayJob creation through CodeFlare and direct RayJob detail/control/delete and
-  LocalQueue operations using the caller's bearer token. CodeFlare list and log operations must also preserve and enforce
-  the caller's identity at their downstream API. Never submit as the TaaS service account after a TokenReview or SAR check.
+- The Kubernetes API server authorizes RayJob creation and detail reads through CodeFlare, and direct RayJob
+  control/delete and LocalQueue operations using the caller's bearer token. CodeFlare list and log operations must also
+  preserve and enforce the caller's identity at their downstream API. Never submit as the TaaS service account after a
+  TokenReview or SAR check.
 - Forward the original bearer token through the selected ingress path for caller-native Kubernetes calls.
   Identity headers alone cannot authorize downstream API operations.
 - For non-human callers, customers choose and manage an OpenShift identity, such as a ServiceAccount with least-privilege
