@@ -70,22 +70,22 @@ yet publicly specified.
    TaaS does not enable Ray. The Training DSC component depends on Ray for the TP and cannot report `Ready=True` unless
    Ray is enabled. The dependency may allow either Ray or KFT in a future release. The TaaS operator never installs or
    removes backend components. Kueue remains separately administered and optional.
-3. **Request identity and SDK boundary:** TaaS uses the existing CodeFlare Python SDK as its entry point for supported
-   Ray operations; the caller-facing interface is the TaaS REST API. Use CodeFlare SDK v0.44.1 for supported submission,
-   job-listing, job-detail, and log operations, configured with the original caller's bearer token. Use direct
-   caller-token Kubernetes API calls for operations the SDK does not expose, including queue validation/discovery and
-   job control or deletion where no SDK operation is available.
+3. **Request identity and SDK boundary:** Use CodeFlare SDK v0.44.1 with the original caller's bearer token only for
+   operations it exposes with the required TaaS behavior. Use caller-token Kubernetes API calls for operations
+   the SDK does not expose or does not support with the required behavior, including RayJob listing and queue
+   validation/discovery. Plan CodeFlare SDK enhancements for missing capabilities that belong there; until then, TaaS
+   uses the Kubernetes API.
    For SDK operations that call Kubernetes, configure its Kubernetes client explicitly from the incoming caller bearer
    token. Do not use in-cluster credential auto-detection, which can
    select the TaaS pod's service account. Kubernetes independently authorizes each Kubernetes operation.
 4. **Ingress (proposed):** Expose the API through the existing `datascience-gateway` used by MLflow and other
    components. Confirm with the Architecture Board that this is appropriate for TaaS and provides TLS termination
    (Open Question 7). Preserve the caller's bearer token for caller-native Kubernetes requests.
-5. **Job listing and details:** List jobs using CodeFlare's native behavior, without filtering by submitter. Read job
-   details and status from the caller-authorized RayJob resource.
+5. **Job listing and details:** List RayJob resources through the caller-authorized Kubernetes API, without filtering
+   by submitter. Read job details and status through CodeFlare where the SDK supports the required operation.
 6. **Logs:** Callers can request a `text/plain` snapshot with `follow=false` or receive new log output as an SSE stream
    with `follow=true`.
-7. **Kueue:** Do not install or manage Kueue. Queue selection is supported in the TP request: when supplied, set the
+7. **Kueue:** Do not install or manage Kueue. Queue selection is supported in the request body: when supplied, set the
    Kueue `queue-name` label on the RayJob and check that the named LocalQueue exists in the project using the caller's
    token before submission; return a clear error promptly if it does not exist or the caller cannot read it. If
    `queue_name` is omitted, Kueue applies its default behavior; TaaS does not choose the queue. If Kueue is not set up to
@@ -160,7 +160,7 @@ sequenceDiagram
     participant KubeRay as KubeRay
     participant Kueue as Kueue (optional)
     participant RayHTTP as Ray Jobs API via protected Ray dashboard route
-    Note over API,CF: Use CodeFlare for submit, list, job details, and logs - use direct Kubernetes calls for SDK gaps
+    Note over API,CF: Use CodeFlare only for operations it supports with the required behavior - use caller-token Kubernetes API calls for other operations
     Note over Gateway,API: Gateway adoption and TLS termination need Architecture Board confirmation - see Question 7
     Caller ->> Gateway: HTTPS request with caller bearer token
     Gateway ->> API: Forward request with caller token
@@ -200,11 +200,9 @@ sequenceDiagram
             end
         end
     else list jobs
-        Note over API,CF: Follow CodeFlare's native list behavior - return all jobs in the requested project - no submitter filter
-        API ->> CF: List jobs with caller token using SDK v0.44.1
-        CF ->> RayHTTP: List jobs through the supported Ray Jobs API
-        RayHTTP -->> CF: Jobs returned by the SDK-supported API
-        CF -->> API: Job collection
+        Note over API,K8s: Return all RayJob resources in the requested project - no submitter filter
+        API ->> K8s: Caller-token LIST RayJobs in the project
+        K8s -->> API: RayJob resources visible to the caller
         API -->> Gateway: Job collection response
         Gateway -->> Caller: Job collection response
     else queue discovery
@@ -251,7 +249,7 @@ The pinned DP OpenAPI remains authoritative for request schemas and detailed res
 | Operation               | Path                                                  | Authorization and behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |-------------------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Submit training         | `POST /projects/{project}/training-jobs`              | Create a RayJob with CodeFlare using caller's bearer token. If `queue_name` is supplied, first verify that the caller can read the LocalQueue, then apply it as `kueue.x-k8s.io/queue-name`; if omitted, Kueue applies its default behavior and TaaS does not choose a queue. Return `202 Accepted`, the API training-job ID, and `Location` as soon as Kubernetes accepts the RayJob; do not wait for Kueue admission or job start. |
-| List jobs               | `GET /projects/{project}/training-jobs`               | Use CodeFlare SDK v0.44.1's native list behavior with the caller identity to return all jobs in `{project}`; do not apply a submitter filter.                                                                                                                                                                                                                                                                                                                                   |
+| List jobs               | `GET /projects/{project}/training-jobs`               | List RayJob resources in `{project}` through the Kubernetes API with the caller's token; do not apply a submitter filter.                                                                                                                                                                                                                                                                                                                                                     |
 | Read job details/status | `GET /projects/{project}/training-jobs/{job_id}`      | Read the RayJob through CodeFlare using the caller's token; map provisioning, waiting, and Kueue-suspended states to `PENDING`, and expose user-requested cancel/pause/resume progress separately.                                                                                                                                                                                                                                                                                 |
 | Read/follow driver logs | `GET /projects/{project}/training-jobs/{job_id}/logs` | Driver logs only. A request-scoped CodeFlare client configured with the caller bearer token retrieves logs; TaaS relays chunks as SSE. Snapshot uses `follow=false`; follow mode uses SSE. `409` if logs are not ready; `410` if the managed RayCluster is gone. CodeFlare enforces caller authorization for log retrieval. |
 | Cancel job              | `POST /projects/{project}/training-jobs/{job_id}/cancel`  | Request cancellation of a queued or running job while retaining its RayJob for status inspection. Return `202 Accepted`; expose the eventual terminal state through GET as defined by the API spec.                                                                                                                                                                                                                                                                               |
@@ -285,7 +283,7 @@ not replace authorization by the SDK's downstream Ray API or by the Kubernetes A
 | API operation           | Required permission or scope                                                                                    | Enforcement                                                                                                        |
 |-------------------------|-----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
 | Submit                  | `create` on `rayjobs.ray.io` in `{project}`                                                                     | Kubernetes API server; CodeFlare request-scoped client                                                             |
-| List jobs               | List all jobs in `{project}`; no submitter filter                                                                | CodeFlare SDK with caller identity; verify the protected Ray Jobs path enforces caller/project authorization        |
+| List jobs               | `list` on `rayjobs.ray.io` in `{project}`; no submitter filter                                                    | Kubernetes API server with the caller's token                                                                        |
 | Read job                | `get` on `rayjobs.ray.io` in `{project}`                                                                        | Kubernetes API server through CodeFlare SDK with caller identity                                                   |
 | Cancel job              | RayJob operation in `{project}`                                                                                  | Kubernetes API server applies the caller's RBAC; behavior follows the API spec                                        |
 | Pause / resume job      | `patch` on `rayjobs.ray.io` in `{project}` if implemented through RayJob suspension                            | Kubernetes API server; coordinate with Kueue because it also controls `spec.suspend`                               |
@@ -303,8 +301,8 @@ The TaaS operator has narrowly scoped permissions to reconcile the API service o
 discover module dependencies. Those permissions do not grant the TaaS **API service** permission to impersonate callers
 or submit jobs as its service account. The TaaS API runtime must not receive broad RayJob CRUD, Secret-read, or
 cluster-wide Kueue-list permissions merely to make caller-native operations work. Kubernetes RBAC collection `list`
-permission is namespace-scoped and does not filter by job creator. Using the caller identity, CodeFlare's native list
-behavior returns all jobs in the requested project without a submitter filter.
+permission is namespace-scoped and does not filter by job creator. TaaS lists all RayJob resources in the requested
+project with the caller's token, without a submitter filter.
 
 ### Workload authority and data handling
 
@@ -332,7 +330,7 @@ Before TP release, owners must demonstrate:
   caller credentials; do not use `set_api_client(...)` as per-request mutable global state unless the implementation
   provides and verifies isolation.
 - Caller authorization for RayJob create/list/get/patch/delete, job-control actions, and namespaced LocalQueue reads.
-  Verify that CodeFlare list calls use the caller identity, and verify that project-local storage
+  Verify that the Kubernetes RayJob list call uses the caller identity, and verify that project-local storage
   references are resolved with caller authorization. Separately verify that the workload uses the referenced HF/S3
   credentials or mounted PVC to access the data. Fail closed on missing or unauthorized resources, with no service-
   account fallback or cluster-scoped Kueue probe.
@@ -380,8 +378,8 @@ non-Kubernetes endpoint and should be available to all API callers without proje
   token. Should TaaS also use a caller-identity SAR preflight to fail earlier, despite the extra authorization request?
   A SAR preflight would not replace authorization by the operation itself. The selected ingress is
   `datascience-gateway`; Architecture Board confirmation, including TLS termination, is Open Question 7.
-- **Job visibility:** Callers with list access to `{project}` see all jobs there, regardless of submitter; TaaS uses
-  CodeFlare SDK v0.44.1's native list behavior.
+- **Job visibility:** Callers with list access to `{project}` see all RayJobs there, regardless of submitter; TaaS lists
+  RayJob resources through the Kubernetes API with the caller's token.
 - **Related resources:** Logs follow their RayJob in `{project}`. Model, dataset, and custom-code storage access uses
   project-scoped RHOAI Connections for the TP, with Data Connect Hub support planned when available, or authorized
   PVCs; TaaS does not manage raw storage credentials. The remaining
@@ -485,7 +483,8 @@ Board (Open Question 7).
 
 ### Store job records in a TaaS database
 
-Not Recommended for this TP. RayJob CRs hold job identity and status, while CodeFlare provides the TP job-list behavior.
+Not Recommended for this TP. RayJob CRs hold job identity and status, and the Kubernetes API provides the TP job-list
+behavior.
 A second database would add consistency, lifecycle, and authorization work without improving transient driver-log
 availability. Durable logs or cross-backend history would require a separate retention and storage decision.
 
@@ -502,9 +501,9 @@ rank-specific contract would require the training runtime to identify or funnel 
 
 ## Security and Privacy Considerations
 
-- The Kubernetes API server authorizes RayJob creation and detail reads through CodeFlare, and direct RayJob
-  control/delete and LocalQueue operations using the caller's bearer token. CodeFlare list and log operations must also
-  preserve and enforce the caller's identity at their downstream API. Never submit as the TaaS service account after a
+- The Kubernetes API server authorizes RayJob creation and detail reads through CodeFlare, and RayJob list/control/delete
+  and LocalQueue operations through direct caller-token requests. CodeFlare log operations must also preserve and enforce
+  the caller's identity at their downstream API. Never submit as the TaaS service account after a
   TokenReview or SAR check.
 - Forward the original bearer token through the selected ingress path for caller-native Kubernetes calls.
   Identity headers alone cannot authorize downstream API operations.
@@ -549,8 +548,8 @@ rank-specific contract would require the training runtime to identify or funnel 
   either Ray or KFT may require a separate compatibility change.
 - **Kueue defaulting depends on platform setup.** The no-queue behavior only uses the intended Kueue default if the
   supported installation provides the required LocalQueue defaulting behavior in the project.
-- **Project-wide job visibility:** Callers with permission to list jobs can see jobs submitted by others in the same
-  project; CodeFlare's native list behavior does not filter by submitter.
+- **Project-wide job visibility:** Callers with permission to list RayJobs can see jobs submitted by others in the same
+  project; Kubernetes RBAC does not filter by submitter.
 
 ## Stakeholder Impacts
 
