@@ -227,8 +227,9 @@ sequenceDiagram
     end
 ```
 
-The API requires an explicit project in every project-scoped path; a project name is a resource selector, not
-authorization. It must not select a default namespace or fall back to a privileged identity. For CodeFlare, the intended
+The API requires an explicit project in every project-scoped path. The project in the URL selects the Kubernetes
+namespace; Kubernetes authorizes each request using the caller's permissions in that namespace. TaaS must not select a
+default namespace or fall back to a privileged identity. For CodeFlare, the intended
 configuration supplies the caller bearer token to the SDK's Kubernetes client explicitly; do not use SDK auto-detection
 of the in-pod service-account credential. The SDK's documented `set_api_client(...)` registration must be checked for
 process-global state and concurrent-request safety. The pinned integration must isolate credentials per caller; it must
