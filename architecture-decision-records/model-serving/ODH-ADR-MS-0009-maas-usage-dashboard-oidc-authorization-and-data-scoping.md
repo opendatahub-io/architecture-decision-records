@@ -6,7 +6,8 @@
 | Scope          | model-serving, MaaS consumer portal, usage dashboard |
 | Status         | Draft |
 | Authors        | Lindani Phiri, Kevin Howell |
-| Supersedes     | ADR-0007 usage visibility restriction only, pending approval |
+| Depends on     | [ADR-0007](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md) |
+| Amends         | ADR-0007 organization claim scope, pending approval |
 | Superseded by: | N/A |
 | Tickets        | RHAI-10635, RHAI-8074 |
 | Other docs:    | [ADR-0007](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md), [ADR-0008](ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md) |
@@ -168,7 +169,7 @@ The middleware removes supplied copies of `X-MaaS-Identity` and constructs a new
 The usage proxy accepts that value only through the trusted middleware path and makes sure that its structure and source are valid.
 It uses the authenticated identity without repeating token validation and performs its own tenant permission reviews.
 Other MaaS handlers can reuse the same middleware and identity representation while retaining their own permission rules.
-This change requires no modification to ADR-0007.
+This ADR amends ADR-0007's organization claim scope for usage authorization.
 
 OIDC permission reviews require an issuer-aware mapping into Kubernetes RBAC.
 The canonical OIDC user ID provides a source-qualified subject, while operator-controlled mappings can authorize existing RBAC aliases and groups.
@@ -217,7 +218,7 @@ If a standard RHOAI OIDC token presents the ADR-0007 organization shape, organiz
 Kubernetes `ServiceAccount` identities use the same personal scope and require explicit tenant RBAC permissions for tenant-wide access.
 `AITenant` Admin and Provider Admin remain distinct roles with separate interfaces.
 
-This decision replaces only ADR-0007's subscription-limited observability visibility after approval.
+This decision amends ADR-0007's organization claim scope and replaces its subscription-limited observability visibility for this dashboard after approval.
 ADR-0007 continues to govern its other organization administration and inference permissions.
 The usage proxy does not infer organization administration from a group name.
 
@@ -282,16 +283,16 @@ The proxy validates the parameter after the middleware authenticates the caller.
 It expresses intent and never grants permission.
 An unavailable scope returns HTTP 403 instead of silently broadening or downgrading the request.
 
-| Deployment and scope | Required authority | Enforced ownership |
-| --- | --- | --- |
-| Standard RHOAI without organization shape, `user` | Valid tenant authentication | `AITenant` and caller user ID |
-| Standard RHOAI with ADR-0007 OIDC shape, `user` | Current member of the requested organization | `AITenant`, organization, and caller user ID |
-| Standard RHOAI with ADR-0007 OIDC shape, `organization` | Organization Admin or `AITenant` Admin | `AITenant` and organization ID |
-| Standard RHOAI, `tenant` | `AITenant` Admin | `AITenant` ID |
-| AI Grid OIDC, `user` | Current member of the requested organization | `AITenant`, organization, and caller user ID |
-| AI Grid Kubernetes, `user` | Valid tenant authentication | `AITenant` and caller user ID |
-| AI Grid, `organization` | Organization Admin or `AITenant` Admin | `AITenant` and organization ID |
-| AI Grid, `tenant` | `AITenant` Admin | `AITenant` ID |
+| Deployment and scope | Authorization level | Required authority | Enforced ownership |
+| --- | --- | --- | --- |
+| Standard RHOAI without organization shape, `user` | User | Valid tenant authentication | `AITenant` and caller user ID |
+| Standard RHOAI with ADR-0007 OIDC shape, `user` | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
+| Standard RHOAI with ADR-0007 OIDC shape, `organization` | Organization Admin or `AITenant` Admin | Verified `admins` role or tenant-admin review | `AITenant` and organization ID |
+| Standard RHOAI, `tenant` | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
+| AI Grid OIDC, `user` | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
+| AI Grid Kubernetes, `user` | User | Valid tenant authentication | `AITenant` and caller user ID |
+| AI Grid, `organization` | Organization Admin or `AITenant` Admin | Verified `admins` role or tenant-admin review | `AITenant` and organization ID |
+| AI Grid, `tenant` | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
 
 Standard RHOAI grants organization scope only through the complete ADR-0007 OIDC shape.
 An incomplete organization claim grants no organization visibility.
