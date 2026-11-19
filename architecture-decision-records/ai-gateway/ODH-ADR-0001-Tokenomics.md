@@ -1197,11 +1197,12 @@ The admission contract is identical in both modes: Praxis reads flags, the Budge
 
 | | `embedded` (default) | `federated` |
 |---|---|---|
-| Rates | defined in the Budget Service API | defined in the external platform |
-| Budgets and limits | defined in the Budget Service API | defined in the external platform |
+| Rates | defined in the Budget Service API | defined in the external platform; Budget Service rate tables unused (1 token = 1 BU) |
+| Budgets and limits | defined in the Budget Service API | defined in the external platform; Budget Service tracks token-volume budgets for admission |
 | Rating | Budget Service applies its rate tables | external platform rates; Budget Service mirrors the outcome |
 | Ledger | Postgres | external platform, optionally mirrored to Postgres for audit |
-| Flag computation | derived from the local ledger | derived from the platform's reported balances |
+| Flag computation | derived from the local ledger | derived from the platform's reported balances and overage signals |
+| Overage notification | not applicable (Budget Service computes overage locally) | required — external platform must expose an API for overage state |
 | Admission flags in Redis | yes | yes |
 
 Praxis, the flag schema, and the OTEL pipeline are identical in both modes. That is the point: adding a metering backend is a Budget Service deployment choice, not a data-plane change.
@@ -1215,6 +1216,35 @@ The collector also forwards the OTEL Log to Loki. The CloudEvent is the canonica
 #### Mixed-spend budgets
 
 An `embedded` budget only knows about inference spend, because inference usage events are its only input. A budget that also covers spend the gateway cannot observe — VMs, GPUs, other platform services — must be owned by a `federated` provider that reports the aggregate remaining balance. The Budget Service mirrors that number into the flag rather than arbitrating spend it cannot see.
+
+#### Token-only accounting (federated pricing)
+
+When an external billing platform (M360, OpenMeter, or a custom system) owns cost attribution and pricing, the Budget Service does not need rate tables. Without rates configured, the default accounting rule is **1 token = 1 BU** — the Budget Service counts raw tokens consumed against a budget limit and derives admission flags from that count. The external platform applies its own pricing (USD, EUR, or any currency) independently.
+
+This simplifies the Budget Service to two responsibilities:
+
+| Responsibility | Description |
+|---|---|
+| Token counting | Persist raw token usage, increment balance counters |
+| Admission enforcement | Derive `allow` / `over` / `deny` flags from token budgets |
+
+Rate tables, rate versioning, BU weight computation, and `rate_ref` on policies are all unused in this mode. They remain available in the schema for standalone deployments that need cost-weighted enforcement, but a federated deployment that delegates pricing to the external platform can ignore them entirely.
+
+The responsibility split between the Budget Service and the external platform:
+
+| Concern | Owner |
+|---|---|
+| Token counting and admission flags (`allow` / `over` / `deny`) | Budget Service |
+| Usage event forwarding | Budget Service → external platform |
+| Budget definitions, limits, and periodic management | External platform |
+| USD / currency pricing and cost attribution | External platform |
+| Invoicing and financial reporting | External platform |
+| Contract and wallet management | External platform |
+| Overage notification (cost-based) | External platform → Budget Service |
+
+**Overage notification requirement.** The external billing platform must expose an API — webhook, event stream, or polling endpoint — that the Budget Service can consume to learn when a subject enters overage from the platform's perspective. The Budget Service uses this signal to update admission flags. Without this callback, the Budget Service can only enforce token-volume budgets and has no visibility into cost-based overage determined by the external platform's pricing logic.
+
+The specific API contract (endpoint shape, authentication, payload format) varies by platform and is not prescribed here. The Budget Service must implement an adapter per supported platform. The adapter translates the platform's overage signal into the internal flag state (`allow` / `over` / `deny`) and writes it to Redis through the same code path used by embedded accounting.
 
 #### Integration patterns
 
