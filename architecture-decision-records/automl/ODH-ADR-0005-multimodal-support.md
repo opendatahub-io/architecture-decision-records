@@ -93,7 +93,6 @@ The proposed public contract is shared by the pipeline, Dashboard, and API consu
 | `test_data_bucket_name` / `test_data_file_key` | `Optional[str]` | No | Paired external test manifest for final reporting only, using the same connection and schema. |
 | `preset` | `str` | No | Product-level GPU quality tier; see below. |
 | `eval_metric` | `Optional[str]` | No | AutoMM metric valid for `task_type`; default resolves to AutoMM's problem-type default. |
-| `time_limit_seconds` | `int` | No | Per-backbone AutoMM `fit` time budget, excluding download, staging, and upload. Sequential sweep wall-clock time scales with the number of backbones. |
 
 Dataset inputs reference the manifest; credentials remain in the Connection Secret. Image content is excluded from pipeline parameters, tracking metadata, logs, and generated notebooks.
 
