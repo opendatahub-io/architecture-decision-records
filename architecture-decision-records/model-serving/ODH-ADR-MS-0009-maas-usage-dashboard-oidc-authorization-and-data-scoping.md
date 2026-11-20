@@ -14,9 +14,11 @@
 
 ## What
 
-Shared MaaS identity middleware validates OIDC and Kubernetes credentials and creates a common `X-MaaS-Identity` representation.
+The target design uses shared MaaS identity middleware to validate OIDC and Kubernetes credentials.
+That middleware creates a common `X-MaaS-Identity` representation.
 The middleware in `identity.go` makes this identity reusable across MaaS handlers and forwards it to `maas-usage-proxy`.
 The usage proxy enforces usage boundaries for both identity sources and reviews Kubernetes tenant permissions.
+The first release can use equivalent trusted middleware while the shared implementation is completed later.
 
 Kubernetes-authenticated `AITenant` admins see tenant-wide usage, OIDC organization admins see organization-wide usage, and ordinary users see personal usage.
 The release supports the consumer portal through an OIDC route and a separate Kubernetes route.
@@ -35,7 +37,7 @@ OIDC ownership uses issuer and subject, while this release uses username-based K
 Readable names make historical records understandable after resources disappear.
 Both browser entry points and direct APIs need the same access boundaries.
 
-Shared middleware gives MaaS handlers one authenticated identity representation for OIDC and Kubernetes callers.
+Shared middleware is desired because it gives MaaS handlers one authenticated identity representation for OIDC and Kubernetes callers.
 The usage proxy applies the same authorization rules across browser routes and direct APIs.
 
 ## Goals
@@ -43,8 +45,8 @@ The usage proxy applies the same authorization rules across browser routes and d
 - Support the agreed deployment and authentication combinations from the first release.
 - Enforce `AITenant`, organization, and personal boundaries on the server.
 - Keep Kubernetes tenant permission reviews in `maas-usage-proxy`.
-- Validate OIDC and Kubernetes tokens in shared MaaS identity middleware.
-- Reuse one `X-MaaS-Identity` representation across MaaS handlers and the usage proxy.
+- Define shared MaaS identity middleware as the target for OIDC and Kubernetes token validation.
+- Define one `X-MaaS-Identity` representation as the target across MaaS handlers and the usage proxy.
 - Include a Kubernetes-authenticated `AITenant` Admin view in the MaaS dashboard.
 - Capture immutable IDs for `AITenant` resources, organizations, and OIDC users, with readable names for every identity source.
 - Use tenant-scoped Kubernetes usernames for this release and document the next-release UID gap.
@@ -60,6 +62,7 @@ The usage proxy applies the same authorization rules across browser routes and d
 - Require historical migration, multiple organization memberships, or portals for non-default `AITenant` resources in the first release.
 - Implement immutable Kubernetes user ownership in this release.
 - Implement Kubernetes organization scope in this release.
+- Require the `identity.go` middleware or the unified `X-MaaS-Identity` header in this release.
 - Choose dashboard technology, storage layout, or query-language implementation.
 
 ## How
@@ -95,8 +98,8 @@ It does not require the portal's OIDC route or its OIDC session.
 The route lets existing Kubernetes users use the consumer portal without onboarding them to an external OIDC identity provider.
 
 The Kubernetes route reuses existing gateway authentication and token forwarding.
-The MaaS identity middleware authenticates the forwarded credential through `TokenReview`, which asks Kubernetes to authenticate a token.
-It creates `X-MaaS-Identity` from the authenticated result for the usage proxy.
+Trusted MaaS identity middleware authenticates the forwarded credential through `TokenReview`, which asks Kubernetes to authenticate a token.
+The target middleware creates `X-MaaS-Identity` from the authenticated result for the usage proxy.
 The proxy applies the same tenant and personal boundaries in both deployments.
 Kubernetes groups do not establish AI Grid organization membership.
 
@@ -109,7 +112,7 @@ The usage proxy resolves that `AITenant`'s immutable identity, authentication po
 It rejects conflicting tenant context and ignores client-supplied tenant headers.
 
 The UI BFF is the UI's backend service.
-Both browser routes use this service to forward usage requests through the shared MaaS identity middleware to the usage proxy.
+Both browser routes use this service to forward usage requests through trusted MaaS identity middleware to the usage proxy.
 
 ```mermaid
 flowchart LR
@@ -117,13 +120,14 @@ flowchart LR
   Separate[Consumer portal Kubernetes route] --> KR[data-science-gateway]
   MG --> BFF[UI BFF]
   KR --> BFF
-  BFF --> Identity["MaaS identity middleware<br/>identity.go"]
+  BFF --> Identity["MaaS identity middleware<br/>target: identity.go"]
   API[Direct API client] --> AG[Authenticated usage API route]
   AG --> Identity
   Identity -->|X-MaaS-Identity| Usage[maas-usage-proxy]
 ```
 
-Both browser routes share the UI BFF, MaaS identity middleware, and usage proxy.
+Both browser routes share the UI BFF, trusted identity middleware, and usage proxy.
+The target design replaces route-specific middleware with the shared middleware.
 The proxy applies the same ownership and scope semantics after authentication.
 The separate UI mount is an additional entry point, not a replacement for the portal layout in ADR-0008.
 Existing Provider Admin routes remain outside this request path.
@@ -149,6 +153,11 @@ The helper hides the `SubjectAccessReview` details for Kubernetes.
 Usage handlers do not branch on the authentication source.
 
 #### Shared MaaS identity middleware
+
+This section defines the target middleware design.
+The first release can keep route-specific trusted middleware that produces an equivalent authenticated identity.
+That interim middleware must preserve the validation, tenant-binding, and header-stripping rules below.
+The later `identity.go` implementation and unified `X-MaaS-Identity` header can replace it without changing authorization boundaries.
 
 The shared middleware in `identity.go` validates the incoming token before it constructs identity.
 OIDC validation covers the configured issuer, signature, audience, and expiry.
@@ -220,7 +229,8 @@ The usage proxy does not infer organization administration from a group name.
 ### Kubernetes request processing
 
 The Kubernetes path retains the existing gateway's browser authentication and token forwarding.
-The shared MaaS middleware authenticates the forwarded token and creates `X-MaaS-Identity` for downstream handlers.
+Trusted MaaS middleware authenticates the forwarded token.
+The target middleware creates `X-MaaS-Identity` for downstream handlers.
 The usage proxy consumes that identity and applies the same personal boundary as the OIDC path.
 Tenant scope is available only on this Kubernetes path.
 
@@ -274,27 +284,53 @@ It applies caller permissions before it retrieves usage data.
 Backend services authenticate the proxy through a dedicated read identity, while producers use a separate write identity.
 These service credentials never grant callers access beyond their authorized usage boundary.
 
-Every request names `usage_scope=user`, `usage_scope=organization`, or `usage_scope=tenant`.
-`usage_scope` is a supported API request parameter.
-It is not a backend query label, and the identity middleware does not use it for authentication.
-The proxy validates the parameter after the middleware authenticates the caller.
-It expresses intent and never grants permission.
-An unavailable scope returns HTTP 403 instead of silently broadening or downgrading the request.
+The API uses the existing `only_user` URL query parameter.
+It is not a header or request-body field.
+The proxy consumes it after the middleware authenticates the caller and never forwards it to a backend service.
+An omitted value has the same meaning as `only_user=false`.
 
-| Deployment and scope | Authentication type | Authorization level | Required authority | Enforced ownership |
-| --- | --- | --- | --- | --- |
-| Standard RHOAI, `user` | OIDC without organization shape | User | Valid tenant authentication | `AITenant` and caller user ID |
-| Standard RHOAI, `user` | Kubernetes | User | Valid tenant authentication | `AITenant` and caller user ID |
-| Standard RHOAI, `user` | OIDC with ADR-0007 organization shape | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
-| Standard RHOAI, `organization` | OIDC with ADR-0007 organization shape | Organization Admin | Verified `admins` role | `AITenant` and organization ID |
-| Standard RHOAI, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
-| AI Grid, `user` | OIDC | User | Current member of the requested organization | `AITenant`, organization, and caller user ID |
-| AI Grid, `user` | Kubernetes | User | Valid tenant authentication | `AITenant` and caller user ID |
-| AI Grid, `organization` | OIDC | Organization Admin | Verified `admins` role | `AITenant` and organization ID |
-| AI Grid, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review | `AITenant` ID |
+`only_user=true` requests the caller's personal boundary.
+The server adds the caller's `user_id` matcher automatically.
+`only_user=false` requests the caller's admin boundary.
+An OIDC organization admin receives organization-wide usage, and a Kubernetes tenant admin receives tenant-wide usage.
+If `only_user=false` is requested for a caller who is not an admin, the proxy returns HTTP 403.
+An invalid boolean value returns HTTP 400.
+
+| Deployment and boundary | Authentication type | Authorization level | Required authority |
+| --- | --- | --- | --- |
+| Standard RHOAI, `user` | OIDC without organization shape | User | Valid tenant authentication |
+| Standard RHOAI, `user` | Kubernetes | User | Valid tenant authentication |
+| Standard RHOAI, `user` | OIDC with ADR-0007 organization shape | User | Current member of the requested organization |
+| Standard RHOAI, `organization` | OIDC with ADR-0007 organization shape | Organization Admin | Verified `admins` role |
+| Standard RHOAI, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review |
+| AI Grid, `user` | OIDC | User | Current member of the requested organization |
+| AI Grid, `user` | Kubernetes | User | Valid tenant authentication |
+| AI Grid, `organization` | OIDC | Organization Admin | Verified `admins` role |
+| AI Grid, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review |
 
 Standard RHOAI grants organization scope only through the complete ADR-0007 OIDC shape.
 An incomplete organization claim grants no organization visibility.
+
+#### Required matchers
+
+The usage proxy applies these matchers together.
+It derives their values from trusted route configuration and the authenticated identity.
+A caller cannot remove or replace a required matcher.
+
+| Caller | Required matchers | Optional narrowing matchers |
+| --- | --- | --- |
+| OIDC organization admin | `tenant_name`, `organization_id` | `user_id` when `only_user=true` |
+| OIDC organization non-admin | `tenant_name`, `organization_id`, `user_id` | None; `user_id` is mandatory |
+| OIDC user without organization | `tenant_name`, `user_id` | None; `user_id` is mandatory |
+| Kubernetes tenant admin | `tenant_name` | `user_id` when `only_user=true`; optionally `organization_id` to narrow within the tenant |
+| Kubernetes non-admin | `tenant_name`, `user_id` | None; `user_id` is mandatory |
+
+Optional matchers may only narrow results.
+They must never replace a required matcher.
+`only_user=true` requests the user boundary and may add `user_id` for an admin.
+`only_user=true` must not be required for a non-admin to receive `user_id`; the server must add it automatically.
+A Kubernetes tenant admin may narrow by `organization_id`, but the required `tenant_name` matcher must remain.
+Client-supplied filters such as subscription or model may narrow results further, but they are not authorization boundaries.
 
 The proxy restricts all records used by a query to the authorized boundary before aggregation or other user-controlled processing.
 It rejects requests whose ownership restrictions conflict with that boundary or cannot be enforced.
@@ -314,10 +350,11 @@ It sanitizes backend errors without changing the authorized scope.
 
 ### Trusted identity forwarding
 
-Both UI routes forward usage requests through their authenticated `HTTPRoute` and the shared UI BFF to MaaS identity middleware.
-The middleware validates the credential and forwards `X-MaaS-Identity` to the usage proxy through a protected internal path.
+Both UI routes forward usage requests through their authenticated `HTTPRoute` and the shared UI BFF to trusted MaaS identity middleware.
+The middleware validates the credential and forwards a trusted identity to the usage proxy through a protected internal path.
+The target implementation uses `X-MaaS-Identity` for that trusted identity.
 The proxy rejects requests that bypass this path or contain conflicting identity or tenant context.
-The identity header never grants access independently of the trusted forwarding path.
+The identity representation never grants access independently of the trusted forwarding path.
 
 OIDC usage ownership derives from the authenticated issuer and subject.
 Kubernetes usage ownership derives from the username returned by the middleware's `TokenReview`.
@@ -347,8 +384,9 @@ The usage API rejects inference API keys as usage credentials.
 The usage proxy is the business authorization boundary for both UI mounts and direct APIs.
 Each public route binds the caller to a trusted tenant.
 OIDC routes authenticate the credential at the gateway and deliver identity through trusted internal paths.
-Shared MaaS middleware validates OIDC and Kubernetes tokens before the usage proxy receives their normalized identity.
-The proxy accepts `X-MaaS-Identity` only from that middleware through a trusted internal path.
+Trusted MaaS middleware validates OIDC and Kubernetes tokens before the usage proxy receives their normalized identity.
+The proxy accepts the target `X-MaaS-Identity` representation only from that middleware through a trusted internal path.
+Until the shared middleware is available, each route must use equivalent trusted middleware and must remove client-supplied identity headers.
 Internal service credentials grant backend access without granting callers access to every record.
 
 Tenant and organization authority remain distinct.
@@ -389,8 +427,8 @@ Internal service destinations and identity forwarding require operator-controlle
 | Observability | Kevin Howell, Arik Hadas | 2026-11-14 | Yes |
 | AI Grid | RHAISTRAT-2875 owners | 2026-11-14 | Yes |
 
-- MaaS owns identity normalization, API-key owner metadata, producers, and OIDC and Kubernetes tenant reviews in the usage proxy.
-- Shared MaaS identity middleware owns token validation and the reusable `X-MaaS-Identity` representation.
+- MaaS owns identity normalization, API-key owner metadata, producers, and Kubernetes tenant reviews in the usage proxy.
+- The target shared MaaS identity middleware owns token validation and the reusable `X-MaaS-Identity` representation.
 - Dashboard owns the portal integration, separate Kubernetes UI mount, and views for all three access levels.
 - Observability owns backend service identities, usage access isolation, and retention.
 - AI Grid owns organization identity, membership freshness, and consistent attribution across serving sites.
@@ -399,6 +437,7 @@ Internal service destinations and identity forwarding require operator-controlle
 
 - [ADR-0007: shared OIDC identity contract](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
 - [ADR-0008: consumer portal gateway layout](ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
+- [ADR-MAAS-0001: logs-based showback](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/models-as-a-service/ODH-ADR-MAAS-0001-logs-based-showback.md)
 - [RHAI-10635](https://redhat.atlassian.net/browse/RHAI-10635)
 - [RHAI-8074](https://redhat.atlassian.net/browse/RHAI-8074?focusedCommentId=19101141)
 - [RHAISTRAT-2883](https://redhat.atlassian.net/browse/RHAISTRAT-2883)
