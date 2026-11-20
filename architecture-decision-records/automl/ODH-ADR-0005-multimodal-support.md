@@ -162,10 +162,8 @@ Each completed backbone has an artifact directory named by its curated backbone 
 | `{backbone_id}/model.json` | Predictor type/version, backbone id and checkpoint/checksum, task, class mapping, feature schema, input normalization, artifact compatibility, and serving schema. |
 | `{backbone_id}/metrics/metrics.json` | Selected evaluation metric and supported task metrics from `predictor.evaluate`. |
 | `{backbone_id}/metrics/confusion_matrix.json` | Classification only, with class order recorded. |
-| `{backbone_id}/metrics/per_class.json` | Classification precision, recall, F1, support, and optionally calibrated confidence summaries. |
 | `{backbone_id}/metrics/training_summary.json` | Fit duration, compute resources, best checkpoint summary, model size, and peak resource telemetry where available. |
 | `{backbone_id}/notebooks/automl_multimodal_predictor_notebook.ipynb` | Reproducible load/evaluate/predict example using non-sensitive placeholder inputs. |
-| `metrics/leaderboard.json` | Run-level ranking of completed backbones by `eval_metric`, with paths to each `{backbone_id}/` directory. Failed backbones are listed with error class, not a fake score. |
 | `metrics/data_quality.json` | Manifest/image validation summary, dimensions/formats, split sizes, class distribution, and dropped-row count. Shared by the run; no image content or sensitive paths. |
 
 Model metadata extends the shared contract in [ODH-ADR-0003](./ODH-ADR-0003-model-insights.md) with the multimodal predictor type and image input schema. Dashboard uses this metadata for serving and reuses the leaderboard selection flow for registration.
