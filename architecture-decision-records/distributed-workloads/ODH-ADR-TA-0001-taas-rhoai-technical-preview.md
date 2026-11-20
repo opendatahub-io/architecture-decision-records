@@ -99,7 +99,8 @@ yet publicly specified.
    change. Add the cancel, pause, and resume operations below to the TP contract; the current DP page does not define
    them. The current DP page documents project-qualified paths relative to `/api/v1`; confirm the pinned OpenAPI and
    final API-owner approval before implementation. Use the training-job resource and identifier defined by the API
-   contract; do not expose a RayJob-shaped public resource or identifier.
+   contract; do not expose a RayJob-shaped public resource or identifier. The backend-neutral training-job identifier
+   is used to look up the RayJob in the first, Ray backend.
 9. **Job controls:** Add cancel, pause, and resume actions to the TP API. Cancel stops execution while retaining the
    RayJob for status inspection; DELETE removes the RayJob in any state, including queued, running, or paused, and
    asks KubeRay to stop its active workload as part of cleanup. Do not reject DELETE solely because the RayJob is
@@ -244,20 +245,26 @@ isolation.
 ### REST contract carried forward from DP
 
 Paths below are relative to `/api/v1`. `{project}` is the explicit OpenShift namespace; `{job_id}` is the
-training-job identifier defined by the API contract.
+backend-neutral training-job identifier, regardless of which backend runs the job. With the first, Ray backend, its
+value matches the RayJob name used for lookup.
 The pinned DP OpenAPI remains authoritative for request schemas and detailed response bodies.
+
+The TaaS API is designed to be backend-agnostic, with Ray as its first backend. Algorithm discovery reads Training Hub
+algorithms from the configured runtime image; job controls follow Ray/KubeRay behavior. Before adding another backend,
+define collision-free job identification and list/detail routing, backend-specific algorithm and schema resolution, and
+supported control semantics while preserving existing client behavior.
 
 | Operation               | Path                                                  | Authorization and behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 |-------------------------|-------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Submit training         | `POST /projects/{project}/training-jobs`              | Create a RayJob with CodeFlare using caller's bearer token. If `queue_name` is supplied, first verify that the caller can read the LocalQueue, then apply it as `kueue.x-k8s.io/queue-name`; if omitted, Kueue applies its default behavior and TaaS does not choose a queue. Return `202 Accepted`, the API training-job ID, and `Location` as soon as Kubernetes accepts the RayJob; do not wait for Kueue admission or job start. |
 | List jobs               | `GET /projects/{project}/training-jobs`               | List RayJob resources in `{project}` through the Kubernetes API with the caller's token; do not apply a submitter filter.                                                                                                                                                                                                                                                                                                                                                     |
 | Read job details/status | `GET /projects/{project}/training-jobs/{job_id}`      | Read the RayJob through CodeFlare using the caller's token; map provisioning, waiting, and Kueue-suspended states to `PENDING`, and expose user-requested cancel/pause/resume progress separately.                                                                                                                                                                                                                                                                                 |
-| Read/follow driver logs | `GET /projects/{project}/training-jobs/{job_id}/logs` | Driver logs only. A request-scoped CodeFlare client configured with the caller bearer token retrieves logs; TaaS relays chunks as SSE. Snapshot uses `follow=false`; follow mode uses SSE. `409` if logs are not ready; `410` if the managed RayCluster is gone. CodeFlare enforces caller authorization for log retrieval. |
+| Read/follow driver logs | `GET /projects/{project}/training-jobs/{job_id}/logs` | Driver logs only. A request-scoped CodeFlare client configured with the caller bearer token retrieves logs; TaaS relays chunks as SSE. Snapshot uses `follow=false`; follow mode uses SSE. `409` if logs are not ready; `410` if the backend execution resources are gone. CodeFlare enforces caller authorization for log retrieval. |
 | Cancel job              | `POST /projects/{project}/training-jobs/{job_id}/cancel`  | Request cancellation of a queued or running job while retaining its RayJob for status inspection. Return `202 Accepted`; expose the eventual terminal state through GET as defined by the API spec.                                                                                                                                                                                                                                                                               |
 | Pause job               | `POST /projects/{project}/training-jobs/{job_id}/pause`   | Request a pause while retaining the RayJob. Return `202 Accepted`; expose pause progress and state through GET as defined by the API spec.                                                                                                                                                                                                                                                                                                                                      |
 | Resume job              | `POST /projects/{project}/training-jobs/{job_id}/resume`  | Request resumption of a paused job. Return `202 Accepted`; expose resumption progress through GET as defined by the API spec.                                                                                                                                                                                                                                                                                                                                                  |
 | Delete job              | `DELETE /projects/{project}/training-jobs/{job_id}`       | Caller-authorized delete in any state, including queued, running, and paused. Do not reject solely because the RayJob is non-terminal. KubeRay stops non-terminal Ray jobs during RayJob deletion and cleans up managed resources; transient logs and job status may become unavailable after cleanup. External checkpoints and model outputs are not deleted.                                                                                                                                                                              |
-| Discover algorithms     | `GET /algorithms`                                     | Reflect the configured Ray Training Image/release catalog and parameter schemas, not a hard-coded universal list.                                                                                                                                                                                                                                                                                                                                                            |
+| Discover algorithms     | `GET /algorithms`                                     | Reflect Training Hub algorithms and parameter schemas registered in the configured runtime image, not a hard-coded universal list.                                                                                                                                                                                                                                                                                                                                           |
 | Discover project queues | `GET /projects/{project}/queues`                      | Keep the DP endpoint. List LocalQueues in the requested project using the caller's token. If Kueue is absent or not set up for the project, return `200`, `kueue_enabled: false`, `queues: []`.                                                                                                                                                                                                                                                                              |
 
 The request requires `name`, `model`, `dataset`, and `algorithm`. The current DP page describes optional queue, resource
@@ -315,11 +322,10 @@ the Ray workload accesses PVC data through its mounted volume and Hugging Face/S
 credentials, not the caller's OpenShift token. TaaS submits RayJobs as the caller, so matching platform authorization
 and admission controls continue to apply to those RayJobs as they do to direct submissions. TaaS does not
 install, configure, or modify Ray/KubeRay admission policy; standalone
-Ray/KubeRay policy validation is outside this ADR. TaaS does not maintain its own durable job database or persist caller
-credentials or driver logs. It does not persist the full request payload; it may retain an explicitly allow-listed subset
-of non-secret submission metadata, such as the submitter and selected training parameters, in RayJob metadata for
-caller-authorized job details. The RayJob specification is stored by Kubernetes, and Ray retains job/log state only for
-its configured lifetime. Never log bearer tokens or credentials; treat driver logs as sensitive user content.
+Ray/KubeRay policy validation is outside this ADR. TaaS has no separate job database or storage. Kubernetes stores the
+accepted non-secret submission in RayJob metadata, and caller-authorized job details return it in the `submission` field
+defined by the API contract. TaaS does not persist credentials or driver logs. Ray retains job/log state only for its
+configured lifetime. Never log bearer tokens or credentials; treat driver logs as sensitive user content.
 
 ### Release gates
 
@@ -336,8 +342,10 @@ Before TP release, owners must demonstrate:
   credentials or mounted PVC to access the data. Fail closed on missing or unauthorized resources, with no service-
   account fallback or cluster-scoped Kueue probe.
 - Verify cancel, pause, resume, and delete behavior against the API spec and supported Ray, KubeRay, CodeFlare, and
-  Kueue versions. Kubernetes RBAC authorizes each caller operation; active deletion stops the workload, and user pause
-  remains distinct from Kueue admission suspension.
+  Kueue versions. Kubernetes RBAC authorizes each caller operation; active deletion stops the workload. Verify that
+  resuming a user-paused job does not clear a Kueue admission suspension. TaaS does not manage checkpoints; restoration
+  depends on the backend and workload saving and loading checkpoints, and is not guaranteed by a configured checkpoint
+  location alone.
 - Verify the exact CodeFlare submission path does not require cluster-scoped Kueue, DataScienceCluster, or
   operator-version reads under the caller identity; disable or isolate any such optional probe rather than granting
   cluster-wide read to API callers.
@@ -390,15 +398,17 @@ non-Kubernetes endpoint and should be available to all API callers without proje
 
 #### Algorithm discovery
 
-**Requirement:** Report algorithms and parameter schemas available in the configured Ray runtime, rather than a
-hard-coded universal catalog.
+**Requirement:** Report Training Hub algorithms and parameter schemas exposed by the `AlgorithmRegistry` in the
+configured runtime image, rather than a hard-coded universal catalog.
 
 **Proposed implementation:** Configure one `trainingRuntime.image` per TaaS deployment. At pod startup, an init
 container using that image imports its installed Training Hub package and inspects `AlgorithmRegistry` and callable
 metadata. The algorithm implementations stay in the runtime image; the init container writes their names and parameter
 schemas to a `catalog.json` in a shared pod-local `emptyDir`. The API container mounts it read-only and uses it for
 algorithm discovery and request parameter validation. The catalog is derived from the same runtime image used by
-training jobs; changing the image rolls out the pod and regenerates the catalog. This matches the approach in
+training jobs; changing the image rolls out the pod and regenerates the catalog. For a future backend, reuse this method
+only if its image provides a compatible Training Hub registry; otherwise, define a backend-specific discovery source
+and schema resolver. This matches the approach in
 [training-service PR #12](https://github.com/opendatahub-io/training-service/pull/12).
 
 The proposed storage is ephemeral because the catalog is regenerated at startup and does not need to outlive the pod.
@@ -521,10 +531,9 @@ rank-specific contract would require the training runtime to identify or funnel 
 - TaaS does not expose caller-selected ServiceAccounts or arbitrary Secret mounts and does not modify platform
   authorization or admission policy. Ray/KubeRay policy is managed and validated at the platform/component level, outside
   this ADR.
-- Do not persist credentials or log contents in TaaS-owned storage. Do not persist the full request payload in RayJob
-  metadata; retain only an explicitly allow-listed subset of non-secret submission metadata, such as the submitter and
-  selected training parameters. Caller-authorized job details may return this subset, not the full request. Avoid logging
-  tokens or other credentials; treat returned driver logs as potentially sensitive user content.
+- TaaS does not persist credentials or log contents. Kubernetes stores the accepted non-secret submission in RayJob
+  metadata and caller-authorized job details return it in the `submission` field as defined by the API contract. Avoid
+  logging tokens or other credentials; treat returned driver logs as potentially sensitive user content.
 - Keep Kueue and Ray installation/lifecycle outside the TaaS operator. The operator and API runtime have
   different permission needs; the API runtime must not inherit the module controller's privileges.
 
@@ -566,8 +575,8 @@ rank-specific contract would require the training runtime to identify or funnel 
 - [TaaS DP Architecture (Confluence)](https://redhat.atlassian.net/wiki/spaces/RHODS/pages/471990958/TaaS+DP+Architecture) —
   source for the DP endpoint paths, caller-authorized RayJob operations, response semantics, and logging contract.
   Retrieved October 26, 2026; the page remains an architecture review draft with reviewer sign-off pending.
-- [Pinned TaaS DP OpenAPI contract](https://github.com/opendatahub-io/training-service/blob/0b6b28e7b46c385ee27348cebe2b43549a2d0ff6/api/openapi.yaml) —
-  DP API schema and operation contract.
+- [TaaS API OpenAPI contract (main branch)](https://github.com/opendatahub-io/training-service/blob/main/docs/api/openapi.yaml) —
+  current API schema and operation contract.
 - [RHAIRFE-3751 — Training API: Predictive Training with Custom Functions](https://redhat.atlassian.net/browse/RHAIRFE-3751) —
   requests custom training functions or packaged code alongside predefined algorithms; supported frameworks and runtime
   configurations are to be agreed during refinement.
