@@ -17,6 +17,8 @@
   `https://redhat.com/maas/orgs` array of objects with the flat claims `org_id`,
   `org_name`, and `roles`. Made the group claim plain on the wire. Clarified that the broker mints the organization identity.
 * 2026-11-01: Made the AI Grid organization claims separate from vanilla RHOAI.
+* 2026-11-18: Allowed vanilla RHOAI to consume the organization claim shape
+  when an OIDC token presents it. A token without `org_id` remains tenant-level.
 
 ## What
 
@@ -87,7 +89,7 @@ The OIDC ID token contains:
 * `iat` and `exp`: the token issue and expiry times.
 * `email`: an optional display and notification identity.
 * `groups`: plain access group names.
-* `org_id`: the AI Grid organization identifier.
+* `org_id`: the organization identifier.
 * `org_name`: an optional organization display name.
 * `roles`: the user's roles in the organization.
 
@@ -115,18 +117,19 @@ organization. The single `org_id` value makes this structural.
 The broker mints `org_id` from the upstream identity provider binding. No upstream
 identity provider sets `org_id`. This stops a tenant from faking an organization.
 
-### AI Grid claim scope
+### Organization claim scope
 
-The `org_id`, `org_name`, and `roles` claims apply only to AI Grid configuration.
-Vanilla RHOAI has no AI Grid organizations. It operates at the `AITenant` level.
-It must not consume these claims. In vanilla RHOAI, access decisions continue to
-use only the `groups` claim.
+The `org_id`, `org_name`, and `roles` claims apply to OIDC identities that
+present the organization claim shape. AI Grid requires this shape. Vanilla RHOAI
+can consume it when the configured OIDC issuer mints it. A vanilla token without
+`org_id` remains at the `AITenant` level, and access decisions use only the
+`groups` claim.
 
 ### Organization claim
 
 Each token carries one organization:
 
-* `org_id`: the stable AI Grid organization identifier.
+* `org_id`: the stable organization identifier.
 * `org_name`: an optional display name.
 * `roles`: the user's roles in that organization.
 
