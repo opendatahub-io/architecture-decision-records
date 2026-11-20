@@ -57,6 +57,7 @@ The pipeline owns the curated backbone sweep and leaderboard. Each leaderboard r
 * Arbitrary directory layouts, archives, HTTP URLs, or data embedded directly in pipeline parameters.
 * A general-purpose experiment/HPO platform for every AutoMM model or model zoo.
 * Multi-GPU or distributed training in the initial release.
+* Integration with Training as a Service (TaaS) in the initial release.
 * Automatically registering or deploying a model as a training-pipeline step.
 * Guaranteeing that a predictor trained on one AutoGluon/PyTorch/CUDA combination loads in an unpinned, arbitrary runtime.
 
