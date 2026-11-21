@@ -6,39 +6,39 @@
 | Scope          | model-serving, MaaS consumer portal, usage dashboard |
 | Status         | Draft |
 | Authors        | Lindani Phiri, Kevin Howell |
-| Depends on     | [ADR-0007](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md) |
-| Amends         | ADR-0007 organization claim scope, pending approval |
+| Depends on     | [ODH-ADR-MS-0007](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md) |
+| Amends         | [ODH-ADR-MS-0007 organization claim scope](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md), pending approval |
 | Superseded by: | N/A |
 | Tickets        | RHAI-10635, RHAI-8074 |
-| Other docs:    | [ADR-0007](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md), [ADR-0008](ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md) |
+| Other docs:    | [ODH-ADR-MS-0007](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md), [ODH-ADR-MS-0008](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md) |
 
 ## What
 
-The target design uses shared MaaS identity middleware to validate OIDC and Kubernetes credentials.
-That middleware creates a common `X-MaaS-Identity` representation.
-The middleware in `identity.go` makes this identity reusable across MaaS handlers and forwards it to `maas-usage-proxy`.
-The usage proxy enforces usage boundaries for both identity sources and reviews Kubernetes tenant permissions.
-The first release can use equivalent trusted middleware while the shared implementation is completed later.
+Current usage-log access requires Kubernetes authentication.
+This ADR extends the ODH-ADR-MS-0008 consumer portal for AI Grid and standard RHOAI consumer users.
+Those users can access usage logs through OIDC without Kubernetes accounts.
+It keeps a separate Kubernetes route for users who already have Kubernetes access.
 
-Kubernetes-authenticated `AITenant` admins see tenant-wide usage, OIDC organization admins see organization-wide usage, and ordinary users see personal usage.
-The release supports the consumer portal through an OIDC route and a separate Kubernetes route.
+Authorization follows the authenticated caller.
+Kubernetes-authenticated `AITenant` admins see tenant-wide usage.
+OIDC organization admins see organization-wide usage.
+Ordinary users see personal usage.
 An `AITenant` is MaaS's top-level access boundary.
 
 ## Why
 
+Both AI Grid and standard RHOAI consumer users need usage-log access when they authenticate through OIDC.
+The current Kubernetes requirement blocks that access for users who do not have Kubernetes accounts.
+ODH-ADR-MS-0008 already gives those users a consumer portal route.
+Building on that route avoids creating Kubernetes accounts only for usage-log access.
+
+The separate Kubernetes route preserves access for existing Kubernetes users.
+It also preserves the Kubernetes-authenticated `AITenant` Admin view.
+This route remains useful when operators manage tenants through Kubernetes RBAC.
+
 OIDC and Kubernetes identities supply different information.
-An OIDC token can supply organization membership through the ADR-0007 token shape.
-An organization requirement must not block Kubernetes users or OIDC users without that shape.
-The Kubernetes route lets existing Kubernetes users access the consumer portal without onboarding them to an external OIDC identity provider.
+The authorization model supports both without forcing one identity source on every deployment.
 Legacy standard-RHOAI OIDC configurations that provide only username and groups, without `org_id`, remain supported.
-
-Usage records need consistent ownership across producers and queries.
-OIDC ownership uses issuer and subject, while this release uses username-based Kubernetes ownership with the limitations below.
-Readable names make historical records understandable after resources disappear.
-Both browser entry points and direct APIs need the same access boundaries.
-
-Shared middleware is desired because it gives MaaS handlers one authenticated identity representation for OIDC and Kubernetes callers.
-The usage proxy applies the same authorization rules across browser routes and direct APIs.
 
 ## Goals
 
@@ -71,20 +71,20 @@ The usage proxy applies the same authorization rules across browser routes and d
 
 Trusted deployment configuration selects AI Grid or standard RHOAI.
 Token claims do not select the deployment mode.
-Standard RHOAI activates organization permissions only when an OIDC token presents the complete ADR-0007 organization shape.
+Standard RHOAI activates organization permissions only when an OIDC token presents the complete ODH-ADR-MS-0007 organization shape.
 It does not create an artificial organization for identities without that shape.
 
 | Deployment | Authentication | Available scopes |
 | --- | --- | --- |
 | AI Grid organization access | OIDC | Organization and user |
 | AI Grid organization access | OpenShift/Kubernetes | Tenant and user |
-| Standard RHOAI | OIDC with ADR-0007 organization shape | Organization and user |
+| Standard RHOAI | OIDC with ODH-ADR-MS-0007 organization shape | Organization and user |
 | Standard RHOAI | OIDC without organization shape | User |
 | Standard RHOAI | OpenShift/Kubernetes | Tenant and user |
 
 #### Consumer portal OIDC route
 
-The consumer portal follows ADR-0008 and uses the tenant's MaaS `Gateway` and configured authentication mode.
+The consumer portal follows ODH-ADR-MS-0008 and uses the tenant's MaaS `Gateway` and configured authentication mode.
 The initial portal serves only the default `AITenant`.
 The authorization model applies to any `AITenant`, and AI Grid initially permits one organization per user.
 
@@ -129,7 +129,7 @@ flowchart LR
 Both browser routes share the UI BFF, trusted identity middleware, and usage proxy.
 The target design replaces route-specific middleware with the shared middleware.
 The proxy applies the same ownership and scope semantics after authentication.
-The separate UI mount is an additional entry point, not a replacement for the portal layout in ADR-0008.
+The separate UI mount is an additional entry point, not a replacement for the portal layout in ODH-ADR-MS-0008.
 Existing Provider Admin routes remain outside this request path.
 
 ### Roles and current authority
@@ -171,7 +171,7 @@ The middleware rejects any request that still contains identity fields for both 
 
 The middleware converts both token types into one common `X-MaaS-Identity` representation.
 It carries the authentication source, caller identity, verified groups, and applicable organization membership and roles.
-OIDC identity follows ADR-0007's issuer, subject, and organization semantics.
+OIDC identity follows ODH-ADR-MS-0007's issuer, subject, and organization semantics.
 The middleware makes this identity available to MaaS handlers and forwards it to the usage proxy.
 The detailed payload fields and serialization remain implementation choices within this common contract.
 
@@ -179,7 +179,7 @@ The middleware removes supplied copies of `X-MaaS-Identity` and constructs a new
 The usage proxy accepts that value only through the trusted middleware path and makes sure that its structure and source are valid.
 It uses the authenticated identity without repeating token validation and performs its own authorization decisions.
 Other MaaS handlers can reuse the same middleware and identity representation while retaining their own permission rules.
-This ADR amends ADR-0007's organization claim scope for usage authorization.
+This ADR amends ODH-ADR-MS-0007's organization claim scope for usage authorization.
 
 #### Kubernetes tenant permission review
 
@@ -218,12 +218,12 @@ An organization role never grants `AITenant` administration or expands inference
 | User | Personal usage within the available boundary | Valid tenant authentication; OIDC callers with an organization additionally require current organization membership |
 
 In standard RHOAI, ordinary users need no separate MaaS membership assignment after they pass the `AITenant` authentication policy.
-If a standard RHOAI OIDC token presents the ADR-0007 organization shape, organization authority follows that verified shape.
+If a standard RHOAI OIDC token presents the ODH-ADR-MS-0007 organization shape, organization authority follows that verified shape.
 Kubernetes `ServiceAccount` identities use the same personal scope and require explicit tenant RBAC permissions for tenant-wide access.
 `AITenant` Admin and Provider Admin remain distinct roles with separate interfaces.
 
-This decision amends ADR-0007's organization claim scope and replaces its subscription-limited observability visibility for this dashboard after approval.
-ADR-0007 continues to govern its other organization administration and inference permissions.
+This decision amends ODH-ADR-MS-0007's organization claim scope and replaces its subscription-limited observability visibility for this dashboard after approval.
+ODH-ADR-MS-0007 continues to govern its other organization administration and inference permissions.
 The usage proxy does not infer organization administration from a group name.
 
 ### Kubernetes request processing
@@ -300,15 +300,15 @@ An invalid boolean value returns HTTP 400.
 | --- | --- | --- | --- |
 | Standard RHOAI, `user` | OIDC without organization shape | User | Valid tenant authentication |
 | Standard RHOAI, `user` | Kubernetes | User | Valid tenant authentication |
-| Standard RHOAI, `user` | OIDC with ADR-0007 organization shape | User | Current member of the requested organization |
-| Standard RHOAI, `organization` | OIDC with ADR-0007 organization shape | Organization Admin | Verified `admins` role |
+| Standard RHOAI, `user` | OIDC with ODH-ADR-MS-0007 organization shape | User | Current member of the requested organization |
+| Standard RHOAI, `organization` | OIDC with ODH-ADR-MS-0007 organization shape | Organization Admin | Verified `admins` role |
 | Standard RHOAI, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review |
 | AI Grid, `user` | OIDC | User | Current member of the requested organization |
 | AI Grid, `user` | Kubernetes | User | Valid tenant authentication |
 | AI Grid, `organization` | OIDC | Organization Admin | Verified `admins` role |
 | AI Grid, `tenant` | Kubernetes | `AITenant` Admin | Tenant-admin review |
 
-Standard RHOAI grants organization scope only through the complete ADR-0007 OIDC shape.
+Standard RHOAI grants organization scope only through the complete ODH-ADR-MS-0007 OIDC shape.
 An incomplete organization claim grants no organization visibility.
 
 #### Required matchers
@@ -392,7 +392,7 @@ Internal service credentials grant backend access without granting callers acces
 Tenant and organization authority remain distinct.
 Tenant scope is available only to Kubernetes callers in this release.
 Organization scope is available only to OIDC callers with the verified organization shape in this release.
-The standard RHOAI mode activates organization access only through the complete ADR-0007 OIDC shape.
+The standard RHOAI mode activates organization access only through the complete ODH-ADR-MS-0007 OIDC shape.
 AI Grid organization onboarding creates no Kubernetes identities or per-user `RoleBinding` resources.
 
 Display names describe records and never authorize access.
@@ -435,10 +435,11 @@ Internal service destinations and identity forwarding require operator-controlle
 
 ## References
 
-- [ADR-0007: shared OIDC identity contract](ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
-- [ADR-0008: consumer portal gateway layout](ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
+- [ODH-ADR-MS-0007: shared OIDC identity contract](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0007-ai-grid-shared-oidc-identity-contract.md)
+- [ODH-ADR-MS-0008: consumer portal gateway layout](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/model-serving/ODH-ADR-MS-0008-maas-consumer-portal-oidc-gateway-layout.md)
 - [ADR-MAAS-0001: logs-based showback](https://github.com/opendatahub-io/architecture-decision-records/blob/main/architecture-decision-records/models-as-a-service/ODH-ADR-MAAS-0001-logs-based-showback.md)
 - [RHAI-10635](https://redhat.atlassian.net/browse/RHAI-10635)
+- [RHAI-10088](https://redhat.atlassian.net/browse/RHAI-10088)
 - [RHAI-8074](https://redhat.atlassian.net/browse/RHAI-8074?focusedCommentId=19101141)
 - [RHAISTRAT-2883](https://redhat.atlassian.net/browse/RHAISTRAT-2883)
 - [Kubernetes `TokenReview` types](https://github.com/kubernetes/api/blob/master/authentication/v1/types.go)
