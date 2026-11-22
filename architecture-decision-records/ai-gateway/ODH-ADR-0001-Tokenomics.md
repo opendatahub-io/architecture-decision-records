@@ -1,4 +1,4 @@
-# Open Data Hub - AI Gateway Tokenomics and Budget Service
+# Open Data Hub - AI Gateway Tokenomics and Metering Service
 
 <!-- copy and paste this template to start authoring your own ADR -->
 <!-- for the Status of new ADRs, please use Approved, since it will be approved by the time it is merged -->
@@ -9,7 +9,7 @@
 | Date           | insert date |
 | Scope          | |
 | Status         | Approved |
-| Authors        | Marius Danciu |
+| Authors        | Marius Danciu, Aslak Knutsen, Daniele Zonca |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | |
@@ -25,10 +25,10 @@ Usage metering and budget enforcement is a major feature of AI Gateway and a ver
 
 ## Goals
 
-* Define the architecture for the Budget Service
-* Define the Budget Service APIs
-* Define the contract between Praxis and the Budget Service for looking up the budget and quota status of a request's identity. Praxis asks with the identity it already resolved and receives an admission state; it does not evaluate policies, compute cost, or read counters itself.
-* Deliver that lookup as a crate the Budget Service publishes, so Praxis depends on the lookup API and not on how or where the status is stored.
+* Define the architecture for the Metering Service
+* Define the Metering Service APIs
+* Define the contract between Praxis and the Metering Service for looking up the budget and quota status of a request's identity. Praxis asks with the identity it already resolved and receives an admission state; it does not evaluate policies, compute cost, or read counters itself.
+* Deliver that lookup as a crate the Metering Service publishes, so Praxis depends on the lookup API and not on how or where the status is stored.
 * Define end-to-end flows
 * Define the high-level integration with third-party solutions like M360 or OpenMeter, but the actual integration details may be subject to different ADRs in later phases
 * This is meant to be a usage metering solution as part of MaaS that works out of the box without bringing in new dependencies (such as Kafka) that customers need to install and manage. Customers don't need to perform extra installation steps in order to have usage metering and budget quota enforcement enabled.
@@ -44,8 +44,8 @@ Usage metering and budget enforcement is a major feature of AI Gateway and a ver
     * auditability and disputes
 * This is not a generic competing solution for M360 or OpenMeter
 * Usage for other resource types apart from tokens, e.g., GPUs. However, the design is flexible so we can address other types of resources in the future.
-* The Budget Service storage does not represent the SoR for usage metering. The document will address this separation in the next sections.
-* Pacing (spend-rate policies such as daily sub-limits derived from a monthly budget). The architecture supports it in the Budget Service without changes to Praxis or the object model, but it is out of scope for the initial implementation.
+* The Metering Service storage does not represent the SoR for usage metering. The document will address this separation in the next sections.
+* Pacing (spend-rate policies such as daily sub-limits derived from a monthly budget). The architecture supports it in the Metering Service without changes to Praxis or the object model, but it is out of scope for the initial implementation.
 * Multiple tenants per gateway. The initial implementation supports one tenant per gateway. Multi-tenant gateways may be considered in later releases.
 * Distributed tokenomics across multiple clusters. This ADR assumes a single-cluster deployment. Federated budget enforcement, cross-cluster balance synchronization, and multi-cluster usage aggregation are not addressed.
 
@@ -75,7 +75,7 @@ flowchart LR
  subgraph budget_system["Budget System"]
        direction TB
        postgres[("PostgreSQL")]
-        budget_service["Budget Service"]
+        metering_service["Metering Service"]
  end
 
 
@@ -83,22 +83,22 @@ flowchart LR
     aigc -- manages --> budget_system
     praxis -- read admit flag --> redis
     praxis -. OTEL Logs .-> otel_collector
-    budget_service -- SQL --> postgres
+    metering_service -- SQL --> postgres
     client["Client"] -- inference --> praxis
 
-    otel_collector -- CloudEvents --> budget_service
+    otel_collector -- CloudEvents --> metering_service
     otel_collector -- OTEL Log --> loki
-    budget_service -- write admit flag --> redis
-    budget_service -- metering APIs --> byom["Bring Your Own<br>Metering"]
+    metering_service -- write admit flag --> redis
+    metering_service -- metering APIs --> byom["Bring Your Own<br>Metering"]
 ```
 
 Notes:
 - The Praxis pod runs Praxis and the OTEL Collector; no budget component runs alongside the proxy.
-- Praxis is the PEP (Policy Enforcement Point), and its entire budget input is an admission flag maintained in Redis by the Budget Service. Policy resolution, rate matching, cost computation, balance updates, and period renewal all happen in the Budget Service.
-- Praxis reads that flag through a crate published by the Budget Service. The crate owns the Redis key layout, value encoding, and key escaping, so no Praxis code names a key, and a layout change does not require a Praxis release.
-- Redis/Valkey holds the admission flags Praxis reads, plus the balance counters the Budget Service derives those flags from. The Budget Service is the only writer; Praxis holds a read-only credential. Configuration objects (policies, rates, budget definitions) are never stored in Redis.
-- Accounting is asynchronous: Praxis emits a usage event after the response, and the Budget Service prices and persists it. Enforcement therefore reflects state as of the last accounted event rather than the current request (see [Admission Contract](#admission-contract)).
-- To limit the number of dependencies, this proposal does not assume the existence of a pub/sub system such as Kafka. However, adding one later can be considered as a mechanism to control back pressure and provide ordering for deduplication. The OTEL Collector could also be a candidate for deduplication, but this ADR does not prescribe an OTEL Collector design. We assume that an existing OTEL Collector is used and that it is at least capable of receiving the usage events and propagating them to both the SoR as OTEL logs and to the Budget Service as CloudEvents.
+- Praxis is the PEP (Policy Enforcement Point), and its entire budget input is an admission flag maintained in Redis by the Metering Service. Policy resolution, rate matching, cost computation, balance updates, and period renewal all happen in the Metering Service.
+- Praxis reads that flag through a crate published by the Metering Service. The crate owns the Redis key layout, value encoding, and key escaping, so no Praxis code names a key, and a layout change does not require a Praxis release.
+- Redis/Valkey holds the admission flags Praxis reads, plus the balance counters the Metering Service derives those flags from. The Metering Service is the only writer; Praxis holds a read-only credential. Configuration objects (policies, rates, budget definitions) are never stored in Redis.
+- Accounting is asynchronous: Praxis emits a usage event after the response, and the Metering Service prices and persists it. Enforcement therefore reflects state as of the last accounted event rather than the current request (see [Admission Contract](#admission-contract)).
+- To limit the number of dependencies, this proposal does not assume the existence of a pub/sub system such as Kafka. However, adding one later can be considered as a mechanism to control back pressure and provide ordering for deduplication. The OTEL Collector could also be a candidate for deduplication, but this ADR does not prescribe an OTEL Collector design. We assume that an existing OTEL Collector is used and that it is at least capable of receiving the usage events and propagating them to both the SoR as OTEL logs and to the Metering Service as CloudEvents.
 
 #### Inference Flow (admission and accounting)
 
@@ -108,7 +108,7 @@ sequenceDiagram
     participant Praxis
     participant Redis
     participant OTELCollector as OTEL Collector
-    participant BudgetService as Budget Service
+    participant MeteringService as Metering Service
     participant Postgres
 
     Client->>Praxis: inference request
@@ -120,11 +120,11 @@ sequenceDiagram
         Note over Praxis: model responds
         Praxis-->>Client: inference response
         Praxis-->>OTELCollector: OTEL Log (usage)
-        OTELCollector->>BudgetService: CloudEvent (usage)
-        Note over BudgetService: Price against rate valid<br>at event.time
-        BudgetService->>Postgres: persist ledger rows
-        Note over BudgetService: Recompute admission flags<br>for affected identities
-        BudgetService->>Redis: SET flag (only on change)
+        OTELCollector->>MeteringService: CloudEvent (usage)
+        Note over MeteringService: Price against rate valid<br>at event.time
+        MeteringService->>Postgres: persist ledger rows
+        Note over MeteringService: Recompute admission flags<br>for affected identities
+        MeteringService->>Redis: SET flag (only on change)
         OTELCollector-->>OTELCollector: forward to Loki
     else any identity denies (hard enforcement)
         Praxis-->>Client: 429 Too Many Requests
@@ -132,7 +132,7 @@ sequenceDiagram
         Note over Praxis: set x-praxis-over-budget,<br>dispatch to model
         Note over Praxis: model responds
         Praxis-->>Client: inference response<br>+ x-praxis-over-budget
-        Note over Praxis,BudgetService: usage is emitted<br>and accounted
+        Note over Praxis,MeteringService: usage is emitted<br>and accounted
     end
 ```
 
@@ -143,17 +143,17 @@ This section describes how control plane settings reach the data plane.
 ```mermaid
 sequenceDiagram
     participant Operator
-    participant BudgetService as Budget Service
+    participant MeteringService as Metering Service
     participant Postgres
     participant Redis
     participant Praxis as Praxis (any pod)
 
-    Operator->>BudgetService: PUT /api/v1/budgets/{id}<br>(X-Tenant: acme-corp)
-    BudgetService->>Postgres: persist updated budget
-    Postgres-->>BudgetService: ok
-    Note over BudgetService: recompute admission flags<br>for affected identities
-    BudgetService->>Redis: SET {tenant}:admit:{kind}:{name}
-    BudgetService-->>Operator: 200 OK
+    Operator->>MeteringService: PUT /api/v1/budgets/{id}<br>(X-Tenant: acme-corp)
+    MeteringService->>Postgres: persist updated budget
+    Postgres-->>MeteringService: ok
+    Note over MeteringService: recompute admission flags<br>for affected identities
+    MeteringService->>Redis: SET {tenant}:admit:{kind}:{name}
+    MeteringService-->>Operator: 200 OK
 
     Praxis->>Redis: admission read via crate (per request)
     Redis-->>Praxis: current states
@@ -161,17 +161,17 @@ sequenceDiagram
 
 ##### Admission State Propagation
 
-The admission flag is derived state. The Budget Service computes it from the durable ledger and configuration, and writes it to Redis. No component in the Praxis pod fetches or caches budget configuration.
+The admission flag is derived state. The Metering Service computes it from the durable ledger and configuration, and writes it to Redis. No component in the Praxis pod fetches or caches budget configuration.
 
 Each gateway serves exactly one tenant and may have multiple Praxis pods. Because the flags live in Redis, every Praxis replica reads the same state without any coordination between pods.
 
-The Budget Service republishes the full flag set for its tenants on startup and after any Redis reconnection. This is required because an empty Redis and a tenant with no budgets are indistinguishable to a reader — both return absent keys. Without the republish, a flushed Redis would quietly mean "unlimited" until each identity happened to produce usage again.
+The Metering Service republishes the full flag set for its tenants on startup and after any Redis reconnection. This is required because an empty Redis and a tenant with no budgets are indistinguishable to a reader — both return absent keys. Without the republish, a flushed Redis would quietly mean "unlimited" until each identity happened to produce usage again.
 
 ##### How state flows
 
-1. An operator creates or updates a rate, budget, or policy via the Budget Service REST API, or a usage event arrives and changes consumption
-2. The Budget Service persists the change and recomputes the admission flag for every identity object affected by it
-3. The Budget Service writes the recomputed flags to Redis. Praxis observes them on its next request; it holds no local state to invalidate
+1. An operator creates or updates a rate, budget, or policy via the Metering Service REST API, or a usage event arrives and changes consumption
+2. The Metering Service persists the change and recomputes the admission flag for every identity object affected by it
+3. The Metering Service writes the recomputed flags to Redis. Praxis observes them on its next request; it holds no local state to invalidate
 
 On startup, Praxis needs no budget initialization at all. It reads flags per request and treats absent keys as "no budget applies".
 
@@ -179,32 +179,32 @@ On startup, Praxis needs no budget initialization at all. It reads flags per req
 
 | Store | Data | Role |
 |---|---|---|
-| Redis | Admission flags, balance counters | Flags read by Praxis at admission and the balances the Budget Service derives them from. Written only by the Budget Service |
-| Budget Service | Policies, rates, budgets, rate history, consumption | Authoritative source for all budget state. Serves the management and metering APIs and owns the accounting loop |
-| Postgres | Definitions, usage ledger, rate history | Durable store behind the Budget Service (or the provider's own store in federated mode) |
+| Redis | Admission flags, balance counters | Flags read by Praxis at admission and the balances the Metering Service derives them from. Written only by the Metering Service |
+| Metering Service | Policies, rates, budgets, rate history, consumption | Authoritative source for all budget state. Serves the management and metering APIs and owns the accounting loop |
+| Postgres | Definitions, usage ledger, rate history | Durable store behind the Metering Service (or the provider's own store in federated mode) |
 
 ##### Consumption data
 
-Consumption data is the only accounting input. Praxis emits an OTEL Log after each response, the OTEL Collector transforms it into a CloudEvent, and the Budget Service prices it, persists it to the durable backend, and updates the admission flags (see [Consumption Emission](#consumption-emission)). Because the same pass prices, persists, and derives the flag, the ledger and the admission state cannot disagree.
+Consumption data is the only accounting input. Praxis emits an OTEL Log after each response, the OTEL Collector transforms it into a CloudEvent, and the Metering Service prices it, persists it to the durable backend, and updates the admission flags (see [Consumption Emission](#consumption-emission)). Because the same pass prices, persists, and derives the flag, the ledger and the admission state cannot disagree.
 
 ##### Failure Modes
 
 | Scenario | Behavior |
 |---|---|
-| Redis unavailable | Praxis cannot read flags and applies its configured fail-open or fail-closed behavior (see [Open Questions](#open-questions)). Accounting is unaffected — the Budget Service keeps ingesting. On reconnect it republishes the full flag set, including after a data loss |
-| Budget Service unavailable | Flags freeze at their last values and usage events buffer in the collector. A prolonged outage can both admit traffic that should now be denied and deny traffic whose budget was since topped up. State converges when the service recovers and republishes |
+| Redis unavailable | Praxis cannot read flags and applies its configured fail-open or fail-closed behavior (see [Open Questions](#open-questions)). Accounting is unaffected — the Metering Service keeps ingesting. On reconnect it republishes the full flag set, including after a data loss |
+| Metering Service unavailable | Flags freeze at their last values and usage events buffer in the collector. A prolonged outage can both admit traffic that should now be denied and deny traffic whose budget was since topped up. State converges when the service recovers and republishes |
 | Usage event lost | Balance and flags under-count that request until reconciliation rebuilds them from the ledger. Enforcement is wrong in the permissive direction until then |
 
 
 #### Multi-Tenancy
 
-The Budget Service is a single shared instance serving all tenants (soft multi-tenancy). All data is tenant-scoped and every management API request must carry the `X-Tenant` header to identify which tenant's budgets, rates, or policies are being managed.
+The Metering Service is a single shared instance serving all tenants (soft multi-tenancy). All data is tenant-scoped and every management API request must carry the `X-Tenant` header to identify which tenant's budgets, rates, or policies are being managed.
 
 At the gateway level, each gateway serves exactly one tenant. The Praxis read credential is scoped to that tenant: it can read only `{tenant}:admit:*` and nothing else. Because Praxis never writes budget state, the data-plane identity is read-only, which makes cross-tenant tampering a configuration error rather than an exploitable path.
 
 | Component | Tenancy model |
 |---|---|
-| Budget Service (central) | Single instance, soft multi-tenancy. All API calls scoped by `X-Tenant` header |
+| Metering Service (central) | Single instance, soft multi-tenancy. All API calls scoped by `X-Tenant` header |
 | Gateway (Praxis) | One tenant per gateway. Holds a read-only Redis credential limited to that tenant's `admit:*` keys |
 | Redis | Keys namespaced by tenant ID, with per-tenant ACLs scoping which keys each credential may touch |
 | Postgres | All tables include a tenant ID column |
@@ -276,7 +276,7 @@ If `overage` is absent, enforcement is **hard** — requests are rejected with 4
 | `organization` | `rate_ref` (optional) | Fall back to the organization-level budget, optionally at a different rate |
 | `tenant` | `rate_ref` (optional) | Fall back to the tenant-level budget, optionally at a different rate |
 
-**Ambiguity warning:** A user can belong to multiple groups and organizations. When overage is set to `group` or `organization`, the system may find multiple matching policies at that level. Since group and organization membership is only known at request time (via SelfTokenReview), this ambiguity cannot be validated at policy creation time. When the usage event is accounted, if multiple policies match, the Budget Service applies the most restrictive one and emits a warning event so the operator can resolve it by creating a direct user policy.
+**Ambiguity warning:** A user can belong to multiple groups and organizations. When overage is set to `group` or `organization`, the system may find multiple matching policies at that level. Since group and organization membership is only known at request time (via SelfTokenReview), this ambiguity cannot be validated at policy creation time. When the usage event is accounted, if multiple policies match, the Metering Service applies the most restrictive one and emits a warning event so the operator can resolve it by creating a direct user policy.
 
 
 #### Budget Units (BU) as the Accounting Abstraction
@@ -355,7 +355,7 @@ rates:
 
 With this rate table, the formula `sum(usage[key] * rate.costs[key])` reduces to `sum(usage[key] * 1)` = total tokens consumed. A Budget with `limit: 1000000` and a BudgetPolicy referencing `rate_ref: token-counting` enforces a 1,000,000 token cap.
 
-A subject can have **two policies**: one referencing a weighted rate table (e.g., `standard`) against a BU budget for cost control, and one referencing a unit-cost rate table (e.g., `token-counting`) against a token budget for capacity control. The Budget Service charges both and folds both into the same identity's admission flag using the most restrictive outcome, so Praxis does not need to know that two budgets exist.
+A subject can have **two policies**: one referencing a weighted rate table (e.g., `standard`) against a BU budget for cost control, and one referencing a unit-cost rate table (e.g., `token-counting`) against a token budget for capacity control. The Metering Service charges both and folds both into the same identity's admission flag using the most restrictive outcome, so Praxis does not need to know that two budgets exist.
 
 This means that token limits as defined in MaaSSubscription today can be expressed entirely within the existing budget object model — the same balances, flag-based admission, and period renewal logic apply without modification.
 
@@ -376,22 +376,22 @@ The key advantage over MaaSSubscription is per-subject flexibility. When subject
 
 #### The Problem
 
-Praxis needs an admission decision inside the request path, but that decision depends on policy resolution, rate matching, and cost computation — exactly the logic the budget system owns. The contract has to answer the question without moving that logic into the proxy, and without making inference depend on the Budget Service's availability.
+Praxis needs an admission decision inside the request path, but that decision depends on policy resolution, rate matching, and cost computation — exactly the logic the budget system owns. The contract has to answer the question without moving that logic into the proxy, and without making inference depend on the Metering Service's availability.
 
 #### The Contract
 
-The only synchronous interface between Praxis and the Budget Service is the admission read, exposed by a crate the Budget Service publishes. Praxis passes a typed identity and receives an admission state; the crate owns the storage layout, value encoding, and key escaping, so Praxis contains no key names and a layout change does not reach it. Usage flows the other way, as events.
+The only synchronous interface between Praxis and the Metering Service is the admission read, exposed by a crate the Metering Service publishes. Praxis passes a typed identity and receives an admission state; the crate owns the storage layout, value encoding, and key escaping, so Praxis contains no key names and a layout change does not reach it. Usage flows the other way, as events.
 
 The crate models one admission flag per identity object, aggregated across every budget that applies to it:
 
 | Object | Value | Written by | Read by |
 |---|---|---|---|
-| `user` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
-| `group` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
-| `organization` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
-| `tenant` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `user` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
+| `group` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
+| `organization` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
+| `tenant` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
 
-There is one flag per identity object, not one per user. That matters because group and organization membership is only known at request time: the Budget Service never has to enumerate members, and Praxis already holds the memberships it needs for routing and authorization.
+There is one flag per identity object, not one per user. That matters because group and organization membership is only known at request time: the Metering Service never has to enumerate members, and Praxis already holds the memberships it needs for routing and authorization.
 
 Per request, Praxis:
 
@@ -406,7 +406,7 @@ That is the entire contract. Praxis performs no policy resolution, no rate looku
 
 #### Overshoot
 
-Because accounting is asynchronous, a flag reflects the state as of the last accounted event. Between the moment a budget is exhausted and the moment the Budget Service processes the event that exhausted it, further requests are admitted. The width of that window is the usage-event pipeline latency — collector batch interval plus processing — not the duration of a single request.
+Because accounting is asynchronous, a flag reflects the state as of the last accounted event. Between the moment a budget is exhausted and the moment the Metering Service processes the event that exhausted it, further requests are admitted. The width of that window is the usage-event pipeline latency — collector batch interval plus processing — not the duration of a single request.
 
 This is accepted deliberately: the metering plane is a cost-control mechanism, not a hard security boundary, and the engineering margin is expressed as an accepted overshoot per budget rather than as a synchronous guarantee. Three things bound it:
 
@@ -418,13 +418,13 @@ This is accepted deliberately: the metering plane is a cost-control mechanism, n
 
 **Latency.** One local-cluster Redis read, with no budget logic in the proxy.
 
-**Availability.** Praxis depends on Redis for a single read. A Budget Service outage delays flag changes but does not affect admission.
+**Availability.** Praxis depends on Redis for a single read. A Metering Service outage delays flag changes but does not affect admission.
 
 **Fleet coherence.** Every Praxis replica reads the same flags, so scaling the gateway adds readers, not writers, and each replica keeps no budget state.
 
 **Single writer.** All budget state has one owner, so balances and flags cannot drift apart.
 
-**Cost stays private.** The contract carries facts and a state, never prices. The Budget Service can change how it rates usage — tiers, volume discounts, provider-specific pricing — without Praxis or the flag schema changing.
+**Cost stays private.** The contract carries facts and a state, never prices. The Metering Service can change how it rates usage — tiers, volume discounts, provider-specific pricing — without Praxis or the flag schema changing.
 
 #### What Praxis Needs to Know
 
@@ -450,30 +450,30 @@ The `identity` object contains the full context needed for both admission and po
 | `organization` | SelfTokenReview or OIDC token claims | Organization the user belongs to. Only known at request time |
 | `tenant` | Gateway configuration | The tenant served by this gateway. Fixed per gateway — not resolved per request |
 
-Identity resolution happens entirely within Praxis. Praxis passes the resolved identities to the admission read, and the Budget Service receives the same identities inside the usage event; neither component performs authentication or identity lookup on the other's behalf. The read set is exactly the identity set: one flag per user, group, organization, and tenant carried by the request.
+Identity resolution happens entirely within Praxis. Praxis passes the resolved identities to the admission read, and the Metering Service receives the same identities inside the usage event; neither component performs authentication or identity lookup on the other's behalf. The read set is exactly the identity set: one flag per user, group, organization, and tenant carried by the request.
 
 The fact that group and organization membership is only known at request time has implications for policy validation and ambiguity resolution (see [Validation Rules](#validation-rules)).
 
 
 ### Admission and Accounting Flow
 
-The budget flow has two phases: admission before dispatch (Praxis, via the flag) and accounting after completion (Budget Service, from the usage event). Policy resolution happens once, inside the Budget Service, during accounting.
+The budget flow has two phases: admission before dispatch (Praxis, via the flag) and accounting after completion (Metering Service, from the usage event). Policy resolution happens once, inside the Metering Service, during accounting.
 
 #### Policy Resolution
 
-When a usage event arrives, the Budget Service resolves the budgets it charges through the following chain:
+When a usage event arrives, the Metering Service resolves the budgets it charges through the following chain:
 
 1. **Identity → BudgetPolicies.** Match the subject's identity (user, groups, organization, tenant) against all policies' `subjects` lists. A user may match multiple policies — directly by name, via group/org membership, or via tenant. Precedence rules apply: most-specific subject kind wins (user > group > organization > tenant). Precedence is resolved **per budget**, so a more specific policy for one budget does not suppress a policy that governs a different budget. If multiple policies match at the same specificity level for the same budget, the most restrictive is applied and a warning is emitted (see [Validation Rules](#validation-rules)).
 
-2. **BudgetPolicy → Rate.** Each matched policy carries a `rate_ref`. The Budget Service looks up the corresponding Rate.
+2. **BudgetPolicy → Rate.** Each matched policy carries a `rate_ref`. The Metering Service looks up the corresponding Rate.
 
 3. **Resource → RateItem.** The event's resource keys (e.g., `model: "claude-sonnet-5-5"`, `provider: "anthropic"`) are matched against the Rate's `items` to find the applicable RateItem.
 
 4. **RateItem × Usage → BU cost.** The cost is computed as `sum(usage[key] * rateItem.costs[key])` for all keys present in the rate item's costs map.
 
-5. **BudgetPolicy → Budget → balance.** The policy's `budget_ref` identifies the Budget whose balance is charged. If that balance cannot absorb the charge and the policy declares a fallback overage, the charge moves to the fallback budget instead. The Budget Service then recomputes the admission flag for every identity object the charge touches, so the flag reflects the budget that actually absorbed it.
+5. **BudgetPolicy → Budget → balance.** The policy's `budget_ref` identifies the Budget whose balance is charged. If that balance cannot absorb the charge and the policy declares a fallback overage, the charge moves to the fallback budget instead. The Metering Service then recomputes the admission flag for every identity object the charge touches, so the flag reflects the budget that actually absorbed it.
 
-All five steps are internal to the Budget Service. None of them happen in Praxis, and none of them happen before the request is admitted.
+All five steps are internal to the Metering Service. None of them happen in Praxis, and none of them happen before the request is admitted.
 
 A single event may resolve to multiple policies pointing to different budgets (e.g., a BU budget and a token budget). Each budget is charged independently, and each affected identity's flag is recomputed independently.
 
@@ -483,7 +483,7 @@ Praxis resolves the request's identities and reads their flags. A `deny` from an
 
 #### Phase 2: Accounting (after the response)
 
-Praxis emits an OTEL Log with the actual usage. The OTEL Collector transforms it into a CloudEvent and delivers it to the Budget Service. The Budget Service:
+Praxis emits an OTEL Log with the actual usage. The OTEL Collector transforms it into a CloudEvent and delivers it to the Metering Service. The Metering Service:
 
 1. Prices the event against the rate version that was valid at `event.time`, so a rate change between the request and its ingestion cannot change what the request cost
 2. Appends the ledger rows for the request
@@ -492,7 +492,7 @@ Praxis emits an OTEL Log with the actual usage. The OTEL Collector transforms it
 
 Steps 2–4 are idempotent on the CloudEvent `id`, so a retried delivery cannot charge twice.
 
-Flags and ledger come out of the same accounting pass, so they cannot disagree. The Budget Service writes to Redis only when a balance or a flag changes (accounting, renewal, reconciliation).
+Flags and ledger come out of the same accounting pass, so they cannot disagree. The Metering Service writes to Redis only when a balance or a flag changes (accounting, renewal, reconciliation).
 
 #### Why No Reservation System
 
@@ -504,9 +504,9 @@ When the flag is `over`, Praxis sets `x-praxis-over-budget` on the upstream requ
 
 #### Overage Tracking and Period Carry-Forward
 
-When accounting drives a balance negative, the Budget Service keeps ingesting normally. The next recompute turns the affected identity's flag to `deny` (hard enforcement) or `over` (soft enforcement), so subsequent admissions respond accordingly. Where the policy declares a fallback overage, the charge moves to the fallback budget instead and the flag follows the fallback's remaining capacity. The Budget Service tracks the cumulative overage for each budget from the usage ledger.
+When accounting drives a balance negative, the Metering Service keeps ingesting normally. The next recompute turns the affected identity's flag to `deny` (hard enforcement) or `over` (soft enforcement), so subsequent admissions respond accordingly. Where the policy declares a fallback overage, the charge moves to the fallback budget instead and the flag follows the fallback's remaining capacity. The Metering Service tracks the cumulative overage for each budget from the usage ledger.
 
-At period renewal, the Budget Service resets the balance to the budget limit. If the BudgetPolicy has `deduct_overage` enabled, the Budget Service subtracts the previous period's overage from the new balance:
+At period renewal, the Metering Service resets the balance to the budget limit. If the BudgetPolicy has `deduct_overage` enabled, the Metering Service subtracts the previous period's overage from the new balance:
 
 ```
 new_balance = limit - previous_period_overage   (if deduct_overage is true)
@@ -520,15 +520,15 @@ This ensures that overspend in one period is not silently forgiven — it reduce
 | Scenario | Behavior |
 |---|---|
 | Redis unavailable at admission | Praxis cannot read flags and applies the configured fail-open or fail-closed behavior. Accounting is unaffected; flags are recomputed and republished on recovery |
-| Budget Service unavailable when a CloudEvent arrives | The collector retries delivery. Usage, balances, and flags are delayed together rather than split across two writers, so no state is correct while its counterpart is stale |
+| Metering Service unavailable when a CloudEvent arrives | The collector retries delivery. Usage, balances, and flags are delayed together rather than split across two writers, so no state is correct while its counterpart is stale |
 | Requests admitted between exhaustion and accounting | This is the accepted overshoot window. It is bounded by usage-event pipeline latency and recorded as overage in the ledger |
 | CloudEvent lost entirely | The balance, the flag, and the ledger all under-count the same request, so they stay mutually consistent. Reconciliation from the event pipeline's audit copy (Loki) can recover it |
 
 #### Event Deduplication
 
-The OTEL Collector may retry delivery of a CloudEvent if it does not receive a timely acknowledgement from the Budget Service (e.g., network timeout, pod restart). Without deduplication, a retried event would be charged twice and counted twice in reports and overage.
+The OTEL Collector may retry delivery of a CloudEvent if it does not receive a timely acknowledgement from the Metering Service (e.g., network timeout, pod restart). Without deduplication, a retried event would be charged twice and counted twice in reports and overage.
 
-The Budget Service uses the CloudEvent `id` field as an idempotency key. The `usage` table has a unique constraint on `(tenant_id, event_id, budget_ref)`. On receipt, for each matched budget:
+The Metering Service uses the CloudEvent `id` field as an idempotency key. The `usage` table has a unique constraint on `(tenant_id, event_id, budget_ref)`. On receipt, for each matched budget:
 
 1. Insert the usage row with `ON CONFLICT DO NOTHING`
 2. If zero rows were inserted — this budget's row is a duplicate; skip it, including its balance and flag updates
@@ -543,25 +543,25 @@ Redis and Postgres serve different roles in the budget system:
 | Layer | Store | Purpose |
 |---|---|---|
 | Admission (Praxis, read-only) | Redis | Precomputed admission flags, keyed by identity object |
-| Accounting state | Redis | Balance counters, from which the Budget Service derives the flags |
+| Accounting state | Redis | Balance counters, from which the Metering Service derives the flags |
 | Durable (default backend) | Postgres | Definitions, rate history, usage ledger, reconciliation |
 
-Redis holds only what the admission path needs, in a form that requires no budget logic to interpret. Configuration objects (policies, rates, budget definitions) are never stored there; they live in the durable backend behind the Budget Service.
+Redis holds only what the admission path needs, in a form that requires no budget logic to interpret. Configuration objects (policies, rates, budget definitions) are never stored there; they live in the durable backend behind the Metering Service.
 
 Postgres is the default durable backend because it is already supported and operated in RHOAI. For the usage ledger workload (append-only writes, time-range aggregation queries), Postgres is adequate at single-cluster scale — LLM inference throughput bounds the event rate to a level well within Postgres capabilities. Table partitioning by time range and BRIN indexes on timestamp columns keep query performance acceptable as the ledger grows.
 
-However, if usage volume or analytical query complexity outgrows Postgres, a columnar store such as ClickHouse would be a natural successor for the usage ledger — it offers superior compression, faster aggregation over high-cardinality dimensions, and built-in time-series partitioning. The Budget Service implementation must abstract the storage layer behind a trait boundary so that the durable backend can be replaced without affecting the rest of the system (admission flags, Redis balances, API contracts).
+However, if usage volume or analytical query complexity outgrows Postgres, a columnar store such as ClickHouse would be a natural successor for the usage ledger — it offers superior compression, faster aggregation over high-cardinality dimensions, and built-in time-series partitioning. The Metering Service implementation must abstract the storage layer behind an interface so that the durable backend can be replaced without affecting the rest of the system (admission flags, Redis balances, API contracts).
 
-When the Budget Service integrates with an external platform such as M360 or OpenMeter (see [Bring Your Own Metering](#bring-your-own-metering)), the external system can serve as the durable store instead of — or alongside — Postgres. Praxis is unaffected in that case: it reads the same flags from Redis no matter which provider produced them.
+When the Metering Service integrates with an external platform such as M360 or OpenMeter (see [Bring Your Own Metering](#bring-your-own-metering)), the external system can serve as the durable store instead of — or alongside — Postgres. Praxis is unaffected in that case: it reads the same flags from Redis no matter which provider produced them.
 
-Consumption data reaches the Budget Service via the OTEL pipeline. See the [Storage Schema](#storage-schema) section for details on the Postgres and Redis schemas.
+Consumption data reaches the Metering Service via the OTEL pipeline. See the [Storage Schema](#storage-schema) section for details on the Postgres and Redis schemas.
 
 Redis operations:
 
 - **Admit (Praxis, per request):** the admission crate reads the state for the request's identities. Read-only; Praxis has no write permission.
-- **Account (Budget Service, per event):** `DECRBY {tenant}:balance:{budget_id} <actual_bu_cost>` followed by `SET` on the flags that changed. The balance may go negative (overage).
-- **Renew (Budget Service, per period):** `SET {tenant}:balance:{budget_id} <new_balance>` — set balance to `limit`, or to `limit - previous_overage` when `deduct_overage` is enabled on the policy.
-- **Reconcile (Budget Service, on demand):** recompute balances from the ledger and republish the affected flags. Safe to run at any time because the Budget Service is the only writer of balances and flags.
+- **Account (Metering Service, per event):** `DECRBY {tenant}:balance:{budget_id} <actual_bu_cost>` followed by `SET` on the flags that changed. The balance may go negative (overage).
+- **Renew (Metering Service, per period):** `SET {tenant}:balance:{budget_id} <new_balance>` — set balance to `limit`, or to `limit - previous_overage` when `deduct_overage` is enabled on the policy.
+- **Reconcile (Metering Service, on demand):** recompute balances from the ledger and republish the affected flags. Safe to run at any time because the Metering Service is the only writer of balances and flags.
 
 
 ### Pacing
@@ -576,7 +576,7 @@ Pacing sits between rate limiting and budget enforcement:
 | **Pacing** | **Too much too soon?** | **No more than 10,000 BU/day from a 100,000 BU/month budget** |
 | Budget enforcement | Too much total? | 100,000 BU/month cap |
 
-Pacing is a policy decision that varies by use case: batch processing may want to burst, customer-facing apps need steady availability. The Budget Service is the natural place to enforce spend-rate policies — it can derive daily or hourly sub-limits from the period budget and fold them into the admission flag. Pacing stays entirely out of Praxis.
+Pacing is a policy decision that varies by use case: batch processing may want to burst, customer-facing apps need steady availability. The Metering Service is the natural place to enforce spend-rate policies — it can derive daily or hourly sub-limits from the period budget and fold them into the admission flag. Pacing stays entirely out of Praxis.
 
 Pacing is out of scope for the initial implementation, but the architecture supports it without changes to Praxis or the object model.
 
@@ -595,7 +595,7 @@ Pacing is out of scope for the initial implementation, but the architecture supp
 
 #### At accounting time
 
-These rules are evaluated by the Budget Service when it resolves the budgets charged for a usage event. Praxis never evaluates them, which is why they can change without touching the data plane.
+These rules are evaluated by the Metering Service when it resolves the budgets charged for a usage event. Praxis never evaluates them, which is why they can change without touching the data plane.
 
 | Rule | Description |
 |---|---|
@@ -605,7 +605,7 @@ These rules are evaluated by the Budget Service when it resolves the budgets cha
 
 ### API: REST
 
-The Budget Service exposes a REST API for managing rates, budgets, and budget policies. All endpoints require the `X-Tenant` header.
+The Metering Service exposes a REST API for managing rates, budgets, and budget policies. All endpoints require the `X-Tenant` header.
 
 > **Note:** The exact request and response payloads will be defined in a separate API specification document.
 
@@ -939,18 +939,18 @@ A tenant admin automatically has the RBAC permissions to manage these objects. F
 - rates
 - budgets
 - budget-policy 
-The api group for these resources is `budget.aigateway.opendatahub.io`
+The api group for these resources is `metering.aigateway.opendatahub.io`
 
 
 ### API: Admission Read
 
-The data-plane contract is a single read operation, provided by a crate the Budget Service publishes and Praxis links. Praxis passes an identity and receives the admission state; it never names a Redis key.
+The data-plane contract is a single read operation, provided by a crate the Metering Service publishes and Praxis links. Praxis passes an identity and receives the admission state; it never names a Redis key.
 
 #### The crate
 
 | Aspect | Contract |
 |---|---|
-| Ownership | Published and versioned by the Budget Service; linked by Praxis |
+| Ownership | Published and versioned by the Metering Service; linked by Praxis |
 | Direction | Read-only. There is no API that writes, expires, or deletes budget state |
 | Input | A typed identity: user, groups, organization, tenant |
 | Output | `allow`, `over`, or `deny`, plus a distinct error for a failed read |
@@ -965,17 +965,17 @@ The crate reads one admission flag per identity object, aggregated across every 
 
 | Object | Value | Written by | Read by |
 |---|---|---|---|
-| `user` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
-| `group` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
-| `organization` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
-| `tenant` | `allow` \| `over` \| `deny` | Budget Service | Praxis, through the crate |
+| `user` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
+| `group` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
+| `organization` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
+| `tenant` | `allow` \| `over` \| `deny` | Metering Service | Praxis, through the crate |
 
 Two rules make this safe to read without any budget knowledge:
 
 - **One flag per identity object, aggregated across budgets.** If a user has a BU budget and a token budget, the crate returns a single state that folds both together with the most restrictive outcome. Praxis never learns how many budgets exist.
-- **Derived, never patched.** The Budget Service recomputes a flag from the ledger and configuration on every accounting pass and overwrites it in place. A stale `deny` cannot outlive the debt that produced it, because the next pass rewrites it.
+- **Derived, never patched.** The Metering Service recomputes a flag from the ledger and configuration on every accounting pass and overwrites it in place. A stale `deny` cannot outlive the debt that produced it, because the next pass rewrites it.
 
-The balance counters the Budget Service derives flags from are internal to it and are not part of this contract; see [Storage Schema](#storage-schema).
+The balance counters the Metering Service derives flags from are internal to it and are not part of this contract; see [Storage Schema](#storage-schema).
 
 #### Reading the state
 
@@ -997,12 +997,12 @@ A per-budget flag would force Praxis to learn which budgets exist for a request,
 
 ### Consumption Emission
 
-After a model responds, Praxis emits an OTEL Log record containing the resource identification and the actual usage. The OTEL Collector forwards it as a CloudEvent to the Budget Service, which prices it, persists it, and updates the admission flags. This is the only accounting path: the record that is persisted is the record that was priced.
+After a model responds, Praxis emits an OTEL Log record containing the resource identification and the actual usage. The OTEL Collector forwards it as a CloudEvent to the Metering Service, which prices it, persists it, and updates the admission flags. This is the only accounting path: the record that is persisted is the record that was priced.
 
 Two properties matter for correctness:
 
-- **Facts, not prices.** The event carries what happened — identity, resource keys, usage counters, request id, timestamp — and never a cost. Pricing is the Budget Service's business, so rate changes, volume discounts, and provider-specific pricing never leak into the Praxis contract or force a change to the flag schema.
-- **Priced at event time, not ingest time.** The Budget Service keeps a history of rate versions and prices each event against the version valid at `event.time`. An event that arrives late — after a rate change, or after its period closed — is still charged at the rate that applied when the request ran.
+- **Facts, not prices.** The event carries what happened — identity, resource keys, usage counters, request id, timestamp — and never a cost. Pricing is the Metering Service's business, so rate changes, volume discounts, and provider-specific pricing never leak into the Praxis contract or force a change to the flag schema.
+- **Priced at event time, not ingest time.** The Metering Service keeps a history of rate versions and prices each event against the version valid at `event.time`. An event that arrives late — after a rate change, or after its period closed — is still charged at the rate that applied when the request ran.
 
 The OTEL Log record carries the following attributes:
 
@@ -1051,7 +1051,7 @@ This OTEL Log record is also forwarded to Loki for observability.
 
 #### CloudEvent
 
-The OTEL Collector transforms the Log record into a CloudEvent and sends it to the Budget Service via HTTP. The CloudEvent follows the [CloudEvents v1.0 specification](https://cloudevents.io/):
+The OTEL Collector transforms the Log record into a CloudEvent and sends it to the Metering Service via HTTP. The CloudEvent follows the [CloudEvents v1.0 specification](https://cloudevents.io/):
 
 ```json
 {
@@ -1097,7 +1097,7 @@ The OTEL Collector transforms the Log record into a CloudEvent and sends it to t
 | `data.resource` | Dynamic resource keys matching rate table entries |
 | `data.usage` | Dynamic usage keys matching rate table cost keys |
 
-The Budget Service persists the CloudEvent data to the `usage` table in Postgres and exposes it via the metering APIs for external systems (Bring Your Own Metering). The usage records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)).
+The Metering Service persists the CloudEvent data to the `usage` table in Postgres and exposes it via the metering APIs for external systems (Bring Your Own Metering). The usage records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)).
 
 ### Storage Schema
 
@@ -1105,7 +1105,7 @@ The Budget Service persists the CloudEvent data to the `usage` table in Postgres
 
 #### Postgres
 
-Postgres is the default durable backend and the authoritative source of truth in `embedded` mode. When the Budget Service integrates with an external metering platform, Postgres may be replaced by the external system's storage — the Budget Service treats the durable backend as a pluggable layer behind Redis.
+Postgres is the default durable backend and the authoritative source of truth in `embedded` mode. When the Metering Service integrates with an external metering platform, Postgres may be replaced by the external system's storage — the Metering Service treats the durable backend as a pluggable layer behind Redis.
 
 All tables include a `tenant_id` column for multi-tenancy. Dynamic fields (resource keys, cost keys, usage values) are stored as JSONB. Reference fields, timestamps, and scalar values are separate columns.
 
@@ -1120,7 +1120,7 @@ All tables include a `tenant_id` column for multi-tenancy. Dynamic fields (resou
 | `created_at` | timestamptz | Creation timestamp |
 | `updated_at` | timestamptz | Last update timestamp |
 
-> **Note:** `rates` holds the current definition. The Budget Service also retains prior versions (for example a `rate_versions` table) so a usage event can be priced against the version valid at `event.time` — see [Consumption Emission](#consumption-emission). The public API stays simple: rates are mutable, and history is an internal accounting concern.
+> **Note:** `rates` holds the current definition. The Metering Service also retains prior versions (for example a `rate_versions` table) so a usage event can be priced against the version valid at `event.time` — see [Consumption Emission](#consumption-emission). The public API stays simple: rates are mutable, and history is an internal accounting concern.
 
 ##### `budgets`
 
@@ -1153,7 +1153,7 @@ All tables include a `tenant_id` column for multi-tenancy. Dynamic fields (resou
 
 ##### `usage`
 
-Append-only ledger of usage records. This is the durable record that feeds reporting, overage tracking, and the metering APIs. Rows are never updated or deleted. The Budget Service computes cumulative overage per budget from this ledger for period carry-forward. A single inference request may produce multiple usage rows — one per budget charged (e.g., if a user has both a BU budget and a token budget, two rows are written with different `budget_ref` and `bu_cost` values).
+Append-only ledger of usage records. This is the durable record that feeds reporting, overage tracking, and the metering APIs. Rows are never updated or deleted. The Metering Service computes cumulative overage per budget from this ledger for period carry-forward. A single inference request may produce multiple usage rows — one per budget charged (e.g., if a user has both a BU budget and a token budget, two rows are written with different `budget_ref` and `bu_cost` values).
 
 | Column | Type | Description |
 |---|---|---|
@@ -1173,55 +1173,55 @@ Append-only ledger of usage records. This is the durable record that feeds repor
 
 #### Redis/Valkey
 
-Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Budget Service. All keys are namespaced by tenant ID and protected by per-tenant ACLs.
+Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Metering Service. All keys are namespaced by tenant ID and protected by per-tenant ACLs.
 
 The layout below is owned by the admission crate. It is documented here for operators; it is not a contract Praxis depends on, and it can change in a compatible crate release.
 
 | Key pattern | Type | Description |
 |---|---|---|
-| `{tenant}:admit:{kind}:{name}` | string | Admission state (`allow` / `over` / `deny`) for one identity object, aggregated across every budget that applies to it. Read by Praxis through the crate; written only by the Budget Service |
-| `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented by the Budget Service during accounting and reset on period renewal. Not read by Praxis |
+| `{tenant}:admit:{kind}:{name}` | string | Admission state (`allow` / `over` / `deny`) for one identity object, aggregated across every budget that applies to it. Read by Praxis through the crate; written only by the Metering Service |
+| `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented by the Metering Service during accounting and reset on period renewal. Not read by Praxis |
 
-The critical path is `admit:*`: Praxis reads it on every request and touches nothing else in Redis. Balances are internal to the Budget Service — they exist so flags can be recomputed cheaply from a counter rather than by re-aggregating the ledger on every event.
+The critical path is `admit:*`: Praxis reads it on every request and touches nothing else in Redis. Balances are internal to the Metering Service — they exist so flags can be recomputed cheaply from a counter rather than by re-aggregating the ledger on every event.
 
 **Note:** The low-level schema details are intentionally omitted from this document as they tend to change as the design and implementation evolve, risking this information becoming outdated. For this reason we aim to cover only the high-level aspects here.
 
 
 ### Bring Your Own Metering
 
-The Budget Service is designed as a self-contained solution that works out of the box. Customers who already operate an external metering or billing platform — OpenMeter, Monetize360, or a custom one — can place it behind the same admission contract.
+The Metering Service is designed as a self-contained solution that works out of the box. Customers who already operate an external metering or billing platform — OpenMeter, Monetize360, or a custom one — can place it behind the same admission contract.
 
 #### One contract, two provider modes
 
-The admission contract is identical in both modes: Praxis reads flags, the Budget Service is the only writer, and the OTEL pipeline is the only accounting input. What changes is where budget definitions and rating come from.
+The admission contract is identical in both modes: Praxis reads flags, the Metering Service is the only writer, and the OTEL pipeline is the only accounting input. What changes is where budget definitions and rating come from.
 
 | | `embedded` (default) | `federated` |
 |---|---|---|
-| Rates | defined in the Budget Service API | defined in the external platform; Budget Service rate tables unused (1 token = 1 BU) |
-| Budgets and limits | defined in the Budget Service API | defined in the external platform; Budget Service tracks token-volume budgets for admission |
-| Rating | Budget Service applies its rate tables | external platform rates; Budget Service mirrors the outcome |
+| Rates | defined in the Metering Service API | defined in the external platform; Metering Service rate tables unused (1 token = 1 BU) |
+| Budgets and limits | defined in the Metering Service API | defined in the external platform; Metering Service tracks token-volume budgets for admission |
+| Rating | Metering Service applies its rate tables | external platform rates; Metering Service mirrors the outcome |
 | Ledger | Postgres | external platform, optionally mirrored to Postgres for audit |
 | Flag computation | derived from the local ledger | derived from the platform's reported balances and overage signals |
-| Overage notification | not applicable (Budget Service computes overage locally) | required — external platform must expose an API for overage state |
+| Overage notification | not applicable (Metering Service computes overage locally) | required — external platform must expose an API for overage state |
 | Admission flags in Redis | yes | yes |
 
-Praxis, the flag schema, and the OTEL pipeline are identical in both modes. That is the point: adding a metering backend is a Budget Service deployment choice, not a data-plane change.
+Praxis, the flag schema, and the OTEL pipeline are identical in both modes. That is the point: adding a metering backend is a Metering Service deployment choice, not a data-plane change.
 
 #### Why a single integration point
 
-Handing the customer's platform the raw CloudEvents from the collector would deliver the usage, but every integration would then re-implement delivery, retries, deduplication, schema translation, and tenant binding. Keeping the Budget Service as the egress point means those are solved once, and the flag Praxis reads is produced by whoever owns the budget — so enforcement and reporting cannot disagree.
+Handing the customer's platform the raw CloudEvents from the collector would deliver the usage, but every integration would then re-implement delivery, retries, deduplication, schema translation, and tenant binding. Keeping the Metering Service as the egress point means those are solved once, and the flag Praxis reads is produced by whoever owns the budget — so enforcement and reporting cannot disagree.
 
 The collector also forwards the OTEL Log to Loki. The CloudEvent is the canonical record of what was charged; the Loki copy exists so a lost or disputed event can be reconstructed and reconciled.
 
 #### Mixed-spend budgets
 
-An `embedded` budget only knows about inference spend, because inference usage events are its only input. A budget that also covers spend the gateway cannot observe — VMs, GPUs, other platform services — must be owned by a `federated` provider that reports the aggregate remaining balance. The Budget Service mirrors that number into the flag rather than arbitrating spend it cannot see.
+An `embedded` budget only knows about inference spend, because inference usage events are its only input. A budget that also covers spend the gateway cannot observe — VMs, GPUs, other platform services — must be owned by a `federated` provider that reports the aggregate remaining balance. The Metering Service mirrors that number into the flag rather than arbitrating spend it cannot see.
 
 #### Token-only accounting (federated pricing)
 
-When an external billing platform (M360, OpenMeter, or a custom system) owns cost attribution and pricing, the Budget Service does not need rate tables. Without rates configured, the default accounting rule is **1 token = 1 BU** — the Budget Service counts raw tokens consumed against a budget limit and derives admission flags from that count. The external platform applies its own pricing (USD, EUR, or any currency) independently.
+When an external billing platform (M360, OpenMeter, or a custom system) owns cost attribution and pricing, the Metering Service does not need rate tables. Without rates configured, the default accounting rule is **1 token = 1 BU** — the Metering Service counts raw tokens consumed against a budget limit and derives admission flags from that count. The external platform applies its own pricing (USD, EUR, or any currency) independently.
 
-This simplifies the Budget Service to two responsibilities:
+This simplifies the Metering Service to two responsibilities:
 
 | Responsibility | Description |
 |---|---|
@@ -1230,37 +1230,37 @@ This simplifies the Budget Service to two responsibilities:
 
 Rate tables, rate versioning, BU weight computation, and `rate_ref` on policies are all unused in this mode. They remain available in the schema for standalone deployments that need cost-weighted enforcement, but a federated deployment that delegates pricing to the external platform can ignore them entirely.
 
-The responsibility split between the Budget Service and the external platform:
+The responsibility split between the Metering Service and the external platform:
 
 | Concern | Owner |
 |---|---|
-| Token counting and admission flags (`allow` / `over` / `deny`) | Budget Service |
-| Usage event forwarding | Budget Service → external platform |
+| Token counting and admission flags (`allow` / `over` / `deny`) | Metering Service |
+| Usage event forwarding | Metering Service → external platform |
 | Budget definitions, limits, and periodic management | External platform |
 | USD / currency pricing and cost attribution | External platform |
 | Invoicing and financial reporting | External platform |
 | Contract and wallet management | External platform |
-| Overage notification (cost-based) | External platform → Budget Service |
+| Overage notification (cost-based) | External platform → Metering Service |
 
-**Overage notification requirement.** The external billing platform must expose an API — webhook, event stream, or polling endpoint — that the Budget Service can consume to learn when a subject enters overage from the platform's perspective. The Budget Service uses this signal to update admission flags. Without this callback, the Budget Service can only enforce token-volume budgets and has no visibility into cost-based overage determined by the external platform's pricing logic.
+**Overage notification requirement.** The external billing platform must expose an API — webhook, event stream, or polling endpoint — that the Metering Service can consume to learn when a subject enters overage from the platform's perspective. The Metering Service uses this signal to update admission flags. Without this callback, the Metering Service can only enforce token-volume budgets and has no visibility into cost-based overage determined by the external platform's pricing logic.
 
-The specific API contract (endpoint shape, authentication, payload format) varies by platform and is not prescribed here. The Budget Service must implement an adapter per supported platform. The adapter translates the platform's overage signal into the internal flag state (`allow` / `over` / `deny`) and writes it to Redis through the same code path used by embedded accounting.
+The specific API contract (endpoint shape, authentication, payload format) varies by platform and is not prescribed here. The Metering Service must implement an adapter per supported platform. The adapter translates the platform's overage signal into the internal flag state (`allow` / `over` / `deny`) and writes it to Redis through the same code path used by embedded accounting.
 
 #### Integration patterns
 
 | Pattern | Description |
 |---|---|
-| Push (webhook/event) | The Budget Service forwards consumption events to an external system's ingestion endpoint (e.g., OpenMeter's event API or M360's usage API) as they are persisted |
-| Pull (metering API) | The external system queries the Budget Service's metering APIs to retrieve consumption data on its own schedule |
-| Backend replacement | The external system replaces Postgres as the durable store. The Budget Service writes budget objects and usage records to the external system instead of Postgres. Redis remains the operational store — Praxis and the OTEL pipeline are unaffected |
+| Push (webhook/event) | The Metering Service forwards consumption events to an external system's ingestion endpoint (e.g., OpenMeter's event API or M360's usage API) as they are persisted |
+| Pull (metering API) | The external system queries the Metering Service's metering APIs to retrieve consumption data on its own schedule |
+| Backend replacement | The external system replaces Postgres as the durable store. The Metering Service writes budget objects and usage records to the external system instead of Postgres. Redis remains the operational store — Praxis and the OTEL pipeline are unaffected |
 
 #### What the external system receives
 
-The Budget Service can expose usage data: request ID, identity (user, groups, organization, tenant), resource keys (model, provider, region), usage keys (token counts), BU cost, and timestamp. The external system can then apply its own pricing, aggregation, and billing logic.
+The Metering Service can expose usage data: request ID, identity (user, groups, organization, tenant), resource keys (model, provider, region), usage keys (token counts), BU cost, and timestamp. The external system can then apply its own pricing, aggregation, and billing logic.
 
 #### What the external system does not control
 
-Budget enforcement decisions (allow/deny) remain with the Budget Service. The external system is a consumer of usage data, and in `federated` mode a supplier of budget state, but never a writer of admission flags. If a customer wants the external system to influence budget limits, that is expressed through the provider's budget definitions, which the Budget Service mirrors into Redis — not by writing flags directly.
+Budget enforcement decisions (allow/deny) remain with the Metering Service. The external system is a consumer of usage data, and in `federated` mode a supplier of budget state, but never a writer of admission flags. If a customer wants the external system to influence budget limits, that is expressed through the provider's budget definitions, which the Metering Service mirrors into Redis — not by writing flags directly.
 
 > **Note:** The specific integration details for each external platform (API mappings, authentication, retry policies) will be addressed in separate ADRs as those integrations are prioritized.
 
@@ -1271,37 +1271,37 @@ The budget system produces observability data at multiple levels:
 
 #### OTEL Logs (via Praxis)
 
-Praxis emits an OTEL Log record after each inference response containing full identity, resource, and token usage. These logs are forwarded to Loki for observability and to the Budget Service (as CloudEvents) for durable persistence. See [Consumption Emission](#consumption-emission) for the exact log structure.
+Praxis emits an OTEL Log record after each inference response containing full identity, resource, and token usage. These logs are forwarded to Loki for observability and to the Metering Service (as CloudEvents) for durable persistence. See [Consumption Emission](#consumption-emission) for the exact log structure.
 
 #### Metrics
 
-The Budget Service exposes Prometheus metrics for monitoring. The admission path is a Redis read by Praxis, so all budget instrumentation lives in the Budget Service:
+The Metering Service exposes Prometheus metrics for monitoring. The admission path is a Redis read by Praxis, so all budget instrumentation lives in the Metering Service:
 
 | Metric | Source | Description |
 |---|---|---|
-| Admission state distribution | Budget Service | Count of identity objects in each state (`allow` / `over` / `deny`), per tenant |
-| Budget utilization | Budget Service | Current balance as a percentage of the budget limit, per budget |
-| Overage amount | Budget Service | Cumulative BU overage per budget in the current period |
-| Accepted overshoot | Budget Service | BU charged after a budget was exhausted but before its flag was written |
-| Flag recompute latency | Budget Service | Histogram of recomputing and writing admission flags after an accounting pass |
-| Usage event lag | Budget Service | Difference between `event.time` and ingest time, per tenant |
-| CloudEvent ingestion | Budget Service | Counter and latency of CloudEvent processing |
+| Admission state distribution | Metering Service | Count of identity objects in each state (`allow` / `over` / `deny`), per tenant |
+| Budget utilization | Metering Service | Current balance as a percentage of the budget limit, per budget |
+| Overage amount | Metering Service | Cumulative BU overage per budget in the current period |
+| Accepted overshoot | Metering Service | BU charged after a budget was exhausted but before its flag was written |
+| Flag recompute latency | Metering Service | Histogram of recomputing and writing admission flags after an accounting pass |
+| Usage event lag | Metering Service | Difference between `event.time` and ingest time, per tenant |
+| CloudEvent ingestion | Metering Service | Counter and latency of CloudEvent processing |
 
 #### Alerts
 
-The Budget Service does not include a built-in alert management system. All metrics are exposed as standard Prometheus metrics, and alerting is handled by the operator's existing Prometheus/Alertmanager infrastructure. The recommended approach is to define PrometheusRule resources (or equivalent alerting rules) based on the metrics above. The table below lists recommended alert conditions as a starting point — operators can adjust thresholds and add custom rules to fit their environment:
+The Metering Service does not include a built-in alert management system. All metrics are exposed as standard Prometheus metrics, and alerting is handled by the operator's existing Prometheus/Alertmanager infrastructure. The recommended approach is to define PrometheusRule resources (or equivalent alerting rules) based on the metrics above. The table below lists recommended alert conditions as a starting point — operators can adjust thresholds and add custom rules to fit their environment:
 
 | Condition | Severity | Description |
 |---|---|---|
 | Budget utilization > 80% | Warning | Tenant approaching budget limit |
 | Budget utilization > 95% | Critical | Tenant near exhaustion |
 | Overage exceeds threshold | Warning | Budget overage growing — may indicate runaway consumption or misconfigured rates |
-| Flag staleness | Warning | Admission flags have not been recomputed within the expected interval — the Budget Service is stalled or has lost Redis |
+| Flag staleness | Warning | Admission flags have not been recomputed within the expected interval — the Metering Service is stalled or has lost Redis |
 | Ambiguous policy match | Warning | Multiple group/org policies matched for a user — operator should create a direct user policy |
 
 #### UI Dashboards
 
-The RHOAI UI can query the Budget Service metering APIs to display:
+The RHOAI UI can query the Metering Service metering APIs to display:
 
 - Consumption over time (BU spent per period, per tenant/user/group)
 - Budget utilization (remaining vs limit, with trend projection)
@@ -1316,7 +1316,7 @@ The RHOAI UI can query the Budget Service metering APIs to display:
 | 1 | **Fail-open or fail-closed default?** | When Praxis cannot read the flags (Redis unreachable or slow), should it admit the request or reject it? Praxis cannot distinguish "no budget configured" from "flags unavailable", so this is a genuine policy choice: fail-open risks unbounded spend during an outage, fail-closed turns a metering outage into an inference outage. Treating the metering plane as cost control rather than a security boundary argues for fail-open plus alerting |
 | 2 | **Accepted overshoot per budget** | Accounting is asynchronous, so requests admitted between exhaustion and the flag write are charged but not prevented. How much overshoot is acceptable, and how should it be surfaced — alert threshold, a budget-level tolerance, or only the `x-praxis-over-budget` signal? |
 | 3 | **Redis persistence strategy** | Flags are derived and recoverable by recompute, but balances are not: rebuilding them requires replaying the ledger. Should balance counters survive a Redis restart via AOF, or is recompute-from-Postgres acceptable? |
-| 4 | **Flag staleness budget** | If the Budget Service stalls or loses Redis, flags freeze at their last values and admission keeps serving them. How long is stale-but-serving acceptable, and should Praxis treat an unexpectedly old flag as unknown rather than authoritative? |
+| 4 | **Flag staleness budget** | If the Metering Service stalls or loses Redis, flags freeze at their last values and admission keeps serving them. How long is stale-but-serving acceptable, and should Praxis treat an unexpectedly old flag as unknown rather than authoritative? |
 | 5 | **BudgetPolicy ↔ MaaSSubscription relationship** | Should a BudgetPolicy reference a MaaSSubscription? Currently, policies bind a subject to a budget and rate, but there is no explicit link to the subscription that governs the subject's access. A reference could enable subscription-scoped budget enforcement and usage visibility per subscription, but it introduces a dependency on the control plane's subscription model |
 
 
@@ -1330,17 +1330,17 @@ Solutions like OpenMeter provide entitlement management, usage metering, and bil
 - **Feature surface.** Third-party solutions come with their own UIs, APIs, and features (billing integrations, plan management, invoicing) that overlap with or conflict with the RHOAI product experience. Hiding or removing these features requires forking the upstream project, which leads to ongoing maintenance debt as the upstream evolves.
 - **Integration cost.** Adapting an external solution to fit the admission contract, the OTEL-based consumption pipeline, and the multi-tenancy model would require significant glue code — potentially more effort than building the focused subset of functionality we actually need.
 
-OpenMeter's entitlement model (feature-based access with boolean/metered/static grants) informed parts of this design, particularly the entitlement and access model. The Budget Service can expose metering data via APIs for customers who want to integrate with OpenMeter or similar solutions downstream (Bring Your Own Metering), without requiring them as runtime dependencies.
+OpenMeter's entitlement model (feature-based access with boolean/metered/static grants) informed parts of this design, particularly the entitlement and access model. The Metering Service can expose metering data via APIs for customers who want to integrate with OpenMeter or similar solutions downstream (Bring Your Own Metering), without requiring them as runtime dependencies.
 
-### Synchronous budget checks against the Budget Service
+### Synchronous budget checks against the Metering Service
 
-Praxis could call the Budget Service on every request and use its response as the admission decision. Rejected because:
+Praxis could call the Metering Service on every request and use its response as the admission decision. Rejected because:
 
 - **Latency.** Every inference request would depend on a round trip to the service; under load or during degradation, that surfaces as inference latency or failures.
 - **Availability coupling.** A service outage would block all inference, making budget enforcement a single point of failure for the gateway.
 - **Contention.** With multiple Praxis replicas calling independently, the service becomes a hotspot for balance operations.
 
-Reading a precomputed flag from Redis keeps the admission path to a single read, leaves rating private to the Budget Service, and keeps the service off the request path.
+Reading a precomputed flag from Redis keeps the admission path to a single read, leaves rating private to the Metering Service, and keeps the service off the request path.
 
 ### Redis-only or Postgres-only storage
 
@@ -1357,26 +1357,26 @@ The hybrid approach uses each store for what it does best: Redis for the admissi
 All communication between components happens exclusively within the Kubernetes cluster network over TLS:
 
 - **Praxis → Redis** (read admission flags) — in-cluster only, read-only credential
-- **Budget Service → Redis** (balance and flag writes) — in-cluster only
-- **OTEL Collector → Budget Service** (CloudEvent ingestion) — in-cluster only, never exposed publicly
+- **Metering Service → Redis** (balance and flag writes) — in-cluster only
+- **OTEL Collector → Metering Service** (CloudEvent ingestion) — in-cluster only, never exposed publicly
 
 Praxis makes no localhost calls and has no budget component beside it; the only new dependency in its request path is a Redis read.
 
 ### Service-to-Service Authentication
 
-Calls to the Budget Service authenticate with Kubernetes ServiceAccounts and projected ServiceAccount tokens (bound tokens with audience and expiry), validated by the receiving component through the Kubernetes TokenReview API. Redis uses its own ACL credentials instead of Kubernetes identity, described below.
+Calls to the Metering Service authenticate with Kubernetes ServiceAccounts and projected ServiceAccount tokens (bound tokens with audience and expiry), validated by the receiving component through the Kubernetes TokenReview API. Redis uses its own ACL credentials instead of Kubernetes identity, described below.
 
-Authorization is enforced via RBAC. A dedicated virtual resource `s2s` in the `budget.aigateway.opendatahub.io` API group controls which ServiceAccounts may submit usage events and read budget state from the Budget Service. The same API group also defines three virtual resources (`rates`, `budgets`, `budget-policy`) for management operations. The AI Gateway Controller creates the appropriate RoleBindings when it provisions a gateway.
+Authorization is enforced via RBAC. A dedicated virtual resource `s2s` in the `metering.aigateway.opendatahub.io` API group controls which ServiceAccounts may submit usage events and read budget state from the Metering Service. The same API group also defines three virtual resources (`rates`, `budgets`, `budget-policy`) for management operations. The AI Gateway Controller creates the appropriate RoleBindings when it provisions a gateway.
 
-Redis credentials are per tenant and per role: the gateway's ServiceAccount gets a read-only user scoped to `{tenant}:admit:*`, and only the Budget Service gets a user that can write balances and flags.
+Redis credentials are per tenant and per role: the gateway's ServiceAccount gets a read-only user scoped to `{tenant}:admit:*`, and only the Metering Service gets a user that can write balances and flags.
 
 ### CloudEvent Tenant Binding
 
-Ingestion must not trust `data.identity.tenant` from the payload. The Budget Service derives the tenant from the authenticated sender — the ServiceAccount maps to exactly one gateway and therefore one tenant — and rejects any event whose payload tenant disagrees with that binding. Without this, a compromised gateway could charge usage to another tenant and corrupt its reports and overage.
+Ingestion must not trust `data.identity.tenant` from the payload. The Metering Service derives the tenant from the authenticated sender — the ServiceAccount maps to exactly one gateway and therefore one tenant — and rejects any event whose payload tenant disagrees with that binding. Without this, a compromised gateway could charge usage to another tenant and corrupt its reports and overage.
 
 ### Tenant Isolation
 
-All management API requests require the `X-Tenant` header. The Budget Service validates that the caller has RBAC permissions for the specified tenant's resources. A missing or unauthorized `X-Tenant` header results in a 403 response.
+All management API requests require the `X-Tenant` header. The Metering Service validates that the caller has RBAC permissions for the specified tenant's resources. A missing or unauthorized `X-Tenant` header results in a 403 response.
 
 At the data plane level, tenant isolation is enforced by Redis ACLs rather than by key naming alone: each gateway's credential can only touch its own `{tenant}:admit:*` keys, and the pattern is fixed per credential rather than supplied by the request. A compromised Praxis pod therefore cannot read or alter another tenant's admission state.
 
@@ -1386,21 +1386,21 @@ The `identity` object (user, groups, organization, tenant) flows through the OTE
 
 ### Redis Data Security
 
-Redis holds admission flags and balance counters. It does not store configuration objects, usage records, or identity information. Configure TLS for in-transit encryption, per-tenant credentials, read-only access for gateways, write access only for the Budget Service, and network policies that admit just those two clients.
+Redis holds admission flags and balance counters. It does not store configuration objects, usage records, or identity information. Configure TLS for in-transit encryption, per-tenant credentials, read-only access for gateways, write access only for the Metering Service, and network policies that admit just those two clients.
 
 ## Implementation notes
 
-We recommend that the Budget Service be implemented in Rust rather than Go. Tokenomics is a critical part of the system: the Budget Service rates, aggregates, and writes admission state for every inference event, so memory footprint and CPU efficiency matter, and Rust avoids garbage-collection pauses on that ingest path. The only component to implement is the Budget Service; Praxis only reads flags. Shipping the admission crate from the same Rust codebase also keeps one implementation of the storage layout, and one set of tests for it, rather than two that could drift.
+We recommend that the Metering Service be implemented in Go. Go is the primary language for the Kubernetes ecosystem and the RHOAI control plane, which simplifies build tooling, dependency management, and operational familiarity. The Metering Service is an event-driven accounting service — not a latency-critical data-plane component — so Go's runtime overhead is acceptable. The admission crate remains in Rust because Praxis is a Rust proxy and links the crate directly. The crate owns the Redis key layout and read path; the Metering Service owns the write path. Both must agree on the key schema, which the crate's types define as the single source of truth.
 
 ## Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| **Redis data loss** — Redis restart or crash loses balance counters and admission flags | Medium | High | The Budget Service republishes the full flag set on reconnect, so admission recovers without waiting for new usage; balances are rebuilt by replaying the ledger. Enforcement is permissive between the loss and the republish, which is why Redis persistence still matters |
-| **Usage event loss** — a CloudEvent never reaches the Budget Service (e.g., OTEL pipeline failure) | Low | Medium | The balance, flag, and ledger under-count together, so they stay consistent with each other; the missing usage can be recovered from the OTEL Log copy in Loki |
-| **Flag staleness** — the Budget Service stalls or loses Redis, so admission keeps serving the last flags written | Medium | Medium | Alert on flag recompute age and usage-event lag. Bound the acceptable staleness (see Open Questions) rather than assuming flags are always current |
+| **Redis data loss** — Redis restart or crash loses balance counters and admission flags | Medium | High | The Metering Service republishes the full flag set on reconnect, so admission recovers without waiting for new usage; balances are rebuilt by replaying the ledger. Enforcement is permissive between the loss and the republish, which is why Redis persistence still matters |
+| **Usage event loss** — a CloudEvent never reaches the Metering Service (e.g., OTEL pipeline failure) | Low | Medium | The balance, flag, and ledger under-count together, so they stay consistent with each other; the missing usage can be recovered from the OTEL Log copy in Loki |
+| **Flag staleness** — the Metering Service stalls or loses Redis, so admission keeps serving the last flags written | Medium | Medium | Alert on flag recompute age and usage-event lag. Bound the acceptable staleness (see Open Questions) rather than assuming flags are always current |
 | **Accepted overshoot** — requests admitted between a budget's exhaustion and the flag write are charged but not prevented | Medium | Low | Bounded by usage-event pipeline latency and recorded as overage; `deduct_overage` carries the debt into the next period. Tune the pipeline and alert on overshoot above the accepted threshold |
-| **Budget Service as a single writer** — an outage freezes flags for every tenant | Medium | Low | Admission continues from the last-known flags; usage buffers in the collector and is priced on recovery. The blast radius is stale enforcement, not lost traffic |
+| **Metering Service as a single writer** — an outage freezes flags for every tenant | Medium | Low | Admission continues from the last-known flags; usage buffers in the collector and is priced on recovery. The blast radius is stale enforcement, not lost traffic |
 | **Crate release coupling** — Praxis cannot adopt a storage-layout change, or pick up a fix in the read path, without a new release of the crate it links | Low | Medium | Semver with a compatibility window; the crate is tested against Redis and Valkey in its own CI before Praxis bumps it, and its read API is small enough to stay stable |
 
 
