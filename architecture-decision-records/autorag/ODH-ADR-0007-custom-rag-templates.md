@@ -55,13 +55,13 @@ The Connection controls the endpoint URI and authentication. The endpoint owns c
 
 ### Fixed settings and candidate selection
 
-Search entries use JSON Pointers relative to `request`, such as `/temperature` or `/tools/0/max_num_results`. They target existing scalar values. The Dashboard offers eligible fields from the base request and validates choices against the effective schema. A schema `const` or single-value `enum` can freeze an endpoint-specific value.
+`search_space_config.candidate_sets` is an ordered list of override maps. Each map defines one candidate by assigning one scalar value per JSON Pointer. To sweep multiple values for one field, supply one map per value. To vary fields together, put their values in the same map.
 
-* `remote_request` maps pointers to finite, non-empty lists of values for independent choices. Expand the Cartesian product in lexicographic pointer order, with earlier pointers as outer dimensions and values in supplied order.
-* `remote_request_sets` lists explicit override maps for dependent choices. Read them in supplied order. Each map is one candidate.
-* Accept at most one form. Normalize either form to an ordered sequence of override maps. Apply each map to the base request, retain omitted values, and deduplicate identical resulting requests in first-seen order. Use that sequence for preflight and selection within the candidate budget. Large grids may be expanded lazily.
+Each pipeline that supports `candidate_sets` defines the base configuration and which fields can vary. For the custom RAG pipeline, pointers are relative to `custom_rag_config.request`, such as `/temperature` or `/tools/0/max_num_results`, and target existing scalar values. The Dashboard offers eligible fields from the base request and validates choices against the effective schema. A schema `const` or single-value `enum` can freeze an endpoint-specific value.
 
-An empty search space evaluates the base request once. In a sweep, the base request is evaluated only if a supplied combination reproduces it. Both cases use the same preflight and artifacts.
+Apply each map to the base request in input order, retain omitted values, and deduplicate identical requests in first-seen order. Use that sequence for preflight and selection within the candidate budget.
+
+For the custom RAG pipeline, omitted or empty `candidate_sets` evaluates the base request once. To include the base request in a sweep, add an empty map (`{}`) or supply overrides that reproduce it. Both cases use the same preflight and artifacts.
 
 AutoRAG rejects pointers into fixed fields and their descendants, and rejects object or array replacements. The built-in profile defines protected paths for each standard tool type. For example, it protects `type`, `server_url`, `require_approval`, `vector_store_ids`, and `filters` wherever they apply under `/tools/<index>/`, as well as top-level `tool_choice` and `include`. Tool count and order, identities, destinations, credentials, approval settings, data-source bindings, and access filters stay fixed. For provider-defined tools and `rag_options`, the owner declares any additional fields that control these boundaries using `const` or single-value `enum` constraints. Endpoint authorization is enforced independently of the schema. AutoRAG validates the base requests and search declarations before preflight, then validates every composed request before submission.
 
@@ -126,17 +126,20 @@ The file-search and MCP examples are separate templates. Both can use the same e
 
 ### File search with retrieval evidence
 
-This template uses the built-in schema alone. The endpoint returns the full benchmark key, such as `product-manuals/xr-200-manual.pdf`, in each result's `attributes.doc_id`. `/filename` also works if the endpoint returns the full canonical key in that field. The sweep produces three candidates, including the base request because 10 appears in the list. [Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
+This template uses the built-in schema alone. The endpoint returns the full benchmark key, such as `product-manuals/xr-200-manual.pdf`, in each result's `attributes.doc_id`. `/filename` also works if the endpoint returns the full canonical key in that field. The sweep evaluates the base request (`{}`) and two alternatives that vary the result count, relevance threshold, and output token limit together. [Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
 
 ```yaml
 custom_rag_config:
   name: warranty_search
   request:
     model: customer-rag
+    max_output_tokens: 800
     tools:
       - type: file_search
         vector_store_ids: [warranty-documents]
         max_num_results: 10
+        ranking_options:
+          score_threshold: 0.25
     tool_choice: {type: file_search}
     include: [file_search_call.results]
   evidence:
@@ -147,8 +150,14 @@ custom_rag_config:
 search_space_config:
   apiVersion: autorag.opendatahub.io/v1alpha1
   kind: AutoRAGSearchSpace
-  remote_request:
-    /tools/0/max_num_results: [5, 10, 20]
+  candidate_sets:
+    - {}
+    - /tools/0/max_num_results: 5
+      /tools/0/ranking_options/score_threshold: 0.45
+      /max_output_tokens: 500
+    - /tools/0/max_num_results: 20
+      /tools/0/ranking_options/score_threshold: 0.1
+      /max_output_tokens: 1200
 ```
 
 ### MCP with proprietary ranking settings
@@ -178,7 +187,7 @@ custom_rag_config:
 search_space_config:
   apiVersion: autorag.opendatahub.io/v1alpha1
   kind: AutoRAGSearchSpace
-  remote_request_sets:
+  candidate_sets:
     - /rag_options/hybrid_alpha: 0.3
       /rag_options/reranker_top_k: 10
     - /rag_options/hybrid_alpha: 0.7
