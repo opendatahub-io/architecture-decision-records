@@ -505,6 +505,8 @@ Steps 2–4 are idempotent on the CloudEvent `id`, so a retried delivery cannot 
 
 Flags and ledger come out of the same accounting pass, so they cannot disagree. The Metering Service writes to Redis only when a balance or a flag changes (accounting, renewal, reconciliation).
 
+**Flag write ordering.** If two accounting passes for the same identity finish out of order (whether within a single pod or across multiple pods), an older result could overwrite a newer one — for example, an older `allow` replacing a newer `deny`. This is acceptable because the balance counter is always correct (`DECRBY` in Redis is atomic), and the next event accounted for that budget will re-derive the flag from the current balance and correct it. The window where a flag is temporarily wrong is bounded by the same pipeline latency the overshoot model already accepts (see [Overshoot](#overshoot)) and is self-correcting — no external ordering, Lua scripts, or distributed locks are required.
+
 #### Why No Reservation System
 
 This design intentionally avoids a reservation-based model (pre-decrementing an estimated cost before dispatch). The `max_completion_tokens` parameter is unreliable — clients may omit it, set it arbitrarily high, or the actual usage may diverge significantly from the estimate. A reservation system built on unreliable estimates introduces complexity (holds, settlements, releases, orphaned hold cleanup) without delivering accurate budget enforcement.
