@@ -20,6 +20,13 @@ If a decision is reversed, we will keep the old one around, but mark it as super
 
 We will use a format with just a few parts, so each document is easy to digest.
 
+## Indexes
+
+Domain indexes collect related ADRs for discoverability. They do not change an ADR's
+status and are updated as the underlying records change.
+
+* Platform observability: [operator/observability-adrs.md](operator/observability-adrs.md)
+
 ## References
 
 * https://www.redhat.com/architect/architecture-decision-records
