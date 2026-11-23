@@ -332,6 +332,11 @@ cost_bu = 312 * 3 + 87 * 15 + 20 * 1 + 5 * 4 + 30 * 15 = 2711 BU
 
 New cost keys (e.g., `image_count`, `tool_calls`, `video_seconds`) can be added to rate tables without schema changes — the formula applies generically to any keys present in both the usage data and the rate table.
 
+**Guards:**
+
+- **Negative values.** Usage counts and rate costs must be non-negative integers. A negative token count or a negative rate would add units back to a budget, effectively crediting the subject for making requests. The Metering Service must reject usage events with negative counts and reject rate table entries with negative costs at validation time. The computed per-event `cost_bu` is always >= 0. Note: the **balance counter** in Redis can and will go negative — that is overage, not an error. How negative balances are handled at renewal depends on the budget's renewal type and the policy's `deduct_overage` setting (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)).
+- **Overflow.** The `bu_cost` column is a `bigint` (signed 64-bit, max ~9.2 × 10¹⁸). A single event cannot realistically overflow this — even 1 billion tokens at a rate of 1 billion BU per token produces 10¹⁸, which fits. However, the Metering Service should check for arithmetic overflow during cost computation and reject the event with an error rather than silently wrapping. Balance counters in Redis (also 64-bit signed integers) have the same range; cumulative spend across a budget's lifetime could approach the limit only with extreme rate values, in which case the operator should use smaller BU weights.
+
 Different subjects can have different rate tables assigned via their BudgetPolicy `rate_ref`. The same model costs different subjects different BU amounts. This makes the rate table a unified pricing and discount mechanism — no secondary discount logic is needed.
 
 #### Token Limits via Unit-Cost Rate Tables
