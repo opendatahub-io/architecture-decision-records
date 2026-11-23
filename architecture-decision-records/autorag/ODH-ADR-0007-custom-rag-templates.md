@@ -63,7 +63,7 @@ Apply each map to the base request in input order, retain omitted values, and de
 
 For the custom RAG pipeline, omitted or empty `candidate_sets` evaluates the base request once. To include the base request in a sweep, add an empty map (`{}`) or supply overrides that reproduce it. Both cases use the same preflight and artifacts.
 
-AutoRAG rejects pointers into fixed fields and their descendants, and rejects object or array replacements. The built-in profile defines protected paths for each standard tool type. For example, it protects `type`, `server_url`, `require_approval`, `vector_store_ids`, and `filters` wherever they apply under `/tools/<index>/`, as well as top-level `tool_choice` and `include`. Tool count and order, identities, destinations, credentials, approval settings, data-source bindings, and access filters stay fixed. For provider-defined tools and `rag_options`, the owner declares any additional fields that control these boundaries using `const` or single-value `enum` constraints. Endpoint authorization is enforced independently of the schema. AutoRAG validates the base requests and search declarations before preflight, then validates every composed request before submission.
+AutoRAG rejects pointers into fixed fields and their descendants, and rejects object or array replacements. The built-in profile defines protected paths for each standard tool type. For example, it protects `type`, `server_url`, `allowed_tools`, `require_approval`, `vector_store_ids`, and `filters` wherever they apply under `/tools/<index>/`, as well as top-level `tool_choice` and `include`. Tool count and order, identities, destinations, tool allowlists, approval settings, data-source bindings, and access filters stay fixed. For provider-defined tools and `rag_options`, the owner declares any additional fields that control these boundaries using `const` or single-value `enum` constraints. Endpoint authorization is enforced independently of the schema. AutoRAG validates the base requests and search declarations before preflight, then validates every composed request before submission.
 
 ## Wire contract and evaluation
 
@@ -112,6 +112,10 @@ Stop immediately on endpoint authentication or authorization errors or a confirm
 
 Benchmark questions and instructions go to the selected endpoint. Endpoint access uses authorized Connections and verified TLS. Credentials stay out of request settings, schemas, logs, and artifacts. The endpoint owns downstream tool authorization. Users select a configuration whose data sources and tools are appropriate for the benchmark. Retrieved content follows evaluation-artifact access and retention rules. Model-based evaluators receive the answers and contexts they require.
 
+The `responses.v1` profile rejects credential-bearing fields, including MCP `authorization` and `headers`, even when their values are empty or null. It also rejects tool URLs with embedded credentials, including user info and signed query strings. Apply the same policy to provider-defined tools, `rag_options`, and schema extensions. Extensions cannot declare credential fields or embed secrets in schema values such as `const` and `enum`. The endpoint or proxy supplies downstream credentials at runtime. [Responses API MCP fields](https://developers.openai.com/api/reference/resources/responses/methods/create)
+
+Validate the base request, schema extensions, and candidate overrides at submission, before persisting KFP run parameters or recording input values in logs or artifacts. The pipeline repeats these checks before preflight and saves the contract snapshot, effective search space, and winning request only from validated configuration. Validation diagnostics identify the rejected field and reason without echoing the supplied value or raw configuration.
+
 ## Alternatives
 
 | Alternative | Decision |
@@ -148,8 +152,6 @@ custom_rag_config:
       text_path: /text
       document_id_path: /attributes/doc_id
 search_space_config:
-  apiVersion: autorag.opendatahub.io/v1alpha1
-  kind: AutoRAGSearchSpace
   candidate_sets:
     - {}
     - /tools/0/max_num_results: 5
@@ -162,7 +164,7 @@ search_space_config:
 
 ### MCP with proprietary ranking settings
 
-The endpoint or proxy implements `rag_options`. Each override map supplies a supported pair, and GAM keeps the values in each pair together. MCP tool settings and its destination stay fixed. Select an answer-based objective because this template supplies no evidence rules.
+The endpoint or proxy implements `rag_options`. Each override map supplies a supported pair, and GAM keeps the values in each pair together. The fixed MCP allowlist exposes only `lookup_catalog`, the server's approved read-only tool. The endpoint enforces read-only access for that tool. Select an answer-based objective because this template supplies no evidence rules. [MCP tool filtering](https://developers.openai.com/api/docs/guides/tools-connectors-mcp#filtering-tools)
 
 ```yaml
 custom_rag_config:
@@ -173,6 +175,7 @@ custom_rag_config:
       - type: mcp
         server_label: catalog
         server_url: https://retrieval.example.com/mcp
+        allowed_tools: [lookup_catalog]
         require_approval: never
     rag_options: {hybrid_alpha: 0.5, reranker_top_k: 10}
   request_schema:
@@ -185,8 +188,6 @@ custom_rag_config:
           hybrid_alpha: {type: number, minimum: 0, maximum: 1}
           reranker_top_k: {type: integer, enum: [10, 20]}
 search_space_config:
-  apiVersion: autorag.opendatahub.io/v1alpha1
-  kind: AutoRAGSearchSpace
   candidate_sets:
     - /rag_options/hybrid_alpha: 0.3
       /rag_options/reranker_top_k: 10
