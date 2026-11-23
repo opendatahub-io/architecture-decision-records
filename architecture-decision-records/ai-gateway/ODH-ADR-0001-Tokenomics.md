@@ -1136,7 +1136,7 @@ The OTEL Collector transforms the Log record into a CloudEvent and sends it to t
 | `data.resource` | Dynamic resource keys matching rate table entries |
 | `data.usage` | Dynamic usage keys matching rate table cost keys |
 
-The Metering Service persists the CloudEvent data to the `usage` table in Postgres and exposes it via the metering APIs for external systems (Bring Your Own Metering). The usage records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)).
+The Metering Service processes the CloudEvent, resolves the applicable budgets from the identity, computes the BU cost, and persists the event to the `usage` table in Postgres. The identity context (groups, organization, tenant) is stored for group-level and org-level reporting; the user field is included only when user identity collection is enabled (see [PII in Identity Fields](#pii-in-identity-fields)). The usage records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)). Metering data is exposed via the metering APIs for external systems (Bring Your Own Metering).
 
 ### Storage Schema
 
@@ -1194,6 +1194,10 @@ All tables include a `tenant_id` column for multi-tenancy. Dynamic fields (resou
 
 Append-only ledger of usage records. This is the durable record that feeds reporting, overage tracking, and the metering APIs. Rows are never updated or deleted. The Metering Service computes cumulative overage per budget from this ledger for period carry-forward. A single inference request may produce multiple usage rows — one per budget charged (e.g., if a user has both a BU budget and a token budget, two rows are written with different `budget_ref` and `bu_cost` values).
 
+**User identity is optional.** The `identity` column stores group, organization, and tenant context — these are needed for group-level and org-level budget tracking and reporting. The `user` field within the identity JSONB is configurable and can be disabled by the operator. When disabled, the Metering Service still consumes the user identity from the CloudEvent at processing time for policy resolution and flag computation, but does not persist it in the usage table. This minimizes PII in the durable store while preserving per-user budget enforcement (which operates through Redis flags, not the usage table).
+
+When user identity collection is enabled, the usage table supports per-user usage reporting. When disabled, per-user reporting can be derived from Loki (which retains the full OTEL Log with identity) or the external billing system in federated mode.
+
 | Column | Type | Description |
 |---|---|---|
 | `id` | bigserial | Primary key |
@@ -1201,7 +1205,7 @@ Append-only ledger of usage records. This is the durable record that feeds repor
 | `event_id` | text | CloudEvent `id` — idempotency key. Unique constraint on `(tenant_id, event_id, budget_ref)` prevents duplicate processing while allowing one row per budget charged |
 | `request_id` | text | Request identifier for correlation |
 | `timestamp` | timestamptz | When the request completed |
-| `identity` | jsonb | Full identity context (e.g., `{"user": "alice", "groups": ["engineering", "ml-team"], "organization": "research"}`). Stored as JSONB so new identity scopes can be added without schema changes |
+| `identity` | jsonb | Identity context. Always includes `groups`, `organization`, and `tenant`. The `user` field is included only when user identity collection is enabled (e.g., `{"user": "alice", "groups": ["engineering", "ml-team"], "organization": "research", "tenant": "acme-corp"}` or `{"groups": ["engineering"], "organization": "research", "tenant": "acme-corp"}` when disabled) |
 | `resource` | jsonb | Dynamic resource keys (e.g., `{"model": "claude-sonnet-5-5", "provider": "anthropic"}`) |
 | `usage` | jsonb | Dynamic usage keys (e.g., `{"input_tokens": 312, "output_tokens": 87, "cache_read_tokens": 20}`) |
 | `bu_cost` | bigint | Computed BU cost |
@@ -1500,13 +1504,14 @@ At the data plane level, tenant isolation is enforced by Redis ACLs rather than 
 
 ### PII in Identity Fields
 
-Identity data (user names, group names, organization names, tenant IDs) appears in multiple stores and must be treated as potentially personally identifiable information depending on the identity provider configuration:
+Identity data (user names, group names, organization names, tenant IDs) flows through the system at processing time but is deliberately not persisted in the usage table (see [Storage Schema](#storage-schema)). It does appear in other stores:
 
 | Store | Where identity appears | Retention concern |
 |---|---|---|
-| Postgres (`usage` table) | `identity` JSONB column (user, groups, organization, tenant) | Usage records retain identity for reconciliation and reporting. Data retention policies for the `usage` table should align with the organization's privacy requirements |
+| Postgres (`usage` table) | `identity` JSONB column always includes groups, organization, and tenant. The `user` field is configurable — when user identity collection is disabled, usernames are not persisted. The `event_id` links back to the OTEL Log in Loki for full audit recovery | When user identity is enabled, data retention policies for the `usage` table should align with the organization's privacy requirements. When disabled, the usage table contains no PII beyond group and organization names |
+| Postgres (`budget_policies` table) | Subject names in the `subjects` JSONB column (e.g., `{"kind": "user", "name": "alice"}`) | Policy definitions are operator-managed configuration, not usage data. Retention follows the policy lifecycle |
 | Redis (key names) | Admission flag keys embed identity names: `{tenant}:admit:user:alice:{hash}`, `{tenant}:admit:group:data-science:{hash}` | Key names persist in Redis snapshots (RDB/AOF), diagnostic output (`KEYS`, `SCAN`, `MONITOR`), and slow-log entries. Operators should treat Redis key names as identity data |
-| OTEL Log / CloudEvent | `identity` object in the event payload | Forwarded to Loki and the Metering Service. Loki retention policies apply |
+| OTEL Log / CloudEvent | `identity` object in the event payload | Forwarded to Loki and the Metering Service. Loki retention policies apply. This is the authoritative record of who made each request |
 
 Operators should ensure that Redis persistence files (RDB snapshots, AOF logs) are protected with the same access controls as identity data. Redis diagnostic commands (`KEYS`, `SCAN`, `MONITOR`) expose key names and should be restricted to authorized operators. If the organization requires that identity names not persist outside the Metering Service, the key layout could be changed to use hashed identity names (similar to the resource hash), at the cost of debuggability — this is an implementation decision, not an architectural one.
 
