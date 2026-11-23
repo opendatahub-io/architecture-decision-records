@@ -18,7 +18,7 @@ Users keep writing `ExternalModel` and `ExternalProvider`. `ai-gateway-controlle
 
 ## Why
 
-The approved KServe / MaaS ADR removes the per-model HTTPRoute for in-cluster published models and has MaaS write routing into the tenant `Proxy`. External models still create an `HTTPRoute` (`external-model-<name>`) today and rely on Envoy to reselect that route after ExtProc chooses a provider. Leaving them on Gateway API while KServe models move to Praxis would split the tenant dataplane: one front door, two routing systems, and policies that still attach to routes for only half the models.
+The move to Praxis removes the per-model HTTPRoute. The KServe / MaaS ADR defines what MaaS and KServe do once it is gone: MaaS writes routing into the tenant `Proxy`. External models still create an `HTTPRoute` (`external-model-<name>`) today and rely on Envoy to reselect that route after ExtProc chooses a provider. Leaving them on Gateway API while KServe models move to Praxis would split the tenant dataplane: one front door, two routing systems, and policies that still attach to routes for only half the models.
 
 [`gateway-controller`](https://github.com/praxis-proxy/gateway-controller) is not an ingress controller. It configures a Praxis proxy behind the platform's existing ingress. A Gateway can still be the entry point and forward all traffic to Praxis. **The per-model HTTPRoute is removed.** Praxis routes on the `model` field of the request body, and ["no route is ever written"](https://github.com/praxis-proxy/gateway-controller/blob/f6a12554d9294130010ed16abea775657914bb6f/docs/design/api.md?plain=1#L311).
 
@@ -38,7 +38,7 @@ The approved KServe / MaaS ADR removes the per-model HTTPRoute for in-cluster pu
 
 - The platform ingress only forwards. The proxy is not tied to any Gateway API implementation for per-model routing.
 - MaaS creates a `Proxy` and a `Policy` per tenant (same as the KServe ADR).
-- **`ai-gateway-controller`** stops creating per-model HTTPRoutes. It writes routing entries for each Ready ExternalModel into the tenant `Proxy` under a dedicated ownership boundary (or later as `ModelProvider` objects — see Alternatives).
+- **`ai-gateway-controller`** stops creating per-model HTTPRoutes. After providers and credentials resolve, it publishes routing facts on `ExternalModel` status; **MaaS** — the sole Proxy writer, see "Proxy ownership" — writes the routing entry into the tenant `Proxy`; Ready is set only after the entry is applied.
 - **`gateway-controller`** renders the Praxis config from the `Proxy` and the `Policy`. Exactly one rendered config owner.
 - Credential injection and multi-provider selection run **inside Praxis**, not as ExtProc + Envoy reselection.
 - **Provider egress:** either Praxis originates TLS to external providers (must support TLS mode, SNI, CA, and allow-listed egress — what DestinationRule + ServiceEntry do today), or Istio SE/DR remain for egress under an explicit hybrid that is *not* the preferred end state. Bundling “drop HTTPRoute” with “drop SE/DR” without that Praxis capability is a massive ask.
@@ -54,7 +54,7 @@ Praxis ExtProc already participates, but model routing and policy attachment sti
 | `MaaSModelRef` endpoint / `httpRoute*` / Ready are filled from the HTTPRoute. | Without a route the MaaS publish object has no endpoint and stays Pending, even though ExternalModel specs already know the backend. MaaS does not read ExternalModel status. | Take endpoint from the tenant ingress host; stop gating Ready on route acceptance (same class of fix as the companion ADR). No KServe-like Addresses/URL contract needed on ExternalModel. |
 | Per-model Kuadrant policies attach to the HTTPRoute. | Without a route, MaaS has nowhere to hang per-model limits. | Generate per-model limits and auth in the Praxis `Policy`. |
 | DestinationRule / ServiceEntry own TLS, SNI, CA, and mesh-external allowlisting. | If Praxis dials providers without an equivalent, HTTPS to OpenAI/Anthropic/etc. regresses (wrong SNI, no custom CA, open egress). | **Requirement:** Praxis upstream config must own TLS / SNI / CA / egress for external providers before SE/DR can be removed. Track as an explicit Praxis dependency, not as free fallout of HTTPRoute removal. |
-| Ready on ExternalModel means "networking resources created" (route + transport). | Couples control-plane Ready to Gateway API objects that are going away. | Ready means providers + credentials resolve and the routing entry was accepted into the Proxy (or ModelProvider), independent of HTTPRoute status. |
+| Ready on ExternalModel means "networking resources created" (route + transport). | Couples control-plane Ready to Gateway API objects that are going away. A definition that publishes routing only for Ready models would be circular: a new model has no routing entry, so it could never become Ready. | Ready means providers + credentials resolve and the routing entry was applied to the Proxy (or ModelProvider), independent of HTTPRoute status. The entry is published first, after validation; Ready follows the applied entry. |
 | Tenant identity and Gateway binding still gate ExternalModel reconcile. | Correct for today's ExtProc-on-Gateway install; Gateway becomes forward-only under Praxis. | Keep the tenant Gateway as entry (ADR non-goal to remove it). Point the tenant at a `Proxy` the same way the KServe ADR does. |
 | Credential material is projected for ExtProc file reads. | Works for ExtProc; Praxis needs an explicit secret / credential reference model without embedding secret bytes in config. | Keep reference-only credentials; map them into Praxis credential injection. |
 
@@ -62,7 +62,7 @@ Praxis ExtProc already participates, but model routing and policy attachment sti
 
 - An ExternalModel in a Praxis tenant is served through Praxis, not through a per-model HTTPRoute.
 - Users keep writing `ExternalModel` / `ExternalProvider`. Clients keep the hostname, the request URL with the model in the body, and the model ID (`spec.modelName` or `metadata.name`).
-- One writer per object. `ai-gateway-controller` owns ExternalModel control plane; `gateway-controller` owns rendered proxy config; MaaS owns tenant `Proxy` / `Policy` scaffolding, `MaaSModelRef`, and subscription-derived policy rules.
+- One writer per object. `ai-gateway-controller` owns ExternalModel control plane; `gateway-controller` owns rendered proxy config; MaaS owns tenant `Proxy` / `Policy` scaffolding, `MaaSModelRef`, and subscription-derived policy rules. The tenant `Proxy` itself has exactly **one** routing writer (see "Proxy ownership" below) — the Proxy API's atomic lists do not allow two.
 - Align with the KServe ADR: same tenant cut-over unit, same ingress-forward model, `ModelProvider` available later as an alternative shape.
 - Treat **routing** (HTTPRoute) and **egress TLS** (SE/DR) as separable deliverables; do not remove SE/DR until Praxis owns TLS / SNI / CA / egress.
 - A tenant can move in stages and be rolled back.
@@ -70,9 +70,9 @@ Praxis ExtProc already participates, but model routing and policy attachment sti
 ## Non-Goals
 
 - The move to Praxis itself. It is the starting point and is decided by the platform / companion ADR.
-- Changing the user-facing ExternalModel / ExternalProvider APIs beyond status fields that name HTTPRoutes.
+- Changing the user-facing ExternalModel / ExternalProvider spec APIs. Status changes are in scope: routing facts for MaaS replace the HTTPRoute-naming fields.
 - Defining the `ModelProvider` API (see Alternatives).
-- Inventing a KServe-like status contract on ExternalModel for MaaS to discover backends — those facts are already on ExternalModel / ExternalProvider spec; the broken contract is `MaaSModelRef` ↔ HTTPRoute.
+- Inventing a KServe-like Addresses/URL discovery contract on ExternalModel. MaaS does read `ExternalModel` status under this ADR, but only routing facts `ai-gateway-controller` resolves from spec — providers, weights, paths, credential references, validation result.
 - An ingress without Gateway API. The tenant Gateway stays in front of the proxy.
 - Per-model path URLs of the form `/<namespace>/<name>/v1/...` through Praxis (same non-goal as the companion ADR).
 - Moving a single model. The unit of the cut-over is the tenant.
@@ -83,12 +83,19 @@ Praxis ExtProc already participates, but model routing and policy attachment sti
 
 We propose to keep `ExternalModel` and `ExternalProvider` as the objects a user writes. `ai-gateway-controller` already knows the backends, provider bindings, weights, paths, and credential references from those specs. For Praxis-selected tenants it:
 
-1. **Stops creating** `HTTPRoute` `external-model-*` (and Envoy reselection that depends on them).
-2. **Writes** a routing entry for each Ready ExternalModel into the tenant `Proxy`, with SSA field ownership that does not fight MaaS's KServe routing writes.
+1. **Stops creating** `HTTPRoute` `external-model-*` (and Envoy reselection that depends on them) once the tenant is cut over to the proxy — see the migration gate below.
+2. **Publishes** resolved routing facts (providers, weights, paths, credential references, validation result) on `ExternalModel` status once providers and credentials resolve, then sets Ready once MaaS reports the routing entry applied — see "Proxy ownership" for why MaaS, not `ai-gateway-controller`, writes the entry.
 3. **Keeps** Istio Service / ServiceEntry / DestinationRule until Praxis can express the same TLS / SNI / CA / egress semantics on the provider hop — then removes them in a follow-on.
 4. Moves credential injection and multi-provider selection from ExtProc-on-Envoy into Praxis filters.
 
 `gateway-controller` renders `Proxy` + `Policy`. No `ModelProvider` is required for the first step.
+
+### Migration gate for HTTPRoute removal
+
+A Praxis-selected tenant may still serve traffic through its per-model HTTPRoutes. Routes are removed only when the tenant is cut over to the standalone proxy:
+
+- `ai-gateway-controller` already gates on a Praxis-selected, Active `AITenant`; MaaS records the tenant's `Proxy` on the `AITenant` (shared with the companion ADR). Both conditions — Active Praxis tenant and a recorded, prepared `Proxy` — must hold before `external-model-*` routes are deleted. No separate Gateway signal is required, unlike the KServe path, because `ai-gateway-controller` reads `AITenant` directly.
+- Rollback recreates removed routes through the existing `modelHTTPRouteSet` behavior; the overlay publication path stays available during hybrid operation so a tenant can move back without data loss.
 
 ```
 Today:    Client → Gateway/Envoy → ExtProc (choose + creds) → HTTPRoute reselection → SE/DR → provider
@@ -99,20 +106,37 @@ End state: Client → Gateway (forward) → Praxis Proxy (route + creds + TLS/SN
 ### Who does what, and why
 
 - The user writes the same `ExternalModel` / `ExternalProvider` as today. Spec needs no new required field for the first step.
-- **`ai-gateway-controller`** resolves providers and Secrets, publishes Ready without an HTTPRoute, and writes / removes Proxy routing entries. It retains SE/DR until the Praxis egress requirement is met.
-- **MaaS** creates the tenant `Proxy` and `Policy`, generates auth and per-model limits that do not attach to a route, fills `MaaSModelRef` endpoint from the tenant ingress host, and continues to own subscriptions.
+- **`ai-gateway-controller`** resolves providers and Secrets, publishes resolved routing facts on `ExternalModel` status, and retains SE/DR until the Praxis egress requirement is met.
+- **MaaS** is the sole writer of the tenant `Proxy`: it reads `ExternalModel` status, writes / removes the routing entries, rejects model-ID collisions between KServe and external models, generates auth and per-model limits that do not attach to a route, fills `MaaSModelRef` endpoint from the tenant ingress host, and continues to own subscriptions. `ai-gateway-controller` sets Ready on `ExternalModel` once MaaS reports the routing entry applied — no HTTPRoute condition.
 - **`gateway-controller`** renders `Proxy` + `Policy`.
 - The tenant Gateway remains the entry hostname clients already use; it forwards to the proxy.
+
+### Proxy ownership
+
+The Proxy API's lists are atomic: a listener's `filterChains` has no `listType` marker (atomic by default), and each chain's `filters` is `+listType=atomic` ([`proxy_types.go`](https://github.com/praxis-proxy/gateway-controller/blob/68d3ce01d9e981f94b5192b125f8eceb55e18bd0/api/proxy/v1alpha1/proxy_types.go)). Kubernetes treats an atomic list as one unit owned by one manager and replaced whole. Two controllers adding entries to the same chain — or even naming each other's chains in `filterChains` — cannot partition ownership via server-side apply; one writer's apply can drop or overwrite the other's entries.
+
+The design therefore requires **one routing writer per tenant `Proxy`**, and that writer owns chain order for the whole listener.
+
+**MaaS is the sole Proxy writer**, consistent with the KServe companion ADR, which already gives MaaS this role in the tenant namespace:
+
+- `ai-gateway-controller` publishes resolved routing facts — providers, weights, paths, credential references, validation result — on `ExternalModel` status.
+- MaaS reads that status and writes / removes the routing entries in the tenant `Proxy`, alongside its KServe routing writes.
+- MaaS rejects a KServe model and an ExternalModel that claim the same client-facing model ID — a check only the single writer can own.
+- MaaS reflects the applied entry on `MaaSModelRef` (endpoint from the tenant ingress host, Ready once the entry is applied), so `ai-gateway-controller` sets `ExternalModel` Ready from MaaS's report and the publish object no longer depends on route status.
+
+Rejected shapes: **`ai-gateway-controller` as sole Proxy writer** — inverts the companion ADR's writer for KServe models and would need MaaS to hand KServe routing over; **two SSA field owners in one Proxy** — unworkable given the atomic lists above. `ModelProvider` per ExternalModel (see Alternatives) remains a later step that would give each entry its own object and writer without changing this decision's user-facing outcome.
 
 ### Benefits
 
 - **One dataplane per Praxis tenant** for model routing. External and in-cluster models share the Proxy story.
-- **One writer per object.** ExternalModel stays with ai-gateway-controller; Proxy scaffolding and MaaSModelRef stay with MaaS; rendered config stays with gateway-controller.
+- **One writer per object, including the Proxy.** ExternalModel stays with ai-gateway-controller; Proxy scaffolding and MaaSModelRef stay with MaaS; rendered config stays with gateway-controller; exactly one controller writes routing into the tenant `Proxy`.
 - **No dependency on the `ModelProvider` API** for the first cut.
 - **Nothing changes in what users write.** Clients keep body-based model IDs.
 - **Egress risk is bounded.** HTTPRoute can go away without pretending DestinationRule is optional.
 
 ### Requirement: Praxis owns TLS / SNI / CA / egress (before SE/DR removal)
+
+Upstream TLS with SNI and a custom CA already exists in Praxis ([`cluster.rs`]). The gap is narrower than "Praxis has no TLS": what is missing is **egress through an HTTP CONNECT proxy** — the allow-listed, controlled egress path SE/DR provide today — tracked as [`praxis-proxy/praxis#1589`](https://github.com/praxis-proxy/praxis/issues/1589).
 
 Today's DestinationRule sets at least:
 
@@ -130,12 +154,12 @@ ServiceEntry makes the host `MESH_EXTERNAL` with DNS resolution. ExternalName Se
 
 | Change | Today | Size |
 | :---- | :---- | :---- |
-| Stop creating `HTTPRoute` `external-model-*` for Praxis-selected tenants. | `modelHTTPRouteSet` builds Gateway API routes with provider header matches and sink rules. | Medium |
-| Write routing entries into the tenant `Proxy` (SSA / field owner). | Publishes ExtProc overlay; Envoy owns the hop after reselection. | Medium / New |
-| Redefine Ready: providers + credentials resolve and routing entry was applied; no HTTPRoute condition. | Ready ≈ networking resources created; `status.httpRouteName` set. | Small |
+| Stop creating `HTTPRoute` `external-model-*` for cut-over tenants only. | `modelHTTPRouteSet` builds Gateway API routes with provider header matches and sink rules. | Medium |
+| Publish resolved routing facts (providers, weights, paths, credential refs, validation) on `ExternalModel` status for MaaS to consume — see "Proxy ownership". | Publishes ExtProc overlay; Envoy owns the hop after reselection. | Medium / New |
+| Redefine Ready: routing facts published after providers + credentials resolve; Ready set once MaaS reports the entry applied; no HTTPRoute condition. | Ready ≈ networking resources created; `status.httpRouteName` set. | Small |
 | Retire or replace `status.httpRouteName` (MaaS does not read it today anyway; route naming is hardcoded on the MaaS side). | CRD documents it for consumers. | Small, API change |
 | Keep reference-only credential publication; map into Praxis credential config. | ExtProc file projection + `credential_inject`. | Medium |
-| Preserve weighted multi-provider selection semantics in Praxis routing. | Weights on `ExternalProviderRef`; ExtProc `intelligent_route` + header reselection. | Medium |
+| Preserve weighted multi-provider selection semantics in Praxis routing. | Weights on `ExternalProviderRef`; ExtProc `intelligent_route` + header reselection. | Medium — weighted selection on static candidates is **not available in Praxis today** (see Dependencies) |
 | **Later:** stop creating Service / ServiceEntry / DestinationRule once Praxis TLS/SNI/CA/egress is real. | `applyTransport` owns the external HTTPS hop. | Medium — **blocked on Praxis** |
 | Tenant gate stays: Praxis-selected Active `AITenant`; Gateway as ingress forward target, not HTTPRoute parent. | Reconcile no-ops / cleans up without Active Praxis tenant. | Small |
 
@@ -143,7 +167,9 @@ ServiceEntry makes the host `MESH_EXTERNAL` with DNS resolution. ExternalName Se
 
 | Change | Today | Size |
 | :---- | :---- | :---- |
-| Stop deriving `MaaSModelRef` endpoint / `httpRoute*` / Ready from the ExternalModel HTTPRoute. | Fills status from route/Gateway; does not read ExternalModel status. | Medium |
+| Read `ExternalModel` status and write / remove external-model routing entries in the tenant `Proxy` (sole Proxy writer — see "Proxy ownership"); report the applied entry so `ai-gateway-controller` can set Ready. | Does not read ExternalModel status. | Medium / New |
+| Reject model-ID collisions between KServe models and ExternalModels. | No single writer owns the check. | New |
+| Stop deriving `MaaSModelRef` endpoint / `httpRoute*` / Ready from the ExternalModel HTTPRoute; fill from the applied Proxy entry and tenant ingress host. | Fills status from route/Gateway; does not read ExternalModel status. | Medium |
 | Take endpoint from the tenant ingress host (same as companion ADR). | Hostnames from route or Gateway listeners. | Medium, API change |
 | Stop attaching per-model policies to ExternalModel HTTPRoutes. | Kuadrant on Gateway / HTTPRoute. | Medium |
 | Generate per-model token limits and auth rules in the Praxis `Policy`. | Kuadrant policies. | New (shared with companion ADR) |
@@ -154,24 +180,24 @@ ServiceEntry makes the host `MESH_EXTERNAL` with DNS resolution. ExternalName Se
 | Change | Today | Size |
 | :---- | :---- | :---- |
 | Render Proxy + Policy and deploy the proxy (shared dependency). | Draft / in flight on gateway-controller. | Shared with companion ADR |
-| Model body routing + multi-provider weighted selection for ExternalModel IDs. | ExtProc `intelligent_route` overlay. | Exists in ExtProc; must exist in proxy |
+| Model body routing + multi-provider weighted selection for ExternalModel IDs. | ExtProc `intelligent_route` overlay. | Body routing exists in proxy; **weighted selection works only in overlay mode today — static candidates cannot use weights** ([`intelligent_route` docs](https://github.com/praxis-proxy/ai/blob/a59c9270258a68c68f45419ef02d3f5a0a195fdd/docs/filters/intelligent_route.md)). Weighted static candidates are new upstream work |
 | Credential injection from Secret references without secret bytes in config. | ExtProc `credential_inject`. | Exists in ExtProc; must exist in proxy |
-| **TLS / SNI / CA / egress for third-party HTTPS providers** (blocks SE/DR removal). | Istio DestinationRule + ServiceEntry. | **New — large; must be tracked** |
+| **Egress through an HTTP CONNECT proxy for third-party HTTPS providers** (blocks SE/DR removal; TLS/SNI/CA already supported). | Istio DestinationRule + ServiceEntry. | **New — tracked as [`praxis-proxy/praxis#1589`](https://github.com/praxis-proxy/praxis/issues/1589)** |
 
 ## Dependencies
 
 - `gateway-controller` renders and deploys the proxy from a `Proxy` and a `Policy` ([`gateway-controller#14`](https://github.com/praxis-proxy/gateway-controller/issues/14)–[`#17`](https://github.com/praxis-proxy/gateway-controller/issues/17), draft [`#82`](https://github.com/praxis-proxy/gateway-controller/pull/82)).
 - Policy engine: Kubernetes token auth ([`policy#213`](https://github.com/praxis-proxy/policy/issues/213), [`#214`](https://github.com/praxis-proxy/policy/issues/214)), per-model token limits ([`policy#352`](https://github.com/praxis-proxy/policy/issues/352), [`#308`](https://github.com/praxis-proxy/policy/issues/308)), shared limit counters ([`policy#127`](https://github.com/praxis-proxy/policy/issues/127)).
-- Credential injection and weighted provider selection on the Praxis proxy path, not only on `praxis-extproc` attached to Istio.
-- **Praxis upstream TLS / SNI / CA / egress** equivalent to today's DestinationRule + ServiceEntry — required before SE/DR removal; open work to track explicitly.
+- Credential injection and weighted provider selection on the Praxis proxy path, not only on `praxis-extproc` attached to Istio. **Weighted selection with static (non-overlay) candidates does not exist in Praxis today** — upstream must add it before the ExtProc overlay can be dropped for multi-provider ExternalModels.
+- **Praxis upstream TLS / SNI / CA:** already supported for upstream clusters ([`cluster.rs`](https://github.com/praxis-proxy/praxis/blob/2212314b12a4536774f41ed4e1aec1619d403459/crates/tls/src/config/cluster.rs)). What is missing is egress through an HTTP CONNECT proxy — tracked upstream as [`praxis-proxy/praxis#1589`](https://github.com/praxis-proxy/praxis/issues/1589). Required before SE/DR removal.
 - Companion ADR migration stages: tenant cut-over is shared; ExternalModel entries are additional Proxy content for the same tenant.
 
 ## Open Questions
 
-- **Who writes ExternalModel routing into the `Proxy`?** Preferred here: `ai-gateway-controller`, with a distinct SSA field owner from MaaS's KServe routing writes. Alternative shape: `ModelProvider` per ExternalModel (below).
+- **Shape of the `ExternalModel` status contract MaaS reads.** MaaS is the sole Proxy writer (decided — see "Proxy ownership"); what remains open is the exact status fields for resolved routing facts and how MaaS reports the applied entry back for Ready.
 - **Interim egress:** keep SE/DR while Praxis routes, or wait to cut ExternalModel traffic over until Praxis TLS is ready?
 - **How the Gateway shows it is in front of Praxis.** Same open question as the companion ADR (GatewayClass vs annotation).
-- **Secret projection vs proxy-native credential refs.** Affects RBAC for the proxy ServiceAccount.
+- **Secret projection vs proxy-native credential refs.** Today the only way to get a Secret into the proxy through a `Proxy` is `secretEnv` — Secret keys as env vars in the same namespace — so rotation requires a proxy restart. Hot rotation of provider credentials needs a native credential-reference mechanism in the Proxy API. Affects RBAC for the proxy ServiceAccount.
 - **Price Tag / metering filters.** Confirm metering moves with the proxy so ExternalModel traffic stays metered after HTTPRoute removal.
 
 ## Alternatives
@@ -186,9 +212,9 @@ This mirrors companion-ADR option 2 (MaaS creates `ModelProvider` for published 
 
 **What does not change under this alternative:** HTTPRoute still goes away; `MaaSModelRef` still stops depending on route status; **Praxis must still own TLS / SNI / CA / egress before SE/DR can be removed.** `ModelProvider` only changes where the routing entry lives, not who originates HTTPS to the provider.
 
-| Relationship | Preferred (Proxy inline) | Alternative (ModelProvider) |
+| Relationship | Proxy inline (single writer, see "Proxy ownership") | Alternative (ModelProvider) |
 | :---- | :---- | :---- |
-| Routing entry | Inline in tenant `Proxy`, written by ai-gateway-controller | `ModelProvider` per ExternalModel, written by ai-gateway-controller |
+| Routing entry | Inline in tenant `Proxy`, written by MaaS from `ExternalModel` status | `ModelProvider` per ExternalModel, written by ai-gateway-controller |
 | Depends on `ModelProvider` API | No | Yes |
 | HTTPRoute | Removed | Removed |
 | SE/DR until Praxis TLS/SNI/CA/egress | Kept | Kept |
@@ -205,9 +231,9 @@ This mirrors companion-ADR option 2 (MaaS creates `ModelProvider` for published 
 ## Risks and Considerations
 
 - All models of a tenant (KServe-published and ExternalModel) may land in one `Proxy` object; every publish/unpublish is a write to the same object (same risk as the companion ADR).
-- SSA / field-ownership conflicts if both MaaS and ai-gateway-controller write the Proxy without a clear partition.
+- Proxy ownership is decided (MaaS sole writer, see "Proxy ownership"), but it adds a MaaS dependency to every ExternalModel publish: if MaaS is down, external models stop becoming Ready even though `ai-gateway-controller` has validated them.
 - Treating SE/DR removal as implied by HTTPRoute removal underestimates the Praxis TLS/SNI/CA/egress gap.
-- When an ExternalProvider Secret rotates, Praxis must pick up new credentials without requiring an HTTPRoute reconcile.
+- When an ExternalProvider Secret rotates, Praxis must pick up new credentials. Today the `Proxy` API only supports Secret keys as env vars (`secretEnv`), so rotation restarts proxy pods; hot rotation is an open Praxis dependency.
 - During hybrid migration, a tenant must not split a single client-facing model ID across ExtProc-on-Envoy and Praxis Proxy.
 - Routing config rolls that restart proxy pods (companion ADR risk) affect external and in-cluster models together.
 
@@ -215,8 +241,8 @@ This mirrors companion-ADR option 2 (MaaS creates `ModelProvider` for published 
 
 | Group | Impacted? |
 | :---- | :---- |
-| AI Gateway (`ai-gateway-controller`) | Stops HTTPRoute for Praxis tenants; writes Proxy routing (or ModelProvider later); keeps SE/DR until Praxis egress TLS exists; redefines Ready / status. |
-| Models-as-a-Service (MaaS) | Stops filling `MaaSModelRef` from ExternalModel HTTPRoutes; owns Proxy / Policy scaffolding; shared cut-over with KServe path. |
+| AI Gateway (`ai-gateway-controller`) | Stops HTTPRoute for Praxis tenants; publishes routing facts on ExternalModel status for MaaS; keeps SE/DR until Praxis egress TLS exists; redefines Ready / status. |
+| Models-as-a-Service (MaaS) | Becomes sole Proxy writer: reads ExternalModel status, writes routing entries, rejects model-ID collisions; stops filling `MaaSModelRef` from ExternalModel HTTPRoutes; owns Proxy / Policy scaffolding; shared cut-over with KServe path. |
 | AI Gateway (Praxis) | Proxy must route ExternalModel IDs, inject credentials, select among weighted providers, and — before SE/DR removal — own TLS / SNI / CA / egress to third-party providers. |
 | Dashboard / users | Keep writing ExternalModel / ExternalProvider; same hostnames and body model IDs. Per-model path URLs stop working. |
 | Model Serving (KServe) | None directly; companion ADR only. |
