@@ -33,7 +33,12 @@ The first version supports independent benchmark questions and a single final te
 | `custom_rag_config` | One endpoint configuration, with its base request, schema additions, and evidence rules. |
 | `search_space_config` | Optional finite candidate choices for that base request. |
 | `test_data_secret_name`, `test_data_bucket_name`, `test_data_key` | Benchmark access and location. See [ADR 0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json). |
-| `optimization_metric`, `optimization_max_rag_patterns` | Evaluation objective and candidate budget. Evaluator model bindings and Connections are supplied separately. See [ADR 0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
+| `maas_secret_name` | Authorized MaaS Connection required when Ragas or another model-backed evaluator is enabled. Supplies `MAAS_BASE_URL` and `MAAS_API_KEY`. See [ADR 0002](./ODH-ADR-0002-experiment-settings.md#connections). |
+| `evaluator_llm_model_id` | MaaS model ID required when an enabled metric uses an LLM judge. |
+| `evaluator_embedding_model_id` | MaaS model ID required when an enabled metric uses embeddings, such as Ragas answer relevancy. |
+| `optimization_metric`, `optimization_max_rag_patterns` | Evaluation objective and candidate budget. See [ADR 0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
+
+Supply the MaaS Connection and the model IDs required by the enabled metrics as pipeline inputs. AutoRAG uses the same evaluator models for every candidate in the experiment. `custom_rag_config.request.model` belongs to the RAG endpoint's request, and `custom_rag_secret_name` supplies that endpoint's Connection. Runs using only evaluators that make no model calls can omit the MaaS Connection and both evaluator model IDs.
 
 ### Required endpoint contract
 
@@ -90,7 +95,7 @@ AutoRAG computes evaluator scores locally. A composite objective is eligible onl
 
 ### Preflight and failures
 
-Validate the contract, search space, and metric eligibility locally. Preflight sends the same representative benchmark question for the first 10 requests in the normalized candidate sequence, or every request if the sequence is shorter. A fixed run probes its base request. Preflight checks endpoint access, final-answer conformance, and declared evidence. The pipeline records which candidates were probed and their results.
+Validate the contract, search space, and metric eligibility locally. Reject a missing MaaS Connection or required evaluator model ID when a model-backed evaluator is enabled. Verify the configured IDs are available for their respective roles through the MaaS Connection before probing the RAG endpoint. Preflight sends the same representative benchmark question for the first 10 requests in the normalized candidate sequence, or every request if the sequence is shorter. A fixed run probes its base request. Preflight checks endpoint access, final-answer conformance, and declared evidence. The pipeline records which candidates were probed and their results.
 
 Request timeouts, concurrency, and retries are pipeline execution settings. Retry transient failures within the execution budget. A candidate that fails preflight is recorded and excluded. Unprobed candidates remain eligible for evaluation. Preflight calls are separate from benchmark scoring and do not count toward `optimization_max_rag_patterns`.
 
