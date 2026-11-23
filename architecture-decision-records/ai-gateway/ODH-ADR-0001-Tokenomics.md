@@ -1495,11 +1495,19 @@ At the data plane level, tenant isolation is enforced by Redis ACLs rather than 
 
 ### PII in Identity Fields
 
-The `identity` object (user, groups, organization, tenant) flows through the OTEL Log, CloudEvent, and Postgres usage records. These fields may contain personally identifiable information depending on the identity provider configuration. Operators should be aware that usage records in Postgres retain identity context for reconciliation and reporting purposes. Data retention policies for the `usage` table should align with the organization's privacy requirements.
+Identity data (user names, group names, organization names, tenant IDs) appears in multiple stores and must be treated as potentially personally identifiable information depending on the identity provider configuration:
+
+| Store | Where identity appears | Retention concern |
+|---|---|---|
+| Postgres (`usage` table) | `identity` JSONB column (user, groups, organization, tenant) | Usage records retain identity for reconciliation and reporting. Data retention policies for the `usage` table should align with the organization's privacy requirements |
+| Redis (key names) | Admission flag keys embed identity names: `{tenant}:admit:user:alice:{hash}`, `{tenant}:admit:group:data-science:{hash}` | Key names persist in Redis snapshots (RDB/AOF), diagnostic output (`KEYS`, `SCAN`, `MONITOR`), and slow-log entries. Operators should treat Redis key names as identity data |
+| OTEL Log / CloudEvent | `identity` object in the event payload | Forwarded to Loki and the Metering Service. Loki retention policies apply |
+
+Operators should ensure that Redis persistence files (RDB snapshots, AOF logs) are protected with the same access controls as identity data. Redis diagnostic commands (`KEYS`, `SCAN`, `MONITOR`) expose key names and should be restricted to authorized operators. If the organization requires that identity names not persist outside the Metering Service, the key layout could be changed to use hashed identity names (similar to the resource hash), at the cost of debuggability — this is an implementation decision, not an architectural one.
 
 ### Redis Data Security
 
-Redis holds admission flags and balance counters. It does not store configuration objects, usage records, or identity information. Configure TLS for in-transit encryption, per-tenant credentials, read-only access for gateways, write access only for the Metering Service, and network policies that admit just those two clients.
+Redis holds admission flags and balance counters. Key names embed identity information (user names, group names) as described above. It does not store configuration objects or usage records. Configure TLS for in-transit encryption, per-tenant credentials, read-only access for gateways, write access only for the Metering Service, and network policies that admit just those two clients.
 
 ## Implementation notes
 
