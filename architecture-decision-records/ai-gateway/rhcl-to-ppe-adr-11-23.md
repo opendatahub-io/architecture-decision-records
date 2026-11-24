@@ -185,13 +185,18 @@ can run Praxis payload processing with RHCL policy, or Praxis with PPE).
 - `ai-gateway-controller` branches the tenant dataplane render on `policy-engine`.
 - `maas-controller` keeps the Kuadrant renderer for `rhcl` tenants; adds PPE YAML
   renderer for `ppe` tenants.
-- Rollout: dev tenant → EA → GA. If a shadow / dual-enforcement phase is needed
-  during migration, reuse whatever pattern Model Serving follows for its
-  cut-overs rather than inventing a MaaS-specific one — unless that pattern
-  depends on something serving-specific that does not apply here, in which case
-  the divergence and its reason must be written down. Shadow mode, where used,
-  is a migration tool, not the end state.
+- Rollout: dev tenant → EA → GA. Existing Kuadrant `AuthPolicy` / `TRLP`
+  objects remain in place until the new Praxis policy has been fully applied
+  for the tenant; they are removed only after PPE enforcement is confirmed.
+- **Open question — enforcement during cut-over:** while both the RHCL and
+  PPE configurations exist for a tenant, which engine actually enforces, and
+  is there a window where both (or neither) do? Needs an explicit answer
+  before dev-tenant rollout.
 - Consumer portal and any tenant that still needs RHCL keep Kuadrant installed.
+- **Documentation:** since RHCL is no longer a dependency of the MaaS
+  inference path, the release must document **optional removal of the RHCL
+  operator** for clusters that no longer need it (including the consumer-portal
+  caveat above and the DSC / odh-operator install implications in Risks).
 
 ### Decision rule for leaving RHCL on a surface
 
