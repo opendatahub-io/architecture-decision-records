@@ -63,9 +63,6 @@ gateway) and narrower than ODH-ADR-MS-0005 (payload-processing → Praxis ExtPro
 - Removing Envoy / making Praxis the public listener, or migrating the Gateway
   load-balancer URL off Istio (RHAIRFE-3914 / Full Praxis notes — users hit a
   URL we do not control).
-- Moving consumer-portal OIDC session / anonymous AuthPolicies off RHCL
-  (browser OIDC is [policy#129](https://github.com/praxis-proxy/policy/issues/129);
-  portal attachment stays on RHCL for now).
 - Absorbing maas-api in the first cut (it stays as the API-key / subscription
   HTTP directory initially).
 - Claiming full Kuadrant CR API compatibility for customized gateways.
@@ -165,7 +162,7 @@ inference path in 3.7**; the `rhcl` annotation value and the backfill below
 are a migration technique for upgrades from existing installs, used only
 where a tenant cannot move to PPE at upgrade time — not a supported
 long-term configuration. (The consumer-portal RHCL dependency is a separate
-surface; see Non-Goals.)
+surface.)
 
 To get there without silently
 flipping existing tenants:
@@ -210,7 +207,7 @@ Limiting / QoS). KServe and Istio→Praxis gateway items stay in Non-Goals.
 | Capability | Today (RHCL) | PPE / product status | Tracking |
 | :---- | :---- | :---- | :---- |
 | API key | Authorino + maas-api validate | ✅ Covered (`identity/api-key`, HTTP directory) | [policy#108](https://github.com/praxis-proxy/policy/issues/108) (closed epic) |
-| OIDC JWT (inference) | Authorino OIDC / JWKS; `azp == clientId`, group-name safety checks | ⚠️ Partial. `identity/jwt` verifies signature / JWKS / audiences and maps claims into attributes; `azp` and group checks are then `require(...)` expressions over mapped claims — expressible, but MaaS's exact `azp == clientId` and group-name-safety rules are **not yet proven** in PPE and must be part of the parity suite. Key minting flow is consumer-portal OIDC and stays on RHCL (Non-Goals). **Not** browser/Authorization-Code OIDC | Inference JWT ≠ [policy#129](https://github.com/praxis-proxy/policy/issues/129) (portal; out of scope); parity: [#195](https://github.com/praxis-proxy/policy/issues/195), [#348](https://github.com/praxis-proxy/policy/issues/348) |
+| OIDC JWT (inference) | Authorino OIDC / JWKS; `azp == clientId`, group-name safety checks | ⚠️ Partial. `identity/jwt` verifies signature / JWKS / audiences and maps claims into attributes; `azp` and group checks are then `require(...)` expressions over mapped claims — expressible, but MaaS's exact `azp == clientId` and group-name-safety rules are **not yet proven** in PPE and must be part of the parity suite. Key minting flow is consumer-portal OIDC and is out of scope here. **Not** browser/Authorization-Code OIDC | Inference JWT ≠ [policy#129](https://github.com/praxis-proxy/policy/issues/129) (portal; out of scope); parity: [#195](https://github.com/praxis-proxy/policy/issues/195), [#348](https://github.com/praxis-proxy/policy/issues/348) |
 | JWT audience | Authorino `audiences` optional | PPE refuses omitted/empty `audiences`. The `skip_audience_validation: true` hatch is **not permitted** on the MaaS path — with it, a token minted for a different audience passes issuer, `azp`, and group checks | Migration contract (see below); [#16](https://github.com/praxis-proxy/policy/issues/16) fix |
 | TokenReview + SAR | Authorino `kubernetes` + optional SAR | ❌ Missing; third method in overlay 0032. **Required before PPE becomes the default — hard requirement, no carve-out** | [policy#213](https://github.com/praxis-proxy/policy/issues/213), [#214](https://github.com/praxis-proxy/policy/issues/214) |
 | Metadata callouts | Authorino HTTP → maas-api select/validate | Needed if maas-api stays a live PIP | [policy#184](https://github.com/praxis-proxy/policy/issues/184) |
