@@ -144,9 +144,12 @@ restart (PPE refuses secret mutation on reload today).
 
 ### Coexistence and cut-over
 
-Tenants select the inference policy engine with an annotation, defaulting to RHCL.
-PPE is opt-in per tenant. Rollback is flipping the annotation; Kuadrant and RHCL
-remain installed during migration.
+Tenants select the inference policy engine with an annotation on the
+**`AITenant` object**, defaulting to RHCL. PPE is opt-in per tenant. Rollback is
+flipping the annotation; Kuadrant and RHCL remain installed during migration.
+Placing it on `AITenant` follows the pattern already used for Praxis / IPP
+payload-processing selection — tenant-scoped, one place to look, read by both
+`ai-gateway-controller` and `maas-controller`.
 
 ```
 maas.opendatahub.io/policy-engine: rhcl | ppe
@@ -158,8 +161,12 @@ can run Praxis payload processing with RHCL policy, or Praxis with PPE).
 - `ai-gateway-controller` branches the tenant dataplane render on `policy-engine`.
 - `maas-controller` keeps the Kuadrant renderer for `rhcl` tenants; adds PPE YAML
   renderer for `ppe` tenants.
-- Rollout: dev tenant → EA → GA. Shadow mode (both enforcing) is a migration tool,
-  not the end state.
+- Rollout: dev tenant → EA → GA. If a shadow / dual-enforcement phase is needed
+  during migration, reuse whatever pattern Model Serving follows for its
+  cut-overs rather than inventing a MaaS-specific one — unless that pattern
+  depends on something serving-specific that does not apply here, in which case
+  the divergence and its reason must be written down. Shadow mode, where used,
+  is a migration tool, not the end state.
 - Consumer portal and any tenant that still needs RHCL keep Kuadrant installed.
 
 ### Decision rule for leaving RHCL on a surface
