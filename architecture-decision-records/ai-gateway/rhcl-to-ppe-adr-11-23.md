@@ -198,22 +198,13 @@ can run Praxis payload processing with RHCL policy, or Praxis with PPE).
   operator** for clusters that no longer need it (including the consumer-portal
   caveat above and the DSC / odh-operator install implications in Risks).
 
-### Decision rule for leaving RHCL on a surface
-
-```
-surface S may set policy-engine=ppe for GA
-  iff every auth/limit method S exposes is covered in "Upstream requirements" below
-  AND trust-boundary parity tests pass for S
-```
-
-Partial migration (e.g. API-key only on PPE; TokenReview / TRLP on RHCL) is
-allowed only via explicit product carve-out — not by silent gap.
-
 ## Upstream / product requirements (gate RHCL retirement)
 
 POC carve-outs are temporary; they are not GA exits. Host-only workarounds that
 permanently drop a 3.6 surface are rejected unless product explicitly deprecates
-that surface. Matrix below is the MaaS checklist this ADR owns (Auth + Rate
+that surface. Partial migration (e.g. API-key only on PPE; TokenReview / TRLP
+on RHCL) is allowed only via explicit product carve-out — not by silent gap.
+Matrix below is the MaaS checklist this ADR owns (Auth + Rate
 Limiting / QoS). KServe and Istio→Praxis gateway items stay in Non-Goals.
 
 ### Auth
