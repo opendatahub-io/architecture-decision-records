@@ -229,7 +229,11 @@ default without it. No shipping with missing requirements.
 | Inference priority / InferenceObjective | Header injection for QoS / scheduler hint | Must survive RHCL removal (PPE assertions or adjacent Praxis filter) | **Product / host** — confirm owner; not a filed PPE issue |
 | Report quota usage | New requirement | Emit / report usage for quota accounting when PPE owns limits | **Unfiled** — needs an upstream or product issue |
 
-Until the shared store ships: request/token rate-limited tenants stay on RHCL. Single-replica PPE is acceptable as an EA availability posture, but it does **not** preserve counter continuity across pod restarts — rate limits on a single-replica PPE tenant are best-effort during EA only, and GA of PPE-owned limits requires the durable shared store. Experimental `quota/limitador` remote path: verify API compatibility for budget carry-over separately from request RL.
+PPE does not ship as the inference default without **both** auth and rate
+limiting complete — including the shared counter store. There is no
+partial ship where one lands and the other stays on RHCL. Experimental
+`quota/limitador` remote path: verify API compatibility for budget carry-over
+separately from request RL.
 
 ### Verified (not a missing capability — migration contract)
 
@@ -295,10 +299,9 @@ be a confused deputy from the public listener).
 - Stock FIPS image cannot run the `policy` filter; Limitador-in-PPE needs
   `panic=unwind` in the host image.
 - Treating NetworkPolicy widen-to-Praxis as "good enough" without caller auth.
-- Shared RL via #127 still leaves multi-replica correctness gated until shipped;
-  single-replica PPE is a temporary EA posture, not GA for multi-replica gateways.
-  Single-replica does not preserve in-process counters across pod restarts — a
-  restart resets the window budget; durable shared store required for GA.
+- Shared RL via #127 gates the whole PPE default: if the durable counter store
+  slips, PPE does not ship — there is no single-replica or auth-only partial
+  ship.
 - Reproducing Authorino's optional-audience hole in hand-written PPE policy
   (do **not**).
 - MaaS (and related) test suites have **hard assumptions on RHCL** / Kuadrant
