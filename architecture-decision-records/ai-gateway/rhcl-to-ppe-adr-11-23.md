@@ -190,8 +190,8 @@ can run Praxis payload processing with RHCL policy, or Praxis with PPE).
   for the tenant; they are removed only after PPE enforcement is confirmed.
 - **Open question — enforcement during cut-over:** while both the RHCL and
   PPE configurations exist for a tenant, which engine actually enforces, and
-  is there a window where both (or neither) do? Needs an explicit answer
-  before dev-tenant rollout.
+  is there a window where both (or neither) do? See
+  [open question 9](#open-product-decisions).
 - Consumer portal and any tenant that still needs RHCL keep Kuadrant installed.
 - **Documentation:** since RHCL is no longer a dependency of the MaaS
   inference path, the release must document **optional removal of the RHCL
@@ -331,6 +331,10 @@ be a confused deputy from the public listener).
 6. **Migration vs parallel support** of existing RHCL setups (annotation coexistence is the proposed answer; full-fleet flip is rejected).
 7. Where InferenceObjective / inference-priority header injection lives after RHCL.
 8. Who owns "report quota usage" and whether it blocks GA for subscription token limits.
+9. **Enforcement during cut-over:** while both the RHCL and PPE configurations
+   exist for a tenant, which engine actually enforces, and is there a window
+   where both (or neither) do? Needs an explicit answer before dev-tenant
+   rollout.
 
 ## Alternatives
 
