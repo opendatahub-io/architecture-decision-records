@@ -6,7 +6,7 @@
 | Status | Draft (local; not filed as a numbered ODH ADR yet) |
 | Authors | jland |
 | Tickets | RHAIRFE-3914 (broader Praxis-as-gateway), RHOAIENG-104076 / 104077 |
-| Companion | [external-model-praxis-routing-adr-11-23.md](./external-model-praxis-routing-adr-11-23.md), [ODH-ADR-MS-0005](https://github.com/opendatahub-io/architecture-decision-records/pull/165) (IPP → Praxis ExtProc) |
+| Companion | [ADR: Route External Models through Praxis (PR 191)](https://github.com/opendatahub-io/architecture-decision-records/pull/191), [ODH-ADR-MS-0005](https://github.com/opendatahub-io/architecture-decision-records/pull/165) (IPP → Praxis ExtProc) |
 | Other docs | [praxis-proxy/policy#195 — Support identified subset of AuthPolicy capabilities](https://github.com/praxis-proxy/policy/issues/195) (canonical PPE feature subset for MaaS AuthPolicy parity); [policy#348 — MaaS AuthPolicy demo](https://github.com/praxis-proxy/policy/issues/348); [Full Praxis notes](https://docs.google.com/document/d/1Brgpq2ow4Kjq_6O1NOecPfM3yCuSUk3FXJbl10lJI9o/edit?tab=t.q8npwz8ylxm1) |
 | Sources | [PPE adoption draft](https://github.com/jland-redhat/ai-gateway-controller/blob/early-praxis-policy-engine-ppe/docs/proposals/praxis-policy-engine-adoption.md), [analysis gist](https://gist.github.com/jland-redhat/df169c033507aa8a69be7ddfcdc4e3ae), [POC gist](https://gist.github.com/jland-redhat/eb2b5e7b1abb5829d5bb006b1bc6c5b4) |
 
@@ -71,7 +71,7 @@ gateway) and narrower than ODH-ADR-MS-0005 (payload-processing → Praxis ExtPro
 - Claiming full Kuadrant CR API compatibility for customized gateways.
 - Removing IPP / payload-processing swap (ODH-ADR-MS-0005).
 - ExternalModel HTTPRoute → Proxy routing, SE/DR egress, CONNECT proxy
-  ([companion ADR](./external-model-praxis-routing-adr-11-23.md)).
+  ([companion ADR, PR 191](https://github.com/opendatahub-io/architecture-decision-records/pull/191)).
 - Guardrails migration; KServe routing / weighted `backendRefs` / EPP parity /
   Istio-metric dashboards / ODH Model Controller TLS EnvoyFilter / Dashboard
   gateway refs (Full Praxis notes + KServe track).
@@ -82,7 +82,7 @@ gateway) and narrower than ODH-ADR-MS-0005 (payload-processing → Praxis ExtPro
 ## How
 
 ```
-Today:  Praxis → RHCL wasm shim (Authorino/Limitador→maas-api) → Praxis → backend
+Today:  Pre Processing (Praxis) → RHCL wasm shim (RHLC) → Post-Processing (Praxis) → backend
 Target: Praxis (pre-auth → PPE identity/ratelimit/authz → payload) → backend
 ```
 
@@ -210,7 +210,7 @@ Limiting / QoS). KServe and Istio→Praxis gateway items stay in Non-Goals.
 | :---- | :---- | :---- | :---- |
 | API key | Authorino + maas-api validate | ✅ Covered (`identity/api-key`, HTTP directory) | [policy#108](https://github.com/praxis-proxy/policy/issues/108) (closed epic) |
 | OIDC JWT (inference) | Authorino OIDC / JWKS; `azp` / group checks | ✅ `identity/jwt` covers bearer JWT. **Not** browser/Authorization-Code OIDC | Inference JWT ≠ [policy#129](https://github.com/praxis-proxy/policy/issues/129) (portal; out of scope) |
-| JWT audience | Authorino `audiences` optional | PPE refuses omitted/empty `audiences`; hatch `skip_audience_validation: true` | Migration contract (see below); [#16](https://github.com/praxis-proxy/policy/issues/16) fix |
+| JWT audience | Authorino `audiences` optional | PPE refuses omitted/empty `audiences`. The `skip_audience_validation: true` hatch is **not permitted** on the MaaS path — with it, a token minted for a different audience passes issuer, `azp`, and group checks | Migration contract (see below); [#16](https://github.com/praxis-proxy/policy/issues/16) fix |
 | TokenReview + SAR | Authorino `kubernetes` + optional SAR | ❌ Missing; third method in overlay 0032 | [policy#213](https://github.com/praxis-proxy/policy/issues/213), [#214](https://github.com/praxis-proxy/policy/issues/214) |
 | Metadata callouts | Authorino HTTP → maas-api select/validate | Needed if maas-api stays a live PIP | [policy#184](https://github.com/praxis-proxy/policy/issues/184) |
 | Rego / OPA authz | maas-controller generates **Rego v0** today | PPE expects Rego **v1**; transpiler / generator must migrate | **Control-plane work** (no dedicated upstream issue found) |
@@ -226,17 +226,17 @@ Until TokenReview/SAR ship: SA-token inference clients stay on `policy-engine: r
 | Request-count rate limits | Limitador via RHCL wasm | Plugin is request-count with **embedded in-process** Limitador today | Graduation: [policy#308](https://github.com/praxis-proxy/policy/issues/308); epic [#143](https://github.com/praxis-proxy/policy/issues/143) |
 | Token rate limiting (TRLP parity) | Kuadrant TokenRateLimitPolicy | Must cover existing token-RL capabilities on PPE path | [policy#308](https://github.com/praxis-proxy/policy/issues/308) |
 | Header-scoped (per-model) limits | TRLP on HTTPRoute / `X-Gateway-Model-Name` | `http:` routes cannot match headers yet | [policy#352](https://github.com/praxis-proxy/policy/issues/352) (also under [#195](https://github.com/praxis-proxy/policy/issues/195)) |
-| Shared counters / Redis | Limitador + Redis, global | Host-injected store (Redis/Valkey); Redis client alignment + **migration plan** from RHCL Redis | [policy#127](https://github.com/praxis-proxy/policy/issues/127), [#203](https://github.com/praxis-proxy/policy/issues/203) (open question on Redis migration) |
+| Shared counters / Redis | Limitador + Redis, global | **Required, not optional.** In-process counters do not survive a pod restart (policy roll, crash, node drain): the replacement pod starts with a fresh budget and a tenant can exceed its limit within the same window. Single-replica solves concurrency, **not** restart continuity. Praxis owns the store implementation; MaaS supplies the Redis/Valkey instance and the migration plan from RHCL Limitador Redis | [policy#127](https://github.com/praxis-proxy/policy/issues/127), [#203](https://github.com/praxis-proxy/policy/issues/203) (open question on Redis migration) |
 | Inference priority / InferenceObjective | Header injection for QoS / scheduler hint | Must survive RHCL removal (PPE assertions or adjacent Praxis filter) | **Product / host** — confirm owner; not a filed PPE issue |
 | Report quota usage | New requirement | Emit / report usage for quota accounting when PPE owns limits | **Unfiled** — needs an upstream or product issue |
 
-Until shared counters ship: PPE tenants single-replica **or** request/token RL stay on RHCL. Experimental `quota/limitador` remote path: verify API compatibility for budget carry-over separately from request RL.
+Until the shared store ships: request/token rate-limited tenants stay on RHCL. Single-replica PPE is acceptable as an EA availability posture, but it does **not** preserve counter continuity across pod restarts — rate limits on a single-replica PPE tenant are best-effort during EA only, and GA of PPE-owned limits requires the durable shared store. Experimental `quota/limitador` remote path: verify API compatibility for budget carry-over separately from request RL.
 
 ### Verified (not a missing capability — migration contract)
 
 | Topic | Finding | Action |
 | :---- | :---- | :---- |
-| JWT `audiences` | PPE refuses omitted/empty `audiences` at load; hatch is `skip_audience_validation: true` ([changelog](https://github.com/praxis-proxy/policy/blob/main/CHANGELOG.md) / [#16](https://github.com/praxis-proxy/policy/issues/16)). Authorino made audiences optional; MaaS often omits it. | Transpiler always sets audiences (or documents intentional skip). Parity suite must **not** reproduce Authorino's optional-audience hole. Tightening is OK if migration-documented. |
+| JWT `audiences` | PPE refuses omitted/empty `audiences` at load ([changelog](https://github.com/praxis-proxy/policy/blob/main/CHANGELOG.md) / [#16](https://github.com/praxis-proxy/policy/issues/16)). Authorino made audiences optional; MaaS often omits it. PPE offers `skip_audience_validation: true` as a hatch. | Transpiler **always sets audiences** (the MaaS inference audience) — the skip hatch is not an accepted migration path. A skip may be used only with an equivalent audience-binding control documented in this ADR. Parity suite must **not** reproduce Authorino's optional-audience hole. Tightening is OK if migration-documented. |
 
 ### Not tracked upstream (need issues or product decisions)
 
@@ -281,7 +281,7 @@ public listener.
 | Authorization strip | Bearer not forwarded to inference backend |
 | Fail-closed | Auth / directory / PPE failure → deny (not allow) |
 | maas-api callbacks | Directory / validate / select callers authenticated or netpol-equivalent that does **not** expose the oracle to the public listener |
-| Audience / azp | PPE path must not weaken binding; tightening vs Authorino's optional `audiences` is allowed if migration-documented |
+| Audience / azp | PPE path must not weaken binding. `skip_audience_validation` is not used; the inference audience is always set. Tightening vs Authorino's optional `audiences` is allowed if migration-documented |
 
 Keep directory calls **pod → maas-api** (cluster DNS), never back through the
 public inference listener. Replace `maas-authorino-allow` with a PPE-era trust
@@ -298,6 +298,8 @@ be a confused deputy from the public listener).
 - Treating NetworkPolicy widen-to-Praxis as "good enough" without caller auth.
 - Shared RL via #127 still leaves multi-replica correctness gated until shipped;
   single-replica PPE is a temporary EA posture, not GA for multi-replica gateways.
+  Single-replica does not preserve in-process counters across pod restarts — a
+  restart resets the window budget; durable shared store required for GA.
 - Reproducing Authorino's optional-audience hole in hand-written PPE policy
   (do **not**).
 - MaaS (and related) test suites have **hard assumptions on RHCL** / Kuadrant
