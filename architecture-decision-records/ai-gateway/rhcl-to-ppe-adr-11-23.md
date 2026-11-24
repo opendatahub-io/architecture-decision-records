@@ -51,7 +51,9 @@ gateway) and narrower than ODH-ADR-MS-0005 (payload-processing → Praxis ExtPro
 - Inference policy is a PPE document rendered by a controller (ConfigMap first
   cut; Praxis `Policy` / AI Gateway governance CRDs as they land) — not live
   Kuadrant CRs.
-- Per-tenant opt-in and rollback via annotation (default remains RHCL).
+- Per-tenant selection and rollback via annotation; absent annotation means
+  `ppe` (the end state). Existing tenants are backfilled to `rhcl` during
+  migration so the default flip never moves a tenant implicitly.
 - Authorino trust-boundary parity before RHCL leaves a surface (see Security).
 - Do not remove RHCL from a GA surface until every auth/limit method that surface
   exposes exists in PPE (or an accepted host-side equivalent).
@@ -99,8 +101,9 @@ inside one chain via PPE hook phases (`ratelimit.pre_identity` before identity;
 authz after).
 
 - Fail-closed policy enforcement on the inference path.
-- Config hash on the Deployment rolls the pod after both filter-chain and policy
-  changes (hash must include the merged artifact).
+- Praxis must **hot-reload the PPE document on ConfigMap change** — required, not
+  optional. Policy changes take effect without a pod roll; RHCL/Kuadrant
+  reconcile continuously today and PPE cannot regress that.
 
 ### Policy surface (controller-rendered PPE document)
 
@@ -136,26 +139,40 @@ through those CRDs instead of hand-mounting YAML.
 Alternatives considered: maas-controller renders PPE YAML directly; or
 ai-gateway-controller renders from published MaaS data (inverts ownership).
 
-**Reload:** prefer hot-reload of the PPE document on ConfigMap / CR change
+**Reload:** Praxis must hot-reload the PPE document on ConfigMap / CR change
 ([policy#303](https://github.com/praxis-proxy/policy/issues/303) — honor plugin
-lifecycle on configuration reload). Until that is solid, the existing
-config-sha256 Deployment roll remains the safe path. Secrets may still force
-restart (PPE refuses secret mutation on reload today).
+lifecycle on configuration reload). This is a hard requirement from Praxis, not
+a preference: policy and filter-chain changes must take effect without a pod
+roll, matching Kuadrant's continuous reconcile. A config-hash Deployment roll
+remains only as a stopgap for secret changes, which PPE refuses to mutate on
+reload today; closing that gap is upstream work to track.
 
 ### Coexistence and cut-over
 
 Tenants select the inference policy engine with an annotation on the
-**`AITenant` object**, defaulting to RHCL. PPE is opt-in per tenant. Rollback is
-flipping the annotation; Kuadrant and RHCL remain installed during migration.
-Placing it on `AITenant` follows the pattern already used for Praxis / IPP
-payload-processing selection — tenant-scoped, one place to look, read by both
-`ai-gateway-controller` and `maas-controller`.
+**`AITenant` object**. Rollback is flipping the annotation; Kuadrant and RHCL
+remain installed during migration. Placing it on `AITenant` follows the pattern
+already used for Praxis / IPP payload-processing selection — tenant-scoped, one
+place to look, read by both `ai-gateway-controller` and `maas-controller`.
 
 ```
 maas.opendatahub.io/policy-engine: rhcl | ppe
 ```
 
-Default when absent: `rhcl`. Independent of `payload-processing-type` (a tenant
+**Default when the annotation is absent: `ppe`.** The end state is no
+annotation at all — every tenant on PPE. To get there without silently
+flipping existing tenants:
+
+- **Migration backfill:** before the absent-means-`ppe` default ships, a
+  controller (ai-gateway-controller reconcile or a one-shot migration job)
+  writes `maas.opendatahub.io/policy-engine: rhcl` onto every existing
+  `AITenant` that lacks the annotation. Existing tenants keep RHCL until they
+  are explicitly migrated.
+- **Per-tenant cut-over:** flip the annotation to `ppe`, or remove it entirely
+  once absent-means-`ppe` is live.
+- **End state:** the annotation is gone; absent means `ppe`.
+
+Independent of `payload-processing-type` (a tenant
 can run Praxis payload processing with RHCL policy, or Praxis with PPE).
 
 - `ai-gateway-controller` branches the tenant dataplane render on `policy-engine`.
