@@ -160,7 +160,14 @@ maas.opendatahub.io/policy-engine: rhcl | ppe
 ```
 
 **Default when the annotation is absent: `ppe`.** The end state is no
-annotation at all — every tenant on PPE. To get there without silently
+annotation at all — every tenant on PPE. **RHCL is not supported on the
+inference path in 3.7**; the `rhcl` annotation value and the backfill below
+are a migration technique for upgrades from existing installs, used only
+where a tenant cannot move to PPE at upgrade time — not a supported
+long-term configuration. (The consumer-portal RHCL dependency is a separate
+surface; see Non-Goals.)
+
+To get there without silently
 flipping existing tenants:
 
 - **Migration backfill:** before the absent-means-`ppe` default ships, a
