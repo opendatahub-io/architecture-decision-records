@@ -210,15 +210,16 @@ Limiting / QoS). KServe and Istio→Praxis gateway items stay in Non-Goals.
 | Capability | Today (RHCL) | PPE / product status | Tracking |
 | :---- | :---- | :---- | :---- |
 | API key | Authorino + maas-api validate | ✅ Covered (`identity/api-key`, HTTP directory) | [policy#108](https://github.com/praxis-proxy/policy/issues/108) (closed epic) |
-| OIDC JWT (inference) | Authorino OIDC / JWKS; `azp` / group checks | ✅ `identity/jwt` covers bearer JWT. **Not** browser/Authorization-Code OIDC | Inference JWT ≠ [policy#129](https://github.com/praxis-proxy/policy/issues/129) (portal; out of scope) |
+| OIDC JWT (inference) | Authorino OIDC / JWKS; `azp == clientId`, group-name safety checks | ⚠️ Partial. `identity/jwt` verifies signature / JWKS / audiences and maps claims into attributes; `azp` and group checks are then `require(...)` expressions over mapped claims — expressible, but MaaS's exact `azp == clientId` and group-name-safety rules are **not yet proven** in PPE and must be part of the parity suite. Key minting flow is consumer-portal OIDC and stays on RHCL (Non-Goals). **Not** browser/Authorization-Code OIDC | Inference JWT ≠ [policy#129](https://github.com/praxis-proxy/policy/issues/129) (portal; out of scope); parity: [#195](https://github.com/praxis-proxy/policy/issues/195), [#348](https://github.com/praxis-proxy/policy/issues/348) |
 | JWT audience | Authorino `audiences` optional | PPE refuses omitted/empty `audiences`. The `skip_audience_validation: true` hatch is **not permitted** on the MaaS path — with it, a token minted for a different audience passes issuer, `azp`, and group checks | Migration contract (see below); [#16](https://github.com/praxis-proxy/policy/issues/16) fix |
-| TokenReview + SAR | Authorino `kubernetes` + optional SAR | ❌ Missing; third method in overlay 0032 | [policy#213](https://github.com/praxis-proxy/policy/issues/213), [#214](https://github.com/praxis-proxy/policy/issues/214) |
+| TokenReview + SAR | Authorino `kubernetes` + optional SAR | ❌ Missing; third method in overlay 0032. **Required before PPE becomes the default — hard requirement, no carve-out** | [policy#213](https://github.com/praxis-proxy/policy/issues/213), [#214](https://github.com/praxis-proxy/policy/issues/214) |
 | Metadata callouts | Authorino HTTP → maas-api select/validate | Needed if maas-api stays a live PIP | [policy#184](https://github.com/praxis-proxy/policy/issues/184) |
 | Rego / OPA authz | maas-controller generates **Rego v0** today | PPE expects Rego **v1**; transpiler / generator must migrate | **Control-plane work** (no dedicated upstream issue found) |
 | Equivalence demo | Live AuthPolicy on RHCL | Sample PPE policy proving parity with existing AuthPolicy | Reference: [#195](https://github.com/praxis-proxy/policy/issues/195); demo: [#348](https://github.com/praxis-proxy/policy/issues/348) |
 | Hot reload on config change | Kuadrant reconciles continuously | Prefer reload without pod restart; honor plugin lifecycle | [policy#303](https://github.com/praxis-proxy/policy/issues/303); Deployment roll is fallback |
 
-Until TokenReview/SAR ship: SA-token inference clients stay on `policy-engine: rhcl`.
+TokenReview + SAR is **required, period** — PPE does not ship as the inference
+default without it. No shipping with missing requirements.
 
 ### Rate limiting and QoS
 
