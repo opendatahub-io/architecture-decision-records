@@ -188,9 +188,7 @@ can run Praxis payload processing with RHCL policy, or Praxis with PPE).
 - Rollout: dev tenant → EA → GA. Existing Kuadrant `AuthPolicy` / `TRLP`
   objects remain in place until the new Praxis policy has been fully applied
   for the tenant; they are removed only after PPE enforcement is confirmed.
-- **Open question — enforcement during cut-over:** while both the RHCL and
-  PPE configurations exist for a tenant, which engine actually enforces, and
-  is there a window where both (or neither) do? See
+  Which engine enforces during that cut-over window is
   [open question 9](#open-product-decisions).
 - Consumer portal and any tenant that still needs RHCL keep Kuadrant installed.
 - **Documentation:** since RHCL is no longer a dependency of the MaaS
@@ -311,6 +309,8 @@ be a confused deputy from the public listener).
   on test debt.
 - DSC / odh-operator still install and warn about RHCL; product messaging and
   operator conditions must track coexistence and eventual removal.
+
+<a id="open-product-decisions"></a>
 
 ## Open product decisions
 
