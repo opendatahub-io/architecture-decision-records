@@ -565,7 +565,7 @@ Postgres is the default durable backend because it is already supported and oper
 
 However, if usage volume or analytical query complexity outgrows Postgres, a columnar store such as ClickHouse would be a natural successor for the usage ledger — it offers superior compression, faster aggregation over high-cardinality dimensions, and built-in time-series partitioning. The Metering Service implementation must abstract the storage layer behind an interface so that the durable backend can be replaced without affecting the rest of the system (admission flags, Redis balances, API contracts).
 
-When the Metering Service integrates with an external platform such as M360 or OpenMeter (see [Bring Your Own Metering](#bring-your-own-metering)), the external system can serve as the durable store instead of — or alongside — Postgres. Praxis is unaffected in that case: it reads the same flags from Redis no matter which provider produced them.
+When the Metering Service integrates with an external platform such as M360 or OpenMeter (see [Bring Your Own Metering](#bring-your-own-metering)), the external system is the durable store — the Metering Service persists nothing locally in that mode. Praxis is unaffected: it reads the same flags from Redis no matter which provider produced them.
 
 Consumption data reaches the Metering Service via the OTEL pipeline. See the [Storage Schema](#storage-schema) section for details on the Postgres and Redis schemas.
 
@@ -1138,7 +1138,7 @@ The OTEL Collector transforms the Log record into a CloudEvent and sends it to t
 | `data.resource` | Dynamic resource keys matching rate table entries |
 | `data.usage` | Dynamic usage keys matching rate table cost keys |
 
-The Metering Service processes the CloudEvent, resolves the applicable budgets from the identity, computes the BU cost, and persists the event to the `usage` table in Postgres. The identity context (groups, organization, tenant) is stored for group-level and org-level reporting; the user field is included only when user identity collection is enabled (see [PII in Identity Fields](#pii-in-identity-fields)). The usage records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)). Metering data is exposed via the metering APIs for external systems (Bring Your Own Metering).
+In `embedded` mode, the Metering Service processes the CloudEvent, resolves the applicable budgets from the identity, computes the BU cost, and persists the event to the `usage` table in Postgres. In `federated` mode it forwards the event to the external platform instead (see [Federated Flow](#federated-flow-example-m360)). The identity context (groups, organization, tenant) is stored for group-level and org-level reporting; the user field is included only when user identity collection is enabled (see [PII in Identity Fields](#pii-in-identity-fields)). The usage records are also used to compute cumulative overage per budget for period carry-forward (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)). Metering data is exposed via the metering APIs for external systems (Bring Your Own Metering).
 
 ### Storage Schema
 
@@ -1146,7 +1146,7 @@ The Metering Service processes the CloudEvent, resolves the applicable budgets f
 
 #### Postgres
 
-Postgres is the default durable backend and the authoritative source of truth in `embedded` mode. When the Metering Service integrates with an external metering platform, Postgres may be replaced by the external system's storage — the Metering Service treats the durable backend as a pluggable layer behind Redis.
+Postgres is the durable backend and the authoritative source of truth in `embedded` mode. In `federated` mode it is not used: all definitions and the usage ledger remain in the external platform, and the Metering Service treats the durable backend as a pluggable layer behind Redis.
 
 All tables include a `tenant_id` column for multi-tenancy. Dynamic fields (resource keys, cost keys, usage values) are stored as JSONB. Reference fields, timestamps, and scalar values are separate columns.
 
@@ -1321,11 +1321,11 @@ The admission contract is identical in both modes: Praxis reads flags, the Meter
 
 | | `embedded` (default) | `federated` |
 |---|---|---|
-| Rates | defined in the Metering Service API | defined in the external platform; Metering Service rate tables unused (1 token = 1 BU) |
-| Budgets and limits | defined in the Metering Service API | defined in the external platform; Metering Service tracks token-volume budgets for admission |
-| Rating | Metering Service applies its rate tables | external platform rates; Metering Service mirrors the outcome |
-| Ledger | Postgres | external platform, optionally mirrored to Postgres for audit |
-| Flag computation | derived from the local ledger | derived from the platform's reported balances and overage signals |
+| Rates | defined in the Metering Service API | defined in the external platform; the Metering Service holds no rate tables |
+| Budgets and limits | defined in the Metering Service API | defined in the external platform; the Metering Service holds no budget definitions |
+| Rating | Metering Service applies its rate tables | external platform rates |
+| Ledger | Postgres | external platform only — the Metering Service persists nothing locally |
+| Flag computation | derived from the local ledger and balances | derived solely from the platform's overage and budget-state signals |
 | Overage notification | not applicable (Metering Service computes overage locally) | required — external platform must expose an API for overage state |
 | Admission flags in Redis | yes | yes |
 
@@ -1341,34 +1341,117 @@ The collector also forwards the OTEL Log to Loki. The CloudEvent is the canonica
 
 An `embedded` budget only knows about inference spend, because inference usage events are its only input. A budget that also covers spend the gateway cannot observe — VMs, GPUs, other platform services — must be owned by a `federated` provider that reports the aggregate remaining balance. The Metering Service mirrors that number into the flag rather than arbitrating spend it cannot see.
 
-#### Token-only accounting (federated pricing)
+#### Pass-through accounting (federated mode)
 
-When an external billing platform (M360, OpenMeter, or a custom system) owns cost attribution and pricing, the Metering Service does not need rate tables. Without rates configured, the default accounting rule is **1 token = 1 BU** — the Metering Service counts raw tokens consumed against a budget limit and derives admission flags from that count. The external platform applies its own pricing (USD, EUR, or any currency) independently.
-
-This simplifies the Metering Service to two responsibilities:
+In `federated` mode the Metering Service keeps no local state: no rate tables, no budget definitions, no balance counters, and no usage ledger — Postgres is not used. All configuration and all accounting remain in the external platform. The Metering Service reduces to an adapter with three responsibilities:
 
 | Responsibility | Description |
 |---|---|
-| Token counting | Persist raw token usage, increment balance counters |
-| Admission enforcement | Derive `allow` / `over` / `deny` flags from token budgets |
-
-Rate tables, rate versioning, BU weight computation, and `rate_ref` on policies are all unused in this mode. They remain available in the schema for standalone deployments that need cost-weighted enforcement, but a federated deployment that delegates pricing to the external platform can ignore them entirely.
+| Usage forwarding | Receive CloudEvents from the OTEL pipeline and forward them to the external platform, idempotently on the CloudEvent `id` where the platform supports it |
+| Signal translation | Consume the platform's overage and budget-state notifications and translate them into `allow` / `over` / `deny` |
+| Flag ownership | Write the admission flags to Redis — the only budget state the Metering Service holds |
 
 The responsibility split between the Metering Service and the external platform:
 
 | Concern | Owner |
 |---|---|
-| Token counting and admission flags (`allow` / `over` / `deny`) | Metering Service |
+| Admission flags in Redis (`allow` / `over` / `deny`) | Metering Service |
 | Usage event forwarding | Metering Service → external platform |
 | Budget definitions, limits, and periodic management | External platform |
-| USD / currency pricing and cost attribution | External platform |
-| Invoicing and financial reporting | External platform |
+| Pricing (USD or any currency), cost attribution, invoicing | External platform |
 | Contract and wallet management | External platform |
-| Overage notification (cost-based) | External platform → Metering Service |
+| Usage ledger and reporting | External platform |
+| Overage / budget-state notification | External platform → Metering Service |
 
-**Overage notification requirement.** The external billing platform must expose an API — webhook, event stream, or polling endpoint — that the Metering Service can consume to learn when a subject enters overage from the platform's perspective. The Metering Service uses this signal to update admission flags. Without this callback, the Metering Service can only enforce token-volume budgets and has no visibility into cost-based overage determined by the external platform's pricing logic.
+**Overage notification requirement.** The external billing platform must expose an API — webhook, event stream, or polling endpoint — that the Metering Service can consume to learn when a subject enters overage, and when a budget is topped up or renewed, from the platform's perspective. The Metering Service uses these signals to update admission flags. Without this callback, the Metering Service has no visibility into budget state at all — in this mode it holds no independent accounting to fall back on.
 
 The specific API contract (endpoint shape, authentication, payload format) varies by platform and is not prescribed here. The Metering Service must implement an adapter per supported platform. The adapter translates the platform's overage signal into the internal flag state (`allow` / `over` / `deny`) and writes it to Redis through the same code path used by embedded accounting.
+
+#### Federated Flow (example: M360)
+
+The diagram below shows the end-to-end interaction in `federated` mode. The Metering Service holds no budget state of its own: it forwards usage to M360, and admission flags change only when M360 reports a change in budget state.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Praxis
+    participant Redis
+    participant OTELCollector as OTEL Collector
+    participant MeteringService as Metering Service
+    participant M360
+
+    Client->>Praxis: inference request
+    Praxis->>Redis: admission read via crate
+    Redis-->>Praxis: allow | over | deny
+
+    alt allow / over (or no budget applies)
+        Praxis->>Praxis: dispatch to model
+        Praxis-->>Client: inference response
+        Praxis-->>OTELCollector: OTEL Log (usage)
+        OTELCollector->>MeteringService: CloudEvent (usage)
+        MeteringService->>M360: forward CloudEvent<br>(no local persistence)
+        Note over M360: prices the event and charges<br>its own budget / wallet
+    else deny
+        Praxis-->>Client: 429 Too Many Requests
+    end
+
+    M360-->>MeteringService: overage notification<br>(subject over budget)
+    Note over MeteringService: adapter translates the signal<br>into allow / over / deny
+    MeteringService->>Redis: SET flags for the affected identities
+
+    Note over Praxis,Redis: the next request for those identities<br>reads the updated flag
+
+    M360-->>MeteringService: budget topped up / renewed
+    MeteringService->>Redis: SET flags back to allow
+```
+
+Notes on when flags change:
+
+- **Flags follow M360's notifications only.** The Metering Service has no local accounting to fall back on, so enforcement lag for every budget is M360's own event processing plus its notification latency. This is inherent to the mode: the Metering Service mirrors budget state it cannot compute.
+- **Overshoot.** The window between a budget being exhausted in M360 and the `deny` flag being written includes M360's processing, so it is wider than in embedded mode. The overshoot model (see [Overshoot](#overshoot)) still applies, with the external platform's latency folded into the accepted window.
+- **Recovery.** A top-up or period renewal reported by M360 flips the affected flags back to `allow` through the same adapter path. If notifications are lost, polling the platform's budget state (where supported) serves as the reconciliation fallback, mirroring the republish-on-reconnect behavior of embedded mode.
+- The flag write path is shared with embedded accounting, so single-writer ownership and the most-specific-wins read contract (see [API: Admission Read](#api-admission-read)) apply unchanged. Deduplication applies to forwarding rather than to a local ledger: the Metering Service must not re-send an event the platform already accepted.
+
+##### Pull variant (on-demand budget state)
+
+When the external platform does not offer push notifications, the Metering Service checks a budget-state endpoint on demand. Usage forwarding is identical to the push flow — only the direction of the overage signal changes: instead of M360 calling out, the Metering Service asks. Two trigger strategies, typically combined:
+
+- **Fixed interval.** A background loop checks every subject in the poll set every N seconds. Simple and predictable, but it spends the same API budget on idle subjects as on busy ones, and freshness is bounded by the interval regardless of consumption.
+- **Event-driven re-check (adaptive).** The Metering Service caches the last-known budget state per subject — in memory, a cache rather than durable state — and tracks the usage it has forwarded since that check. When a new CloudEvent arrives and the usage accumulated since the last check brings the subject close to its last-known remaining balance, it re-queries the platform before the next requests are admitted against a stale `allow`. Far from the limit, the cached state stands and no call is made.
+
+```mermaid
+sequenceDiagram
+    participant Praxis
+    participant Redis
+    participant OTELCollector as OTEL Collector
+    participant MeteringService as Metering Service
+    participant M360
+
+    Note over MeteringService: in-memory cache:<br>last-known budget state per subject,<br>usage forwarded since last check
+
+    Praxis-->>OTELCollector: OTEL Log (usage)
+    OTELCollector->>MeteringService: CloudEvent (usage)
+    MeteringService->>M360: forward CloudEvent
+    MeteringService->>MeteringService: add event usage to<br>usage-since-check
+
+    alt usage-since-check approaches the<br>last-known remaining balance
+        MeteringService->>M360: GET budget state for subject
+        M360-->>MeteringService: budget state<br>(remaining, overage)
+        Note over MeteringService: update cache, translate<br>into allow / over / deny
+        MeteringService->>Redis: SET flags for the affected identities
+        Note over Praxis: the next request reads<br>the updated flag
+    else far from the limit
+        Note over MeteringService: no check — the cached state stands
+    end
+```
+
+Notes on the on-demand variant:
+
+- **Load proportional to risk.** API calls concentrate on subjects whose budgets are actually close to exhaustion — exactly the checks that can change an admission flag. A subject far from its limit generates no platform calls however much traffic it produces, and an idle subject generates none at all.
+- **Units.** How "close to the limit" is measured depends on what the platform reports. If the budget-state response includes remaining balance and consumption in the platform's own units, usage-since-check is tracked in the same terms. If it reports only a remaining balance, a conservative token-volume heuristic can trigger the re-check — an approximation is acceptable here, because the re-check itself returns the authoritative answer.
+- **Deny stickiness.** An event-driven check only fires when traffic flows. A denied subject produces no events, so nothing would ever re-check it: a top-up or period renewal would leave the `deny` flag in place indefinitely. This is why the strategies combine — the adaptive check handles exhaustion (the direction events push toward), and a slow background poll (or push, where available) remains the recovery path for top-ups and renewals. The adaptive check replaces the hot loop, not the safety net.
+- **Startup and recovery.** The cache is ephemeral and starts empty: admission is permissive for unseen identities until their first events arrive and the first check completes, mirroring the embedded-mode behavior of republishing state after recovery. A lost cache degrades to permissiveness, never to false denial.
+- **Failover both ways.** Pulling is the reconciliation fallback when push exists (a missed webhook is corrected on the next check), and push — where later added — replaces the checking loop without touching the adapter's translation or the Redis write path.
 
 #### Integration patterns
 
@@ -1376,7 +1459,7 @@ The specific API contract (endpoint shape, authentication, payload format) varie
 |---|---|
 | Push (webhook/event) | The Metering Service forwards consumption events to an external system's ingestion endpoint (e.g., OpenMeter's event API or M360's usage API) as they are persisted |
 | Pull (metering API) | The external system queries the Metering Service's metering APIs to retrieve consumption data on its own schedule |
-| Backend replacement | The external system replaces Postgres as the durable store. The Metering Service writes budget objects and usage records to the external system instead of Postgres. Redis remains the operational store — Praxis and the OTEL pipeline are unaffected |
+| Backend replacement | The external system is the durable store — this is `federated` mode. All definitions, budgets, and the usage ledger live in the external platform; the Metering Service persists nothing locally. Redis remains the operational store — Praxis and the OTEL pipeline are unaffected |
 
 #### What the external system receives
 
