@@ -6,7 +6,7 @@
 | Status | Draft (local; not filed as a numbered ODH ADR yet) |
 | Authors | jland |
 | Tickets | RHAIRFE-3914 (broader Praxis-as-gateway), RHOAIENG-104076 / 104077 |
-| Companion | [ADR: Route External Models through Praxis (PR 191)](https://github.com/opendatahub-io/architecture-decision-records/pull/191), [ODH-ADR-MS-0005](https://github.com/opendatahub-io/architecture-decision-records/pull/165) (IPP → Praxis ExtProc) |
+| Companion | [ADR: Route External Models through Praxis (PR 191)](https://github.com/opendatahub-io/architecture-decision-records/pull/191), [ODH-ADR-MS-0005](https://github.com/opendatahub-io/architecture-decision-records/pull/165) (ExternalModel / ExternalProvider two-plane architecture) |
 | Other docs | [praxis-proxy/policy#195 — Support identified subset of AuthPolicy capabilities](https://github.com/praxis-proxy/policy/issues/195) (canonical PPE feature subset for MaaS AuthPolicy parity); [policy#348 — MaaS AuthPolicy demo](https://github.com/praxis-proxy/policy/issues/348); [Full Praxis notes](https://docs.google.com/document/d/1Brgpq2ow4Kjq_6O1NOecPfM3yCuSUk3FXJbl10lJI9o/edit?tab=t.q8npwz8ylxm1) |
 | Sources | [PPE adoption draft](https://github.com/jland-redhat/ai-gateway-controller/blob/early-praxis-policy-engine-ppe/docs/proposals/praxis-policy-engine-adoption.md), [analysis gist](https://gist.github.com/jland-redhat/df169c033507aa8a69be7ddfcdc4e3ae), [POC gist](https://gist.github.com/jland-redhat/eb2b5e7b1abb5829d5bb006b1bc6c5b4) |
 
@@ -25,7 +25,7 @@ host consumes in-process — rendered first as mounted YAML, later from Praxis
 | **PPE** | Praxis Policy Engine (`praxis-proxy/policy`) — Rust library embedded in Praxis |
 
 This ADR is deliberately narrower than RHAIRFE-3914 (Praxis as the public
-gateway) and narrower than ODH-ADR-MS-0005 (payload-processing → Praxis ExtProc).
+gateway) and narrower than ODH-ADR-MS-0005 (ExternalModel two-plane split).
 
 ## Why
 
@@ -66,7 +66,8 @@ gateway) and narrower than ODH-ADR-MS-0005 (payload-processing → Praxis ExtPro
 - Absorbing maas-api in the first cut (it stays as the API-key / subscription
   HTTP directory initially).
 - Claiming full Kuadrant CR API compatibility for customized gateways.
-- Removing IPP / payload-processing swap (ODH-ADR-MS-0005).
+- Removing IPP / payload-processing swap (decided separately; the ExtProc
+  migration is its own track).
 - ExternalModel HTTPRoute → Proxy routing, SE/DR egress, CONNECT proxy
   ([companion ADR, PR 191](https://github.com/opendatahub-io/architecture-decision-records/pull/191)).
 - Guardrails migration; KServe routing / weighted `backendRefs` / EPP parity /
@@ -164,14 +165,22 @@ where a tenant cannot move to PPE at upgrade time — not a supported
 long-term configuration. (The consumer-portal RHCL dependency is a separate
 surface.)
 
+Praxis ships **with RHOAI** — it is not an external dependency — so the
+absent-means-`ppe` default is safe: the capabilities in "Upstream / product
+requirements" below ship in the same release, and the default goes live only
+when they do. The annotation exists for cut-over, not as a capability
+selector.
+
 To get there without silently
 flipping existing tenants:
 
-- **Migration backfill:** before the absent-means-`ppe` default ships, a
-  controller (ai-gateway-controller reconcile or a one-shot migration job)
-  writes `maas.opendatahub.io/policy-engine: rhcl` onto every existing
-  `AITenant` that lacks the annotation. Existing tenants keep RHCL until they
-  are explicitly migrated.
+- **Migration backfill:** before the absent-means-`ppe` default ships,
+  `ai-gateway-controller` writes `maas.opendatahub.io/policy-engine: rhcl`
+  onto every `AITenant` that lacks the annotation — as a **continuous
+  reconcile**, not a one-shot scan, so tenants created after the backfill
+  starts and before the default ships are also covered. Every `AITenant`
+  present when the default takes effect carries an explicit annotation;
+  existing tenants keep RHCL until they are explicitly migrated.
 - **Per-tenant cut-over:** flip the annotation to `ppe`, or remove it entirely
   once absent-means-`ppe` is live.
 - **End state:** the annotation is gone; absent means `ppe`.
@@ -213,7 +222,7 @@ Limiting / QoS). KServe and Istio→Praxis gateway items stay in Non-Goals.
 | Metadata callouts | Authorino HTTP → maas-api select/validate | Needed if maas-api stays a live PIP | [policy#184](https://github.com/praxis-proxy/policy/issues/184) |
 | Rego / OPA authz | maas-controller generates **Rego v0** today | PPE expects Rego **v1**; transpiler / generator must migrate | **Control-plane work** (no dedicated upstream issue found) |
 | Equivalence demo | Live AuthPolicy on RHCL | Sample PPE policy proving parity with existing AuthPolicy | Reference: [#195](https://github.com/praxis-proxy/policy/issues/195); demo: [#348](https://github.com/praxis-proxy/policy/issues/348) |
-| Hot reload on config change | Kuadrant reconciles continuously | Prefer reload without pod restart; honor plugin lifecycle | [policy#303](https://github.com/praxis-proxy/policy/issues/303); Deployment roll is fallback |
+| Hot reload on config change | Kuadrant reconciles continuously | Required: policy / filter-chain changes apply without a pod roll; Deployment roll is a fallback **for secret changes only** | [policy#303](https://github.com/praxis-proxy/policy/issues/303) |
 
 TokenReview + SAR is **required, period** — PPE does not ship as the inference
 default without it. No shipping with missing requirements.
@@ -239,7 +248,7 @@ separately from request RL.
 
 | Topic | Finding | Action |
 | :---- | :---- | :---- |
-| JWT `audiences` | PPE refuses omitted/empty `audiences` at load ([changelog](https://github.com/praxis-proxy/policy/blob/main/CHANGELOG.md) / [#16](https://github.com/praxis-proxy/policy/issues/16)). Authorino made audiences optional; MaaS often omits it. PPE offers `skip_audience_validation: true` as a hatch. | Transpiler **always sets audiences** (the MaaS inference audience) — the skip hatch is not an accepted migration path. A skip may be used only with an equivalent audience-binding control documented in this ADR. Parity suite must **not** reproduce Authorino's optional-audience hole. Tightening is OK if migration-documented. |
+| JWT `audiences` | PPE refuses omitted/empty `audiences` at load ([changelog](https://github.com/praxis-proxy/policy/blob/main/CHANGELOG.md) / [#16](https://github.com/praxis-proxy/policy/issues/16)). Authorino made audiences optional; MaaS often omits it. PPE offers `skip_audience_validation: true` as a hatch. | Transpiler **always sets audiences** (the MaaS inference audience). `skip_audience_validation` is **not used** on the MaaS path — no exceptions. Parity suite must **not** reproduce Authorino's optional-audience hole. Tightening is OK if migration-documented. |
 
 ### Not tracked upstream (need issues or product decisions)
 
