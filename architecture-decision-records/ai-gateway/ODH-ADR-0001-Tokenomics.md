@@ -153,7 +153,7 @@ sequenceDiagram
     MeteringService->>Postgres: persist updated budget
     Postgres-->>MeteringService: ok
     Note over MeteringService: recompute admission flags<br>for affected identities
-    MeteringService->>Redis: SET {tenant}:admit:{kind}:{name}:{resource_hash}
+    MeteringService->>Redis: SET ai-metering:{tenant}:admit:{kind}:{name}:{resource_hash}
     MeteringService-->>Operator: 200 OK
 
     Praxis->>Redis: admission read via crate (per request)
@@ -201,12 +201,12 @@ Consumption data is the only accounting input. Praxis emits an OTEL Log after ea
 
 The Metering Service is a single shared instance serving all tenants (soft multi-tenancy). All data is tenant-scoped and every management API request must carry the `X-Tenant` header to identify which tenant's budgets, rates, or policies are being managed.
 
-At the gateway level, each gateway serves exactly one tenant. The Praxis read credential is scoped to that tenant: it can read only `{tenant}:admit:*` and nothing else. Because Praxis never writes budget state, the data-plane identity is read-only, which makes cross-tenant tampering a configuration error rather than an exploitable path.
+At the gateway level, each gateway serves exactly one tenant. The Praxis read credential is scoped to that tenant: it can read only `ai-metering:{tenant}:admit:*` and nothing else. Because Praxis never writes budget state, the data-plane identity is read-only, which makes cross-tenant tampering a configuration error rather than an exploitable path.
 
 | Component | Tenancy model |
 |---|---|
 | Metering Service (central) | Single instance, soft multi-tenancy. All API calls scoped by `X-Tenant` header |
-| Gateway (Praxis) | One tenant per gateway. Holds a read-only Redis credential limited to that tenant's `admit:*` keys |
+| Gateway (Praxis) | One tenant per gateway. Holds a read-only Redis credential limited to that tenant's `ai-metering:{tenant}:admit:*` keys |
 | Redis | Keys namespaced by tenant ID, with per-tenant ACLs scoping which keys each credential may touch |
 | Postgres | All tables include a tenant ID column |
 
@@ -994,10 +994,10 @@ Praxis calls the crate once per request with the identity it resolved and the re
 
 | Step | Key checked | If present | If absent |
 |---|---|---|---|
-| 1 | `{tenant}:admit:user:{name}:{resource_hash}` | Use this flag | Fall through to step 2 |
-| 2 | `{tenant}:admit:group:{name}:{resource_hash}` (for each group) | Use the most restrictive across groups | Fall through to step 3 |
-| 3 | `{tenant}:admit:org:{name}:{resource_hash}` | Use this flag | Fall through to step 4 |
-| 4 | `{tenant}:admit:tenant:{name}:{resource_hash}` | Use this flag | No budget applies |
+| 1 | `ai-metering:{tenant}:admit:user:{name}:{resource_hash}` | Use this flag | Fall through to step 2 |
+| 2 | `ai-metering:{tenant}:admit:group:{name}:{resource_hash}` (for each group) | Use the most restrictive across groups | Fall through to step 3 |
+| 3 | `ai-metering:{tenant}:admit:organization:{name}:{resource_hash}` | Use this flag | Fall through to step 4 |
+| 4 | `ai-metering:{tenant}:admit:tenant:{name}:{resource_hash}` | Use this flag | No budget applies |
 
 Once a flag is found, Praxis acts on it:
 
@@ -1215,19 +1215,19 @@ When user identity collection is enabled, the usage table supports per-user usag
 
 #### Redis/Valkey
 
-Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Metering Service. All keys are namespaced by tenant ID and protected by per-tenant ACLs.
+Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Metering Service. Admission keys carry the `ai-metering:` prefix — it namespaces the keys Praxis reads within a potentially shared Redis, so they can never collide with (or be addressed by) other components using the same instance. Within that prefix, keys are further namespaced by tenant ID and protected by per-tenant ACLs.
 
 The layout below is owned by the admission crate. It is documented here for operators; it is not a contract Praxis depends on, and it can change in a compatible crate release.
 
 | Key pattern | Type | Description |
 |---|---|---|
-| `{tenant}:admit:{kind}:{name}:{resource_hash}` | string | Admission state (`allow` / `over` / `deny`) for one (identity, resource) pair, aggregated across every budget that applies to it. Read by Praxis through the crate; written only by the Metering Service |
+| `ai-metering:{tenant}:admit:{kind}:{name}:{resource_hash}` | string | Admission state (`allow` / `over` / `deny`) for one (identity, resource) pair, aggregated across every budget that applies to it. Read by Praxis through the crate; written only by the Metering Service |
 | `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented by the Metering Service during accounting and reset on period renewal. Not read by Praxis |
 | `{tenant}:resource:{resource_hash}` | string | Reverse mapping from resource hash to its canonical JSON (e.g., `{"model":"claude-opus","provider":"anthropic"}`). Written by the Metering Service for operator debugging. Not read by Praxis |
 
 The `{resource_hash}` is a deterministic hash of the resource identity — the set of key-value pairs (model, provider, and any future dimensions) that identify the resource being requested. The crate defines the canonical form: resource keys are sorted lexicographically, serialized to a stable byte sequence, and hashed (e.g., SHA-256 truncated to 64 bits / 16 hex characters). Both the Rust crate (read side) and the Go Metering Service (write side) must produce the same hash from the same inputs.
 
-The critical path is `admit:*`: Praxis reads it on every request and touches nothing else in Redis. Balances and resource reverse mappings are internal to the Metering Service — balances exist so flags can be recomputed cheaply from a counter rather than by re-aggregating the ledger on every event, and the reverse mapping exists so operators can inspect which resource a hash refers to.
+The critical path is `ai-metering:*:admit:*`: Praxis reads it on every request and touches nothing else in Redis. Balances and resource reverse mappings are internal to the Metering Service — balances exist so flags can be recomputed cheaply from a counter rather than by re-aggregating the ledger on every event, and the reverse mapping exists so operators can inspect which resource a hash refers to.
 
 #### Example: Redis state for a multi-model, multi-user scenario
 
@@ -1247,18 +1247,18 @@ The critical path is `admit:*`: Praxis reads it on every request and touches not
 | `{"model": "claude-sonnet-5-5", "provider": "anthropic"}` | `model=claude-sonnet-5-5\|provider=anthropic` | `e4a1b7c3d9f20816` |
 | `{"model": "granite-3.3-8b", "provider": "ibm"}` | `model=granite-3.3-8b\|provider=ibm` | `7f2d08e5a3c914b6` |
 
-**Admission flags** (`admit:*` — read by Praxis):
+**Admission flags** (`ai-metering:*:admit:*` — read by Praxis):
 
 ```
 # Alice's per-resource flags (fully resolved across all applicable budgets)
-acme-corp:admit:user:alice:e4a1b7c3d9f20816              → "deny"    # claude-sonnet-5-5: budget-premium exhausted (hard enforcement)
-acme-corp:admit:user:alice:7f2d08e5a3c914b6              → "allow"   # granite-3.3-8b: budget-open has capacity
+ai-metering:acme-corp:admit:user:alice:e4a1b7c3d9f20816              → "deny"    # claude-sonnet-5-5: budget-premium exhausted (hard enforcement)
+ai-metering:acme-corp:admit:user:alice:7f2d08e5a3c914b6              → "allow"   # granite-3.3-8b: budget-open has capacity
 
 # Group flags (no group-level policy in this example, so absent — crate falls through)
 
 # Tenant-wide flags (budget-tenant-wide covers all models, soft overage)
-acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816        → "over"    # tenant soft overage for claude-sonnet-5-5
-acme-corp:admit:tenant:acme-corp:7f2d08e5a3c914b6        → "over"    # tenant soft overage for granite-3.3-8b
+ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816        → "over"    # tenant soft overage for claude-sonnet-5-5
+ai-metering:acme-corp:admit:tenant:acme-corp:7f2d08e5a3c914b6        → "over"    # tenant soft overage for granite-3.3-8b
 ```
 
 **Balances** (`balance:*` — internal to Metering Service):
@@ -1281,7 +1281,7 @@ acme-corp:resource:7f2d08e5a3c914b6                      → '{"model":"granite-
 The crate computes `resource_hash = e4a1b7c3d9f20816` and checks identity dimensions in precedence order:
 
 ```
-Step 1: GET acme-corp:admit:user:alice:e4a1b7c3d9f20816  → "deny"   ← found, stop here
+Step 1: GET ai-metering:acme-corp:admit:user:alice:e4a1b7c3d9f20816  → "deny"   ← found, stop here
 ```
 
 User flag is present → **deny**. Request is rejected with 429. The tenant flag (`over`) is never checked because alice has a direct user-level flag that already folds in all her applicable budgets.
@@ -1289,7 +1289,7 @@ User flag is present → **deny**. Request is rejected with 429. The tenant flag
 **What happens when Alice requests `granite-3.3-8b`:**
 
 ```
-Step 1: GET acme-corp:admit:user:alice:7f2d08e5a3c914b6  → "allow"  ← found, stop here
+Step 1: GET ai-metering:acme-corp:admit:user:alice:7f2d08e5a3c914b6  → "allow"  ← found, stop here
 ```
 
 User flag is present → **allow**. Request is forwarded normally. The tenant's soft overage does not affect alice because her own flag (which already accounts for all her applicable budgets) says `allow`.
@@ -1297,13 +1297,13 @@ User flag is present → **allow**. Request is forwarded normally. The tenant's 
 **What happens when Bob (no personal policy, member of `data-science` group) requests `claude-sonnet-5-5`:**
 
 ```
-Step 1: GET acme-corp:admit:user:bob:e4a1b7c3d9f20816    → (nil)    ← absent, fall through
-Step 2: GET acme-corp:admit:group:data-science:e4a1b7c3d9f20816 → (nil) ← absent, fall through
-Step 3: GET acme-corp:admit:org:research:e4a1b7c3d9f20816 → (nil)   ← absent, fall through
-Step 4: GET acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816 → "over" ← found
+Step 1: GET ai-metering:acme-corp:admit:user:bob:e4a1b7c3d9f20816    → (nil)    ← absent, fall through
+Step 2: GET ai-metering:acme-corp:admit:group:data-science:e4a1b7c3d9f20816 → (nil) ← absent, fall through
+Step 3: GET ai-metering:acme-corp:admit:organization:research:e4a1b7c3d9f20816 → (nil)   ← absent, fall through
+Step 4: GET ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816 → "over" ← found
 ```
 
-No user, group, or org flag exists for bob — he falls through to the tenant flag → **over**. Request is forwarded with `x-praxis-over-budget: true`.
+No user, group, or organization flag exists for bob — he falls through to the tenant flag → **over**. Request is forwarded with `x-praxis-over-budget: true`.
 
 **Note:** The low-level schema details are intentionally omitted from this document as they tend to change as the design and implementation evolve, risking this information becoming outdated. For this reason we aim to cover only the high-level aspects here.
 
@@ -1572,7 +1572,7 @@ Calls to the Metering Service authenticate with Kubernetes ServiceAccounts and p
 
 Authorization is enforced via RBAC. A dedicated virtual resource `s2s` in the `metering.aigateway.opendatahub.io` API group controls which ServiceAccounts may submit usage events and read budget state from the Metering Service. The same API group also defines three virtual resources (`rates`, `budgets`, `budget-policy`) for management operations. The AI Gateway Controller creates the appropriate RoleBindings when it provisions a gateway.
 
-Redis credentials are per tenant and per role: the gateway's ServiceAccount gets a read-only user scoped to `{tenant}:admit:*`, and only the Metering Service gets a user that can write balances and flags.
+Redis credentials are per tenant and per role: the gateway's ServiceAccount gets a read-only user scoped to `ai-metering:{tenant}:admit:*`, and only the Metering Service gets a user that can write balances and flags.
 
 ### CloudEvent Tenant Binding
 
@@ -1582,7 +1582,7 @@ Ingestion must not trust `data.identity.tenant` from the payload. The Metering S
 
 All management API requests require the `X-Tenant` header. The Metering Service validates that the caller has RBAC permissions for the specified tenant's resources. A missing or unauthorized `X-Tenant` header results in a 403 response.
 
-At the data plane level, tenant isolation is enforced by Redis ACLs rather than by key naming alone: each gateway's credential can only touch its own `{tenant}:admit:*` keys, and the pattern is fixed per credential rather than supplied by the request. A compromised Praxis pod therefore cannot read or alter another tenant's admission state.
+At the data plane level, tenant isolation is enforced by Redis ACLs rather than by key naming alone: each gateway's credential can only touch its own `ai-metering:{tenant}:admit:*` keys, and the pattern is fixed per credential rather than supplied by the request. A compromised Praxis pod therefore cannot read or alter another tenant's admission state.
 
 ### PII in Identity Fields
 
@@ -1592,7 +1592,7 @@ Identity data (user names, group names, organization names, tenant IDs) flows th
 |---|---|---|
 | Postgres (`usage` table) | `identity` JSONB column always includes groups, organization, and tenant. The `user` field is configurable — when user identity collection is disabled, usernames are not persisted. The `event_id` links back to the OTEL Log in Loki for full audit recovery | When user identity is enabled, data retention policies for the `usage` table should align with the organization's privacy requirements. When disabled, the usage table contains no PII beyond group and organization names |
 | Postgres (`budget_policies` table) | Subject names in the `subjects` JSONB column (e.g., `{"kind": "user", "name": "alice"}`) | Policy definitions are operator-managed configuration, not usage data. Retention follows the policy lifecycle |
-| Redis (key names) | Admission flag keys embed identity names: `{tenant}:admit:user:alice:{hash}`, `{tenant}:admit:group:data-science:{hash}` | Key names persist in Redis snapshots (RDB/AOF), diagnostic output (`KEYS`, `SCAN`, `MONITOR`), and slow-log entries. Operators should treat Redis key names as identity data |
+| Redis (key names) | Admission flag keys embed identity names: `ai-metering:{tenant}:admit:user:alice:{hash}`, `ai-metering:{tenant}:admit:group:data-science:{hash}` | Key names persist in Redis snapshots (RDB/AOF), diagnostic output (`KEYS`, `SCAN`, `MONITOR`), and slow-log entries. Operators should treat Redis key names as identity data |
 | OTEL Log / CloudEvent | `identity` object in the event payload | Forwarded to Loki and the Metering Service. Loki retention policies apply. This is the authoritative record of who made each request |
 
 Operators should ensure that Redis persistence files (RDB snapshots, AOF logs) are protected with the same access controls as identity data. Redis diagnostic commands (`KEYS`, `SCAN`, `MONITOR`) expose key names and should be restricted to authorized operators. If the organization requires that identity names not persist outside the Metering Service, the key layout could be changed to use hashed identity names (similar to the resource hash), at the cost of debuggability — this is an implementation decision, not an architectural one.
