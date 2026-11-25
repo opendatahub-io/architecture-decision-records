@@ -187,7 +187,7 @@ ServiceEntry makes the host `MESH_EXTERNAL` with DNS resolution. ExternalName Se
 | :---- | :---- | :---- |
 | Render Proxy + Policy and deploy the proxy (shared dependency). | Draft / in flight on gateway-controller. | Shared with companion ADR |
 | Model body routing + multi-provider weighted selection for ExternalModel IDs. | ExtProc `intelligent_route` overlay. | Body routing exists in proxy; **weighted selection works only in overlay mode today — static candidates cannot use weights** ([`intelligent_route` docs](https://github.com/praxis-proxy/ai/blob/a59c9270258a68c68f45419ef02d3f5a0a195fdd/docs/filters/intelligent_route.md)). Weighted static candidates are new upstream work |
-| Credential injection from Secret references without secret bytes in config. | ExtProc `credential_inject`. | Exists in ExtProc; must exist in proxy |
+| Credential injection from Secret references without secret bytes in config. | ExtProc `credential_inject`. | Exists in ExtProc; must exist in proxy. **Planned in PPE** ([policy#380](https://github.com/praxis-proxy/policy/issues/380) — credential injection / token minting); must land before the ExtProc overlay can be dropped |
 | **Egress through an HTTP CONNECT proxy for third-party HTTPS providers** (blocks SE/DR removal; TLS/SNI/CA already supported). | Istio DestinationRule + ServiceEntry. | **New — tracked as [`praxis-proxy/praxis#1589`](https://github.com/praxis-proxy/praxis/issues/1589)** |
 
 ## Dependencies
