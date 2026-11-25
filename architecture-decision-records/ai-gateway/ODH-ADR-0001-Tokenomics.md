@@ -333,7 +333,7 @@ New cost keys (e.g., `image_count`, `tool_calls`, `video_seconds`) can be added 
 **Guards:**
 
 - **Negative values.** Usage counts and rate costs must be non-negative integers. A negative token count or a negative rate would add units back to a budget, effectively crediting the subject for making requests. The Metering Service must reject usage events with negative counts and reject rate table entries with negative costs at validation time. The computed per-event `cost_bu` is always >= 0. Note: the **balance counter** in Redis can and will go negative — that is overage, not an error. How negative balances are handled at renewal depends on the budget's renewal type and the policy's `deduct_overage` setting (see [Overage Tracking and Period Carry-Forward](#overage-tracking-and-period-carry-forward)).
-- **Overflow.** The `bu_cost` column is a `bigint` (signed 64-bit, max ~9.2 × 10¹⁸). A single event cannot realistically overflow this — even 1 billion tokens at a rate of 1 billion BU per token produces 10¹⁸, which fits. However, the Metering Service should check for arithmetic overflow during cost computation and reject the event with an error rather than silently wrapping. Balance counters in Redis (also 64-bit signed integers) have the same range; cumulative spend across a budget's lifetime could approach the limit only with extreme rate values, in which case the operator should use smaller BU weights.
+- **Overflow.** The per-charge `bu_cost` column (in `usage_charges`) is a `bigint` (signed 64-bit, max ~9.2 × 10¹⁸). A single event cannot realistically overflow this — even 1 billion tokens at a rate of 1 billion BU per token produces 10¹⁸, which fits. However, the Metering Service should check for arithmetic overflow during cost computation and reject the event with an error rather than silently wrapping. Balance counters in Redis (also 64-bit signed integers) have the same range; cumulative spend across a budget's lifetime could approach the limit only with extreme rate values, in which case the operator should use smaller BU weights.
 
 Different subjects can have different rate tables assigned via their BudgetPolicy `rate_ref`. The same model costs different subjects different BU amounts. This makes the rate table a unified pricing and discount mechanism — no secondary discount logic is needed.
 
@@ -495,7 +495,7 @@ Praxis resolves the request's identities and reads their flags. A `deny` from an
 Praxis emits an OTEL Log with the actual usage. The OTEL Collector transforms it into a CloudEvent and delivers it to the Metering Service. The Metering Service:
 
 1. Prices the event against the rate version that was valid at `event.time`, so a rate change between the request and its ingestion cannot change what the request cost
-2. Appends the ledger rows for the request
+2. Appends the ledger rows for the request: one `usage` row for the event, plus one `usage_charges` row per budget charged
 3. Updates the balance for each charged budget
 4. Recomputes the admission flag for every identity object the charge touches, and writes the flags that changed
 
@@ -539,11 +539,14 @@ This ensures that overspend in one period is not silently forgiven — it reduce
 
 The OTEL Collector may retry delivery of a CloudEvent if it does not receive a timely acknowledgement from the Metering Service (e.g., network timeout, pod restart). Without deduplication, a retried event would be charged twice and counted twice in reports and overage.
 
-The Metering Service uses the CloudEvent `id` field as an idempotency key. The `usage` table has a unique constraint on `(tenant_id, event_id, budget_ref)`. On receipt, for each matched budget:
+The Metering Service uses the CloudEvent `id` field as an idempotency key. The ledger is normalized into two tables: `usage` holds the event-level facts, 1:1 with the CloudEvent, with a unique constraint on `(tenant_id, event_id)`; `usage_charges` holds one row per budget charged, with a unique constraint on `(usage_id, budget_ref)`. On receipt:
 
-1. Insert the usage row with `ON CONFLICT DO NOTHING`
-2. If zero rows were inserted — this budget's row is a duplicate; skip it, including its balance and flag updates
-3. If one row was inserted — the usage record is persisted and the accounting for it is applied exactly once
+1. Insert the `usage` row for the event with `ON CONFLICT DO NOTHING`; if it already exists (redelivery), fetch its `id` so each charge can be deduplicated individually
+2. For each matched budget, insert its `usage_charges` row with `ON CONFLICT DO NOTHING`, immediately before that budget's balance decrement
+3. If zero rows were inserted — this budget's charge is a duplicate; skip it, including its balance and flag updates
+4. If one row was inserted — the charge is persisted and its accounting is applied exactly once
+
+The per-charge marker is what makes redelivery safe at fine grain: an event that was partially settled (the process died mid-accounting) completes its remaining budgets on retry without double-charging the settled ones.
 
 Deduplication protects the balances and flags as well as the ledger, because all three are updated in the same pass.
 
@@ -1191,7 +1194,7 @@ All tables include a `tenant_id` column for multi-tenancy. Dynamic fields (resou
 
 ##### `usage`
 
-Append-only ledger of usage records. This is the durable record that feeds reporting, overage tracking, and the metering APIs. Rows are never updated or deleted. The Metering Service computes cumulative overage per budget from this ledger for period carry-forward. A single inference request may produce multiple usage rows — one per budget charged (e.g., if a user has both a BU budget and a token budget, two rows are written with different `budget_ref` and `bu_cost` values).
+Append-only ledger of usage records, one row per CloudEvent — the event-level facts (identity, resource, usage) are stored exactly once, no matter how many budgets the event is charged to. This is the durable record that feeds reporting, overage tracking, and the metering APIs. Rows are never updated or deleted. The Metering Service computes cumulative overage per budget from this ledger (joined with `usage_charges`) for period carry-forward.
 
 **User identity is optional.** The `identity` column stores group, organization, and tenant context — these are needed for group-level and org-level budget tracking and reporting. The `user` field within the identity JSONB is configurable and can be disabled by the operator. When disabled, the Metering Service still consumes the user identity from the CloudEvent at processing time for policy resolution and flag computation, but does not persist it in the usage table. This minimizes PII in the durable store while preserving per-user budget enforcement (which operates through Redis flags, not the usage table).
 
@@ -1199,31 +1202,42 @@ When user identity collection is enabled, the usage table supports per-user usag
 
 | Column | Type | Description |
 |---|---|---|
-| `id` | bigserial | Primary key |
+| `id` | bigserial | Primary key; referenced by `usage_charges.usage_id` |
 | `tenant_id` | text | Tenant scope |
-| `event_id` | text | CloudEvent `id` — idempotency key. Unique constraint on `(tenant_id, event_id, budget_ref)` prevents duplicate processing while allowing one row per budget charged |
+| `event_id` | text | CloudEvent `id` — idempotency key. Unique constraint on `(tenant_id, event_id)` prevents duplicate processing of a delivered event |
 | `request_id` | text | Request identifier for correlation |
 | `timestamp` | timestamptz | When the request completed |
 | `identity` | jsonb | Identity context. Always includes `groups`, `organization`, and `tenant`. The `user` field is included only when user identity collection is enabled (e.g., `{"user": "alice", "groups": ["engineering", "ml-team"], "organization": "research", "tenant": "acme-corp"}` or `{"groups": ["engineering"], "organization": "research", "tenant": "acme-corp"}` when disabled) |
 | `resource` | jsonb | Dynamic resource keys (e.g., `{"model": "claude-sonnet-5-5", "provider": "anthropic"}`) |
 | `usage` | jsonb | Dynamic usage keys (e.g., `{"input_tokens": 312, "output_tokens": 87, "cache_read_tokens": 20}`) |
-| `bu_cost` | bigint | Computed BU cost |
-| `budget_ref` | text | Which budget was charged |
 
-> **Note:** The usage query API supports multiple granularities (hour, day, week, month). Initially, all queries are served directly from the `usage` table using `date_trunc` and appropriate indexes. Pre-aggregated rollup tables (e.g., hourly or daily) can be added later if query performance requires it. This is an implementation and optimization detail that does not affect the API contract.
+##### `usage_charges`
+
+The per-charge facts of the ledger: one row per budget charged per event. A single inference request charged to multiple budgets (e.g., a BU budget and a token budget) produces one `usage` row and two `usage_charges` rows with different `budget_ref` and `bu_cost` values. The unique constraint on `(usage_id, budget_ref)` is the per-charge idempotency marker: it is inserted immediately before the budget's balance decrement, so a redelivered event never charges the same budget twice, and a partially settled event completes its remaining budgets on retry.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | bigserial | Primary key |
+| `usage_id` | bigint | References `usage(id)` with `ON DELETE CASCADE` — the event the charge belongs to |
+| `budget_ref` | text | Which budget was charged |
+| `bu_cost` | bigint | Computed BU cost charged to this budget |
+
+Usage queries aggregate over events: requests count `usage` rows (not charge rows), usage maps are summed once per event, and `bu_cost` is additive across an event's charges. Per-budget views (overage tracking, renewal, per-budget reporting) aggregate `usage_charges` directly.
+
+> **Note:** The usage query API supports multiple granularities (hour, day, week, month). Initially, all queries are served directly from the usage ledger (`usage` joined with `usage_charges`) using `date_trunc` and appropriate indexes. Pre-aggregated rollup tables (e.g., hourly or daily) can be added later if query performance requires it. This is an implementation and optimization detail that does not affect the API contract.
 
 
 #### Redis/Valkey
 
-Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Metering Service. Admission keys carry the `ai-metering:` prefix — it namespaces the keys Praxis reads within a potentially shared Redis, so they can never collide with (or be addressed by) other components using the same instance. Within that prefix, keys are further namespaced by tenant ID and protected by per-tenant ACLs.
+Redis holds derived state only. Configuration objects (policies, rates, budget definitions) are not stored there — they live behind the Metering Service. All keys carry the `ai-metering:` prefix — it namespaces the Metering Service's keys within a potentially shared Redis, so they can never collide with (or be addressed by) other components using the same instance. Within that prefix, keys are further namespaced by tenant ID and protected by per-tenant ACLs.
 
 The layout below is owned by the admission crate. It is documented here for operators; it is not a contract Praxis depends on, and it can change in a compatible crate release.
 
 | Key pattern | Type | Description |
 |---|---|---|
 | `ai-metering:{tenant}:admit:{kind}:{name}:{resource_hash}` | string | Admission state (`allow` / `over` / `deny`) for one (identity, resource) pair, aggregated across every budget that applies to it. Read by Praxis through the crate; written only by the Metering Service |
-| `{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented by the Metering Service during accounting and reset on period renewal. Not read by Praxis |
-| `{tenant}:resource:{resource_hash}` | string | Reverse mapping from resource hash to its canonical JSON (e.g., `{"model":"claude-opus","provider":"anthropic"}`). Written by the Metering Service for operator debugging. Not read by Praxis |
+| `ai-metering:{tenant}:balance:{budget_id}` | integer | Current BU balance for a budget. Decremented by the Metering Service during accounting and reset on period renewal. Not read by Praxis |
+| `ai-metering:{tenant}:resource:{resource_hash}` | string | Reverse mapping from resource hash to its canonical JSON (e.g., `{"model":"claude-opus","provider":"anthropic"}`). Written by the Metering Service for operator debugging. Not read by Praxis |
 
 The `{resource_hash}` is a deterministic hash of the resource identity — the set of key-value pairs (model, provider, and any future dimensions) that identify the resource being requested. The crate defines the canonical form: resource keys are sorted lexicographically, serialized to a stable byte sequence, and hashed (e.g., SHA-256 truncated to 64 bits / 16 hex characters). Both the Rust crate (read side) and the Go Metering Service (write side) must produce the same hash from the same inputs.
 
@@ -1261,19 +1275,19 @@ ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816        → "over" 
 ai-metering:acme-corp:admit:tenant:acme-corp:7f2d08e5a3c914b6        → "over"    # tenant soft overage for granite-3.3-8b
 ```
 
-**Balances** (`balance:*` — internal to Metering Service):
+**Balances** (`ai-metering:*:balance:*` — internal to Metering Service):
 
 ```
-acme-corp:balance:budget-premium                          → -3200     # exhausted, 3200 BU over
-acme-corp:balance:budget-open                             → 47000    # 47k BU remaining
-acme-corp:balance:budget-tenant-wide                      → -1500    # exhausted, 1500 BU over (soft)
+ai-metering:acme-corp:balance:budget-premium              → -3200     # exhausted, 3200 BU over
+ai-metering:acme-corp:balance:budget-open                 → 47000    # 47k BU remaining
+ai-metering:acme-corp:balance:budget-tenant-wide          → -1500    # exhausted, 1500 BU over (soft)
 ```
 
-**Resource reverse mappings** (`resource:*` — operator debugging):
+**Resource reverse mappings** (`ai-metering:*:resource:*` — operator debugging):
 
 ```
-acme-corp:resource:e4a1b7c3d9f20816                      → '{"model":"claude-sonnet-5-5","provider":"anthropic"}'
-acme-corp:resource:7f2d08e5a3c914b6                      → '{"model":"granite-3.3-8b","provider":"ibm"}'
+ai-metering:acme-corp:resource:e4a1b7c3d9f20816          → '{"model":"claude-sonnet-5-5","provider":"anthropic"}'
+ai-metering:acme-corp:resource:7f2d08e5a3c914b6          → '{"model":"granite-3.3-8b","provider":"ibm"}'
 ```
 
 **What happens when Alice requests `claude-sonnet-5-5`:**
