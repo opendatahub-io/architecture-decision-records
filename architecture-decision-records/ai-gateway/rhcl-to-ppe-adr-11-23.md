@@ -140,14 +140,7 @@ with the AI Gateway facade is an open product decision below.
 into the **ConfigMap** (or whatever the underlying mounted artifact is)
 directly, until the `Policy` / AI Gateway governance CRDs are ready; once they
 are, the same MaaS intent lowers through those CRDs instead of hand-mounting
-YAML. There is no transpiler in this path — the
-[authpolicy-transpiler demo](https://github.com/praxis-proxy/demos/tree/main/demos/authpolicy-transpiler)
-is not actively maintained, and migration is explicitly out of scope from the
-Praxis/PPE side: each client owns it. For MaaS that means the maas-controller
-code that renders Kuadrant CRs today grows the PPE rendering path — a
-control-plane change, not a data migration customers run. Parity is audited
-against the reference AuthPolicy in [#195](https://github.com/praxis-proxy/policy/issues/195)
-and the MaaS demo in [#348](https://github.com/praxis-proxy/policy/issues/348).
+YAML.
 
 Alternatives considered: ai-gateway-controller renders from published MaaS
 data (inverts ownership).
