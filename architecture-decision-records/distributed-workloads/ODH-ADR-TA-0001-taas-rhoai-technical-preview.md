@@ -401,14 +401,14 @@ non-Kubernetes endpoint and should be available to all API callers without proje
 **Requirement:** Report Training Hub algorithms and parameter schemas exposed by the `AlgorithmRegistry` in the
 configured runtime image, rather than a hard-coded universal catalog.
 
-**Proposed implementation:** Configure one `trainingRuntime.image` per TaaS deployment. At pod startup, an init
-container using that image imports its installed Training Hub package and inspects `AlgorithmRegistry` and callable
-metadata. The algorithm implementations stay in the runtime image; the init container writes their names and parameter
-schemas to a `catalog.json` in a shared pod-local `emptyDir`. The API container mounts it read-only and uses it for
-algorithm discovery and request parameter validation. The catalog is derived from the same runtime image used by
-training jobs; changing the image rolls out the pod and regenerates the catalog. For a future backend, reuse this method
-only if its image provides a compatible Training Hub registry; otherwise, define a backend-specific discovery source
-and schema resolver. This matches the approach in
+**Proposed implementation:** Configure one `trainingRuntime.image` per TaaS deployment, pinned to an immutable digest.
+At pod startup, an init container using that digest imports its installed Training Hub package and inspects
+`AlgorithmRegistry` and callable metadata. The algorithm implementations stay in the runtime image; the init container
+writes their names and parameter schemas to a `catalog.json` in a shared pod-local `emptyDir`. The API container mounts
+it read-only and uses it for algorithm discovery and request parameter validation. The catalog and submitted training
+jobs use this same digest; changing the configured digest rolls out the TaaS pod and regenerates the catalog. For a
+future backend, reuse this method only if its image provides a compatible Training Hub registry; otherwise, define a
+backend-specific discovery source and schema resolver. This matches the approach in
 [training-service PR #12](https://github.com/opendatahub-io/training-service/pull/12).
 
 The proposed storage is ephemeral because the catalog is regenerated at startup and does not need to outlive the pod.
