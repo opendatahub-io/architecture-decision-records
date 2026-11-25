@@ -32,8 +32,9 @@ gateway) and narrower than ODH-ADR-MS-0005 (ExternalModel two-plane split).
 - Biggest win: this removes the external dependency on the RHCL operator. Setup
   complexity drops massively — the RHCL operator install and its wiring are one
   of our biggest complaints today.
-- RHCL inserts an out-of-process wasm shim between two Praxis hops on the
-  inference path.
+- RHCL's wasm shim runs in-process in Envoy, but its callouts to Authorino
+  and Limitador are out-of-process — extra network hops between two Praxis
+  hops on the inference path.
 - Connectivity Link supportability and Kuadrant cardinality limits are a product risk.
 - PPE is the policy library Praxis already embeds; migrating inference policy onto
   it is the stepping stone toward a simpler AI Gateway dataplane.
@@ -76,6 +77,11 @@ gateway) and narrower than ODH-ADR-MS-0005 (ExternalModel two-plane split).
 - Metering / Price Tag admission productization (Tokenomics path) — except
   where "report quota usage" is called out below as a PPE/QoS gap.
 - Changing InferencePool / EPP (optional, stays separate).
+- Migrating MaaS to PPE-minted tokens. MaaS API already mints the keys /
+  tokens in use; PPE token minting ([policy#380](https://github.com/praxis-proxy/policy/issues/380))
+  is a future option only — see Future plans. Any move to PPE-minted tokens
+  needs its own migration plan, since live credentials would have to carry
+  over without breaking clients.
 
 ## How
 
@@ -102,6 +108,10 @@ authz after).
 - Praxis must **hot-reload the PPE document on ConfigMap change** — required, not
   optional. Policy changes take effect without a pod roll; RHCL/Kuadrant
   reconcile continuously today and PPE cannot regress that.
+- **Credential injection** (provider credential injection for external models)
+  is planned in PPE ([policy#380](https://github.com/praxis-proxy/policy/issues/380))
+  and is covered in the [companion ExternalModel ADR (PR 191)](https://github.com/opendatahub-io/architecture-decision-records/pull/191),
+  not here.
 
 ### Policy surface (controller-rendered PPE document)
 
@@ -126,16 +136,21 @@ decides that inference auth/RL leave Kuadrant and land as PPE documents those
 controllers (eventually) lower into. Clarifying the exact CR ownership split
 with the AI Gateway facade is an open product decision below.
 
-**Recommended renderer ownership (migration):** maas-controller keeps a
-Kuadrant-shaped intermediate and runs **authpolicy-transpiler** → PPE YAML.
-Migration safety: a diff of transpile output is the parity audit — backed by
-the reference AuthPolicy in [#195](https://github.com/praxis-proxy/policy/issues/195)
+**Renderer ownership (migration):** maas-controller renders the PPE document
+into the **ConfigMap** (or whatever the underlying mounted artifact is)
+directly, until the `Policy` / AI Gateway governance CRDs are ready; once they
+are, the same MaaS intent lowers through those CRDs instead of hand-mounting
+YAML. There is no transpiler in this path — the
+[authpolicy-transpiler demo](https://github.com/praxis-proxy/demos/tree/main/demos/authpolicy-transpiler)
+is not actively maintained, and migration is explicitly out of scope from the
+Praxis/PPE side: each client owns it. For MaaS that means the maas-controller
+code that renders Kuadrant CRs today grows the PPE rendering path — a
+control-plane change, not a data migration customers run. Parity is audited
+against the reference AuthPolicy in [#195](https://github.com/praxis-proxy/policy/issues/195)
 and the MaaS demo in [#348](https://github.com/praxis-proxy/policy/issues/348).
-Once `Policy` / AI Gateway governance are ready, the same MaaS intent lowers
-through those CRDs instead of hand-mounting YAML.
 
-Alternatives considered: maas-controller renders PPE YAML directly; or
-ai-gateway-controller renders from published MaaS data (inverts ownership).
+Alternatives considered: ai-gateway-controller renders from published MaaS
+data (inverts ownership).
 
 **Reload:** Praxis must hot-reload the PPE document on ConfigMap / CR change
 ([policy#303](https://github.com/praxis-proxy/policy/issues/303) — honor plugin
@@ -336,6 +351,15 @@ be a confused deputy from the public listener).
    exist for a tenant, which engine actually enforces, and is there a window
    where both (or neither) do? Needs an explicit answer before dev-tenant
    rollout.
+
+## Future plans
+
+- **PPE token minting** ([policy#380](https://github.com/praxis-proxy/policy/issues/380)):
+  PPE plans credential injection and token minting. MaaS API already mints the
+  keys / tokens in use; moving to PPE-minted tokens is a future option, not
+  expected in 3.7. If it happens, it needs a migration plan agreed with the
+  Praxis side so live credentials carry over without breaking clients — keep
+  this coordinated, since MaaS is already minting tokens today.
 
 ## Alternatives
 
