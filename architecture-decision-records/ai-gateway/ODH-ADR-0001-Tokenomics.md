@@ -385,7 +385,7 @@ Praxis needs an admission decision inside the request path, but that decision de
 
 The only synchronous interface between Praxis and the Metering Service is the admission read, exposed by a crate the Metering Service publishes. Praxis passes a typed identity and receives an admission state; the crate owns the storage layout, value encoding, and key escaping, so Praxis contains no key names and a layout change does not reach it. Usage flows the other way, as events.
 
-The crate models one admission flag per (identity object, resource) pair, aggregated across every budget that applies to it:
+The crate models one admission flag per (identity object, resource) pair, aggregated across the budgets whose policies list that identity object as a subject:
 
 | Object | Value | Written by | Read by |
 |---|---|---|---|
@@ -398,18 +398,18 @@ The resource is identified by a deterministic hash of its key-value pairs (model
 
 There is one flag per (identity object, resource) pair, not one per user. That matters because group and organization membership is only known at request time: the Metering Service never has to enumerate members, and Praxis already holds the memberships it needs for routing and authorization.
 
-Each flag is **fully resolved** by the Metering Service: it already folds in every budget that applies to that identity for that resource — including budgets attached through group-, organization-, or tenant-level policies — using the most restrictive outcome. The user flag is the final answer for that user — not a partial input that requires further aggregation with group or tenant flags.
+Each flag covers exactly one identity level: the user flag aggregates the budgets whose policies name that user as a subject, the group flag the policies naming that group, and so on. A flag does not fold in budgets attached at other identity levels — combining the levels is the reader's job, described next.
 
 Per request, Praxis:
 
 1. Resolves the identity it already resolves for routing and authorization (user, groups, organization, tenant)
-2. Calls the crate with that identity and the requested resource; the crate computes the resource hash and looks up the flag using **most-specific-wins** precedence: `user` → `group` → `organization` → `tenant`. The first present flag is the admission decision
+2. Calls the crate with that identity and the requested resource; the crate computes the resource hash, reads every identity level's flag in one bulk read (user, each group, organization, tenant), and folds them **most restrictive**: `deny` beats `over` beats `allow`
 3. Acts on the result: `deny` → reject, `over` → forward with `x-praxis-over-budget: true`, `allow` → forward normally
 4. If all flags are absent, no budget applies — the request is forwarded normally
 
-The most-specific-wins rule ensures that a user with a direct budget policy is governed by their own precomputed flag and is not affected by group or tenant flags that may reflect a different budget's state. Group and tenant flags serve users who do not have a more specific policy.
+The most-restrictive fold mirrors accounting: every applicable budget — attached at any identity level — is charged for the event, so every level's flag describes a budget the request actually draws from. A healthy user-level budget does not exempt a request from an exhausted group or tenant budget it also charges.
 
-Absent state is not a failed read: absence means no budget applies at that level, so the crate falls through to the next level. An error or timeout from the crate is what the operator's fail-open or fail-closed policy governs.
+Absent state is not a failed read: absence means no budget applies at that identity level, and the fold simply ignores it. An error or timeout from the crate is what the operator's fail-open or fail-closed policy governs.
 
 That is the entire contract. Praxis performs no policy resolution, no rate lookup, no cost computation, and no balance arithmetic, and it never writes to Redis. The state is the outcome of policy resolution, not the state of a single budget: `over` is written only for policies configured with soft overage; hard enforcement writes `deny`.
 
@@ -440,12 +440,12 @@ This is accepted deliberately: the metering plane is a cost-control mechanism, n
 | Concern | Praxis responsibility |
 |---|---|
 | Who | Resolve user, groups, organization, and tenant from the request (already done for routing and authorization) |
-| Admission | Call the admission crate with those identities and the requested resource; the crate returns the most-specific flag that exists (user → group → org → tenant) |
+| Admission | Call the admission crate with those identities and the requested resource; the crate reads every identity level's flag and returns the most restrictive outcome (deny > over > allow) |
 | Enforcement | `deny` → 429; `over` → forward with `x-praxis-over-budget: true`; `allow` → forward |
 | Usage emission | Emit an OTEL Log with identity, resource, usage, and request id after the response |
 | Flag read failure | Apply the configured fail-open or fail-closed behavior |
 
-Everything else — BU rates, balances, policies, precedence, overage, renewal, reconciliation, pacing — lives in the budget system.
+Everything else — BU rates, balances, policies, flag aggregation, overage, renewal, reconciliation, pacing — lives in the budget system.
 
 
 ### Identity Resolution
@@ -472,7 +472,7 @@ The budget flow has two phases: admission before dispatch (Praxis, via the flag)
 
 When a usage event arrives, the Metering Service resolves the budgets it charges through the following chain:
 
-1. **Identity → BudgetPolicies.** Match the subject's identity (user, groups, organization, tenant) against all policies' `subjects` lists. A user may match multiple policies — directly by name, via group/org membership, or via tenant. Precedence rules apply: most-specific subject kind wins (user > group > organization > tenant). Precedence is resolved **per budget**, so a more specific policy for one budget does not suppress a policy that governs a different budget. If multiple policies match at the same specificity level for the same budget, the most restrictive is applied and a warning is emitted (see [Validation Rules](#validation-rules)).
+1. **Identity → BudgetPolicies.** Match the subject's identity (user, groups, organization, tenant) against all policies' `subjects` lists. A user may match multiple policies — directly by name, via group/org membership, or via tenant. Every applicable budget is charged once; there is no precedence between identity levels. When two policies that share a budget both match, the `(usage_id, budget_ref)` idempotency marker collapses them into a single charge — the oldest of the policies prices the event, deterministically — and a warning is emitted at ingest when their computed costs differ (see [Validation Rules](#validation-rules)). The resulting admission states are folded most restrictively.
 
 2. **BudgetPolicy → Rate.** Each matched policy carries a `rate_ref`. The Metering Service looks up the corresponding Rate.
 
@@ -543,7 +543,7 @@ The Metering Service uses the CloudEvent `id` field as an idempotency key. The l
 
 1. Insert the `usage` row for the event with `ON CONFLICT DO NOTHING`; if it already exists (redelivery), fetch its `id` so each charge can be deduplicated individually
 2. For each matched budget, insert its `usage_charges` row with `ON CONFLICT DO NOTHING`, immediately before that budget's balance decrement
-3. If zero rows were inserted — this budget's charge is a duplicate; skip it, including its balance and flag updates
+3. If zero rows were inserted — this budget was already charged for the event. Skip the ledger row and the balance decrement. The charge's admission keys still join the flag fold when the budget was decremented in this same pass (an overlapping policy sharing the budget), so every identity object touched keeps its flag current. A redelivery — nothing decremented in this pass — writes no flags, and the first delivery's writes stand
 4. If one row was inserted — the charge is persisted and its accounting is applied exactly once
 
 The per-charge marker is what makes redelivery safe at fine grain: an event that was partially settled (the process died mid-accounting) completes its remaining budgets on retry without double-charging the settled ones.
@@ -601,7 +601,7 @@ Pacing is out of scope for the initial implementation, but the architecture supp
 
 | Rule | Description |
 |---|---|
-| No conflicting rate for the same budget | A subject must not appear in multiple policies that reference the same `budget_ref` with different `rate_ref` values. Since multiple policies for the same budget share a single balance counter, the system cannot determine which rate to use for cost computation. This is validated across all policies — including subjects listed in multi-subject policies |
+| No conflicting rate for the same budget | A subject must not appear in multiple policies that reference the same `budget_ref` with different `rate_ref` values. Since multiple policies for the same budget share a single balance counter, the system cannot determine which rate to use for cost computation. This is validated across all policies for the cases provable at write time: literally shared subject entries, and tenant-level subjects (which match every identity in the tenant and therefore overlap every other policy in it). Cross-level overlaps (a user and a group they belong to) depend on request-time membership and cannot be validated here; ingest detects them and warns when the computed costs differ |
 | `budget_ref` must resolve | Must reference an existing Budget |
 | `rate_ref` must resolve | Must reference an existing Rate |
 | Overage `rate_ref` must resolve | If present, must reference an existing Rate |
@@ -612,8 +612,8 @@ These rules are evaluated by the Metering Service when it resolves the budgets c
 
 | Rule | Description |
 |---|---|
-| Most-specific wins | A user with a direct policy takes precedence over any group, organization, or tenant policy when resolving that event's budgets. Precedence is applied per budget, then every applicable budget is charged, so a more specific match for one budget cannot mask another budget |
-| Ambiguous group/organization membership | A user in multiple groups or organizations that have policies results in the most restrictive policy being applied. A warning event is emitted so the operator can resolve the ambiguity by creating a direct user policy. Group and organization membership is only known at request time (i.e. via SelfTokenReview or from the OIDC token claims) and cannot be validated at policy creation time |
+| All applicable budgets charge | Every policy whose subject matches the event's identity — at user, group, organization, or tenant level — contributes a charge. There is no precedence between levels: the request draws from all applicable budgets, and admission is the most restrictive outcome across them. Two policies that share a budget collapse to a single charge (the oldest policy prices it); differing computed costs for the same budget trigger an ingest warning |
+| Ambiguous group/organization membership | A user in multiple groups or organizations that have policies is charged by all of them, and admission is the most restrictive outcome. Overlapping coverage is normal under charge-all semantics, not an ambiguity to resolve. Group and organization membership is only known at request time (i.e. via SelfTokenReview or from the OIDC token claims) and cannot be validated at policy creation time |
 
 
 ### API: REST
@@ -974,7 +974,7 @@ The data-plane contract is a single read operation, provided by a crate the Mete
 
 #### State the crate models
 
-The crate reads one admission flag per (identity object, resource) pair, aggregated across every budget that applies to it:
+The crate reads one admission flag per (identity object, resource) pair, aggregated across the budgets whose policies list that identity object as a subject:
 
 | Object | Value | Written by | Read by |
 |---|---|---|---|
@@ -985,24 +985,24 @@ The crate reads one admission flag per (identity object, resource) pair, aggrega
 
 Three rules make this safe to read without any budget knowledge:
 
-- **One flag per (identity object, resource), fully resolved.** Each flag already folds in every budget that applies to that identity for that resource — including budgets attached through group, organization, or tenant policies — using the most restrictive outcome. If a user has a BU budget and a token budget that both cover the same resource, both fold into the single flag. Praxis never learns how many budgets exist.
-- **Most-specific-wins at read time.** The crate checks identity dimensions in precedence order: user → group → organization → tenant. The first present flag is the answer. A user with a direct budget policy is governed by their own flag and unaffected by group or tenant flags that may reflect a different budget's state.
+- **One flag per (identity object, resource).** Each flag aggregates the budgets whose policies list that identity object as a subject, using the most restrictive outcome. If a user has a BU budget and a token budget that both cover the same resource, both fold into the single user flag. Praxis never learns how many budgets exist.
+- **Most-restrictive at read time.** The crate reads every identity dimension's flag — user, each group, organization, tenant — in one bulk read and folds them: `deny` beats `over` beats `allow`. Every level's flag describes a budget the request charges, so no level can be ignored.
 - **Derived, never patched.** The Metering Service recomputes a flag from the ledger and configuration on every accounting pass and overwrites it in place. A stale `deny` cannot outlive the debt that produced it, because the next pass rewrites it.
 
 The balance counters the Metering Service derives flags from are internal to it and are not part of this contract; see [Storage Schema](#storage-schema).
 
 #### Reading the state
 
-Praxis calls the crate once per request with the identity it resolved and the requested resource. The crate computes the resource hash and checks identity dimensions in precedence order:
+Praxis calls the crate once per request with the identity it resolved and the requested resource. The crate computes the resource hash, builds one key per identity object, and fetches them all in a single bulk read:
 
-| Step | Key checked | If present | If absent |
-|---|---|---|---|
-| 1 | `ai-metering:{tenant}:admit:user:{name}:{resource_hash}` | Use this flag | Fall through to step 2 |
-| 2 | `ai-metering:{tenant}:admit:group:{name}:{resource_hash}` (for each group) | Use the most restrictive across groups | Fall through to step 3 |
-| 3 | `ai-metering:{tenant}:admit:organization:{name}:{resource_hash}` | Use this flag | Fall through to step 4 |
-| 4 | `ai-metering:{tenant}:admit:tenant:{name}:{resource_hash}` | Use this flag | No budget applies |
+| Key | When present in the key set |
+|---|---|
+| `ai-metering:{tenant}:admit:user:{name}:{resource_hash}` | When the identity carries a user |
+| `ai-metering:{tenant}:admit:group:{name}:{resource_hash}` | Once per group the identity carries |
+| `ai-metering:{tenant}:admit:organization:{name}:{resource_hash}` | When the identity carries an organization |
+| `ai-metering:{tenant}:admit:tenant:{name}:{resource_hash}` | Always |
 
-Once a flag is found, Praxis acts on it:
+The crate folds every present flag most restrictively (`deny` beats `over` beats `allow`); an absent key contributes nothing, and if no key is present no budget applies. Praxis acts on the result:
 
 | Flag value | Praxis action |
 |---|---|
@@ -1011,26 +1011,26 @@ Once a flag is found, Praxis acts on it:
 | `allow` | Forward normally |
 | All absent | No budget applies; forward normally |
 
-At step 2, a user may belong to multiple groups. If multiple group flags exist, the crate applies the most restrictive across those groups (`deny` beats `over` beats `allow`). This matches the accounting-time rule where ambiguous group membership results in the most restrictive policy being applied.
+A user may belong to multiple groups, so several group flags can be present; they join the same most-restrictive fold. This matches the accounting-time rule where ambiguous group membership results in the most restrictive outcome being applied.
 
-#### Why most-specific-wins, not most-restrictive across all dimensions
+#### Why most-restrictive across all identity levels
 
-Each flag is fully resolved by the Metering Service: a user's flag folds in every budget that applies to them, including budgets attached through group- or organization-level policies. If alice's personal budget is exhausted but she is also covered by a healthy group budget, her user flag already reflects both — the most restrictive outcome. Reading the group flag on top of that would double-count the group budget's state and incorrectly penalize alice even when her own flag says she is allowed.
+Accounting charges every policy that matches the identity: a request from alice draws from her user-level budgets, her groups' budgets, her organization's budget, and the tenant budget simultaneously. Because the request charges all of them, the admission decision must consider all of them — a healthy user-level budget does not exempt a request from an exhausted group or tenant budget it also charges. Reading one flag per level and folding most restrictively is the exact mirror of how the event was charged, and it reuses the single `deny > over > allow` rule that governs every other fold in the system: the per-level aggregation at write time, the charge fold at ingest, and the renewal recompute.
 
-#### Why group, organization, and tenant flags still exist
+#### Why group, organization, and tenant flags exist
 
-A per-user flag is the final answer for any user the Metering Service has seen — it is fully resolved across all applicable budgets, and all subsequent requests use it. However, the Metering Service discovers users from usage events; it does not maintain a user directory. Group, organization, and tenant flags serve as **fallbacks for users the Metering Service has not seen yet.**
+Policies can attach budgets at any identity level, and every level's budget charges the requests that match it — so every level needs its own flag. The group flag is not a substitute for the user flag; it is the state of the group's own budgets.
 
-Consider a tenant-wide budget that is exhausted (`deny`). A new user whose first request has not yet been accounted has no user-level flag. Without the tenant fallback, the crate would find all levels absent and treat the request as "no budget applies" — granting unlimited access to a user who should be denied. The tenant flag prevents this.
+These flags also govern users with no user-level flag. The Metering Service discovers users from usage events; it does not maintain a user directory. A user whose first request has not yet been accounted has no user-level flag, but their requests still charge group, organization, and tenant budgets — those flags govern them from the very first request. A tenant-wide budget that is exhausted (`deny`) therefore denies even a brand-new user, rather than granting unlimited access until their first event is accounted.
 
 | Level | Purpose |
 |---|---|
-| `user` | Fully resolved flag for known users — the Metering Service writes this after it first accounts a usage event for that user |
-| `group` | Fallback for users without a user flag, covered by a group-level policy |
-| `organization` | Fallback for users without a user or group flag |
-| `tenant` | Last resort — covers every user in the tenant, including those never seen before |
+| `user` | State of the budgets attached to this user by user-level policies — written after the Metering Service first accounts a usage event for that user |
+| `group` | State of the budgets attached to this group by group-level policies — governs every member, including users with no user flag |
+| `organization` | State of the organization's budgets — governs every member |
+| `tenant` | Covers every user in the tenant, including those never seen before |
 
-Once the Metering Service accounts a user's first event, it writes a user-level flag that incorporates all applicable budgets. From that point on, the user flag takes precedence and the group/organization/tenant flags are not consulted for that user. This keeps the flag set sparse — the Metering Service only writes flags at the levels where policies exist, and the fallback chain ensures that even unknown users are governed by the broadest applicable budget.
+This keeps the flag set sparse — the Metering Service only writes flags at the levels where policies exist — while every request is governed by every budget it charges, whether or not the user has been seen before.
 
 #### Why not per-budget flags
 
@@ -1264,11 +1264,11 @@ The critical path is `ai-metering:*:admit:*`: Praxis reads it on every request a
 **Admission flags** (`ai-metering:*:admit:*` — read by Praxis):
 
 ```
-# Alice's per-resource flags (fully resolved across all applicable budgets)
+# Alice's per-resource user flags (her user-level policies only; the tenant flag below is separate)
 ai-metering:acme-corp:admit:user:alice:e4a1b7c3d9f20816              → "deny"    # claude-sonnet-5-5: budget-premium exhausted (hard enforcement)
 ai-metering:acme-corp:admit:user:alice:7f2d08e5a3c914b6              → "allow"   # granite-3.3-8b: budget-open has capacity
 
-# Group flags (no group-level policy in this example, so absent — crate falls through)
+# Group flags (no group-level policy in this example, so absent — the fold ignores them)
 
 # Tenant-wide flags (budget-tenant-wide covers all models, soft overage)
 ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816        → "over"    # tenant soft overage for claude-sonnet-5-5
@@ -1292,32 +1292,36 @@ ai-metering:acme-corp:resource:7f2d08e5a3c914b6          → '{"model":"granite-
 
 **What happens when Alice requests `claude-sonnet-5-5`:**
 
-The crate computes `resource_hash = e4a1b7c3d9f20816` and checks identity dimensions in precedence order:
+The crate computes `resource_hash = e4a1b7c3d9f20816` and reads all of alice's identity flags in one bulk get:
 
 ```
-Step 1: GET ai-metering:acme-corp:admit:user:alice:e4a1b7c3d9f20816  → "deny"   ← found, stop here
+MGET ai-metering:acme-corp:admit:user:alice:e4a1b7c3d9f20816       → "deny"
+     ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816 → "over"
 ```
 
-User flag is present → **deny**. Request is rejected with 429. The tenant flag (`over`) is never checked because alice has a direct user-level flag that already folds in all her applicable budgets.
+Fold most restrictively: `deny` beats `over` → **deny**. Request is rejected with 429. Alice's requests charge both `budget-premium` and `budget-tenant-wide`; the exhausted hard-enforced budget denies the request even though the tenant budget's soft overage would admit it.
 
 **What happens when Alice requests `granite-3.3-8b`:**
 
 ```
-Step 1: GET ai-metering:acme-corp:admit:user:alice:7f2d08e5a3c914b6  → "allow"  ← found, stop here
+MGET ai-metering:acme-corp:admit:user:alice:7f2d08e5a3c914b6       → "allow"
+     ai-metering:acme-corp:admit:tenant:acme-corp:7f2d08e5a3c914b6 → "over"
 ```
 
-User flag is present → **allow**. Request is forwarded normally. The tenant's soft overage does not affect alice because her own flag (which already accounts for all her applicable budgets) says `allow`.
+Fold most restrictively → **over**. Request is forwarded with `x-praxis-over-budget: true`. Alice's own budget has capacity, but her requests also charge the tenant-wide budget, which is in soft overage — so the request is admitted and the over-budget signal is set.
 
 **What happens when Bob (no personal policy, member of `data-science` group) requests `claude-sonnet-5-5`:**
 
+The crate computes `resource_hash = e4a1b7c3d9f20816` and reads bob's identity flags in one bulk get:
+
 ```
-Step 1: GET ai-metering:acme-corp:admit:user:bob:e4a1b7c3d9f20816    → (nil)    ← absent, fall through
-Step 2: GET ai-metering:acme-corp:admit:group:data-science:e4a1b7c3d9f20816 → (nil) ← absent, fall through
-Step 3: GET ai-metering:acme-corp:admit:organization:research:e4a1b7c3d9f20816 → (nil)   ← absent, fall through
-Step 4: GET ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816 → "over" ← found
+MGET ai-metering:acme-corp:admit:user:bob:e4a1b7c3d9f20816              → (nil)
+     ai-metering:acme-corp:admit:group:data-science:e4a1b7c3d9f20816    → (nil)
+     ai-metering:acme-corp:admit:organization:research:e4a1b7c3d9f20816 → (nil)
+     ai-metering:acme-corp:admit:tenant:acme-corp:e4a1b7c3d9f20816      → "over"
 ```
 
-No user, group, or organization flag exists for bob — he falls through to the tenant flag → **over**. Request is forwarded with `x-praxis-over-budget: true`.
+Only the tenant flag is present → **over**. Request is forwarded with `x-praxis-over-budget: true`. Bob has no user-level flag (the Metering Service has not accounted a usage event for him yet), but his requests still charge the tenant-wide budget — the tenant flag governs him from his first request.
 
 **Note:** The low-level schema details are intentionally omitted from this document as they tend to change as the design and implementation evolve, risking this information becoming outdated. For this reason we aim to cover only the high-level aspects here.
 
@@ -1421,7 +1425,7 @@ Notes on when flags change:
 - **Flags follow M360's notifications only.** The Metering Service has no local accounting to fall back on, so enforcement lag for every budget is M360's own event processing plus its notification latency. This is inherent to the mode: the Metering Service mirrors budget state it cannot compute.
 - **Overshoot.** The window between a budget being exhausted in M360 and the `deny` flag being written includes M360's processing, so it is wider than in embedded mode. The overshoot model (see [Overshoot](#overshoot)) still applies, with the external platform's latency folded into the accepted window.
 - **Recovery.** A top-up or period renewal reported by M360 flips the affected flags back to `allow` through the same adapter path. If notifications are lost, polling the platform's budget state (where supported) serves as the reconciliation fallback, mirroring the republish-on-reconnect behavior of embedded mode.
-- The flag write path is shared with embedded accounting, so single-writer ownership and the most-specific-wins read contract (see [API: Admission Read](#api-admission-read)) apply unchanged. Deduplication applies to forwarding rather than to a local ledger: the Metering Service must not re-send an event the platform already accepted.
+- The flag write path is shared with embedded accounting, so single-writer ownership and the most-restrictive read contract (see [API: Admission Read](#api-admission-read)) apply unchanged. Deduplication applies to forwarding rather than to a local ledger: the Metering Service must not re-send an event the platform already accepted.
 
 ##### Pull variant (on-demand budget state)
 
@@ -1515,7 +1519,7 @@ The Metering Service does not include a built-in alert management system. All me
 | Budget utilization > 95% | Critical | Tenant near exhaustion |
 | Overage exceeds threshold | Warning | Budget overage growing — may indicate runaway consumption or misconfigured rates |
 | Flag staleness | Warning | Admission flags have not been recomputed within the expected interval — the Metering Service is stalled or has lost Redis |
-| Ambiguous policy match | Warning | Multiple group/org policies matched for a user — operator should create a direct user policy |
+| Ambiguous pricing | Warning | Two policies sharing a budget resolved for the same identity with different computed costs — the oldest policy priced the event; align their rate_refs |
 
 #### UI Dashboards
 
