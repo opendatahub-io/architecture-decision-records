@@ -228,7 +228,7 @@ Each **RateItem** contains:
 
 | Field | Type | Description |
 |---|---|---|
-| `resource` | map | Resource matching keys (e.g., `model`, `provider`, `region`) |
+| `resource` | map | Resource matching keys (e.g., `model`, `provider`, `region`). An item matches when every one of its keys equals the event's corresponding key; keys left out are unconstrained, and an empty map matches every resource |
 | `costs` | map | BU per usage unit (e.g., `input_tokens: 3`, `output_tokens: 15`, `cache_read_tokens: 1`) |
 
 The resource and cost keys are dynamically set. Admins can provide any key-value pairs here. However, for end-to-end consistency the cost fields emitted by Praxis in the OTEL logs are shown in the [Consumption Emission](#consumption-emission) section.
@@ -345,9 +345,7 @@ The same cost computation formula naturally supports raw token limits — no add
 rates:
   - name: token-counting
     items:
-      - resource:
-          model: "*"
-          provider: "*"
+      - resource: {}   # empty map: the catch-all — every dimension unconstrained
         costs:
           input_tokens: 1
           output_tokens: 1
@@ -366,13 +364,13 @@ This means that token limits as defined in MaaSSubscription today can be express
 
 A MaaSSubscription binds multiple subjects (users and groups) to multiple models with a shared token limit. The budget object model can express the same semantics — and more flexibly — using its existing primitives:
 
-- **Multiple models** are covered by the rate table's `items` list, which can contain entries for any number of models. Wildcard resource matching (e.g., `model: "*"`) extends this further.
+- **Multiple models** are covered by the rate table's `items` list, which can contain entries for any number of models. An item with an empty resource map matches every resource, and keys left out of an item's map leave that dimension unconstrained.
 - **Multiple subjects sharing a budget** are expressed directly in a single BudgetPolicy's `subjects` list. All subjects in the policy share the same budget, rate, and overage configuration — analogous to a Kubernetes RoleBinding listing multiple subjects for the same role.
 - **Token limits** are expressed via unit-cost rate tables as described above.
 
 The key advantage over MaaSSubscription is per-subject flexibility. When subjects need different rates or overage behavior against the same budget, separate BudgetPolicy objects are created — each with its own `rate_ref`. Alice can be on the `standard` rate while Bob is on the `discounted` rate, both drawing from the same shared budget pool. Subjects can also have individual BU budgets alongside shared token budgets. MaaSSubscription cannot express these distinctions.
 
-> **Note:** The examples above use wildcard resource matching (`model: "*"`) to apply the same token counting across all models. The details of wildcard and pattern-based resource matching will be defined during implementation.
+> **Note:** The example above uses an empty resource map to apply the same token counting across all models. Resource matching is subset-based: a rate item matches an event when every key in the item's resource map equals the corresponding event resource key — keys absent from the item are unconstrained, and an empty map is the catch-all. Among matching items, the one with the most keys (the tightest constraint set) prices the event; ties keep the first item. There are deliberately no wildcard values: `*` would be redundant with key absence, and rate validation rejects it.
 
 
 ### Admission Contract
@@ -396,6 +394,8 @@ The crate models one admission flag per (identity object, resource) pair, aggreg
 
 The resource is identified by a deterministic hash of its key-value pairs (model, provider, and any future dimensions). This ensures that a user with separate budgets for different models is only blocked for the models whose budgets are exhausted, not all models.
 
+The hash is computed from the resource exactly as Praxis resolved it, and that makes the read/write pairing an explicit contract: the map Praxis passes to the crate at admission must be the same map it emits in the usage event — the write side hashes the event's resource, the read side hashes the request's, and any divergence reads as an absent flag and fails open. Rate tables never contribute to the hash: a rate item's resource map is a matcher (a subset constraint), so an item `{model: opus-4.6}` governs events carrying `{model: opus-4.6, provider: anthropic}` while the flag key uses the event's full map. For the same reason the emitted map must be stable — the same model emitted with different dimensions fragments flags across hashes, and exhaustion under one variant does not deny requests carrying another. Praxis therefore resolves one canonical resource map per model.
+
 There is one flag per (identity object, resource) pair, not one per user. That matters because group and organization membership is only known at request time: the Metering Service never has to enumerate members, and Praxis already holds the memberships it needs for routing and authorization.
 
 Each flag covers exactly one identity level: the user flag aggregates the budgets whose policies name that user as a subject, the group flag the policies naming that group, and so on. A flag does not fold in budgets attached at other identity levels — combining the levels is the reader's job, described next.
@@ -416,6 +416,8 @@ That is the entire contract. Praxis performs no policy resolution, no rate looku
 #### Overshoot
 
 Because accounting is asynchronous, a flag reflects the state as of the last accounted event. Between the moment a budget is exhausted and the moment the Metering Service processes the event that exhausted it, further requests are admitted. The width of that window is the usage-event pipeline latency — collector batch interval plus processing — not the duration of a single request.
+
+The same window applies to first contact: a flag for an (identity object, resource) pair that has never been written reads as "no budget applies", so the first request carrying it is admitted regardless of budget state — and the accounting pass for that very event writes the flag, closing the window for every later request.
 
 This is accepted deliberately: the metering plane is a cost-control mechanism, not a hard security boundary, and the engineering margin is expressed as an accepted overshoot per budget rather than as a synchronous guarantee. Three things bound it:
 
@@ -442,7 +444,7 @@ This is accepted deliberately: the metering plane is a cost-control mechanism, n
 | Who | Resolve user, groups, organization, and tenant from the request (already done for routing and authorization) |
 | Admission | Call the admission crate with those identities and the requested resource; the crate reads every identity level's flag and returns the most restrictive outcome (deny > over > allow) |
 | Enforcement | `deny` → 429; `over` → forward with `x-praxis-over-budget: true`; `allow` → forward |
-| Usage emission | Emit an OTEL Log with identity, resource, usage, and request id after the response |
+| Usage emission | Emit an OTEL Log with identity, resource, usage, and request id after the response — carrying the same identity and resource map that were passed to the admission crate, since the flags are keyed by their hashes |
 | Flag read failure | Apply the configured fail-open or fail-closed behavior |
 
 Everything else — BU rates, balances, policies, flag aggregation, overage, renewal, reconciliation, pacing — lives in the budget system.
@@ -476,7 +478,7 @@ When a usage event arrives, the Metering Service resolves the budgets it charges
 
 2. **BudgetPolicy → Rate.** Each matched policy carries a `rate_ref`. The Metering Service looks up the corresponding Rate.
 
-3. **Resource → RateItem.** The event's resource keys (e.g., `model: "claude-sonnet-5-5"`, `provider: "anthropic"`) are matched against the Rate's `items` to find the applicable RateItem.
+3. **Resource → RateItem.** The event's resource keys (e.g., `model: "claude-sonnet-5-5"`, `provider: "anthropic"`) are matched against the Rate's `items` to find the applicable RateItem — the matching item with the most keys wins (an absent key is an unconstrained dimension; an empty resource map is the catch-all).
 
 4. **RateItem × Usage → BU cost.** The cost is computed as `sum(usage[key] * rateItem.costs[key])` for all keys present in the rate item's costs map.
 
@@ -1021,16 +1023,16 @@ Accounting charges every policy that matches the identity: a request from alice 
 
 Policies can attach budgets at any identity level, and every level's budget charges the requests that match it — so every level needs its own flag. The group flag is not a substitute for the user flag; it is the state of the group's own budgets.
 
-These flags also govern users with no user-level flag. The Metering Service discovers users from usage events; it does not maintain a user directory. A user whose first request has not yet been accounted has no user-level flag, but their requests still charge group, organization, and tenant budgets — those flags govern them from the very first request. A tenant-wide budget that is exhausted (`deny`) therefore denies even a brand-new user, rather than granting unlimited access until their first event is accounted.
+These flags also govern users with no user-level flag. The Metering Service discovers users from usage events; it does not maintain a user directory. A user whose first request has not yet been accounted has no user-level flag, but their requests still charge group, organization, and tenant budgets — and the flag at that level governs them once it exists. The flag for an (identity object, resource) pair is written by the first accounted event that matches it: a request from a member of a never-seen group is admitted (the flag is absent), and the accounting pass for that very event writes the group flag, so every subsequent request from any member of the group is governed. The exposure is that group's requests within one usage-event pipeline window — the same overshoot model as exhaustion detection (see [Overshoot](#overshoot)). A tenant-wide budget that is exhausted (`deny`) therefore denies a brand-new user requesting a resource the tenant has already used: the events that drained the budget wrote the tenant flag, and every request in the tenant reads it.
 
 | Level | Purpose |
 |---|---|
-| `user` | State of the budgets attached to this user by user-level policies — written after the Metering Service first accounts a usage event for that user |
+| `user` | State of the budgets attached to this user by user-level policies — written by the first accounted event matching such a policy; a user with no user-level policy never has a user flag and is governed through their other levels |
 | `group` | State of the budgets attached to this group by group-level policies — governs every member, including users with no user flag |
 | `organization` | State of the organization's budgets — governs every member |
 | `tenant` | Covers every user in the tenant, including those never seen before |
 
-This keeps the flag set sparse — the Metering Service only writes flags at the levels where policies exist — while every request is governed by every budget it charges, whether or not the user has been seen before.
+This keeps the flag set sparse — the Metering Service only writes flags at the levels where policies exist — while every request is governed by every budget it charges, from the first accounted event for its (identity object, resource) pairs onward.
 
 #### Why not per-budget flags
 
