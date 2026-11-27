@@ -682,13 +682,16 @@ Returns aggregated usage data with flexible grouping and time bucketing. All res
 | `range` | string | Time window: `24h`, `7d`, `30d`, `90d`, `180d`, `365d`, `mtd` (month-to-date), `qtd`, `ytd`, `custom`. Default: `7d` |
 | `from` | string | Start date (`YYYY-MM-DD`), required when `range=custom` |
 | `to` | string | End date (`YYYY-MM-DD`, inclusive), required when `range=custom` |
-| `group_by` | string | Comma-separated dimensions to group by: `model`, `provider`, `region`, `user`, `group`, `org`. Omit for flat totals |
+| `group_by` | string | Comma-separated dimensions to group by: `model`, `provider`, `region`, `user`, `group`, `org`, `budget`. Omit for flat totals. `budget` groups by the budgets events were charged to (from the per-charge ledger): each group shows the events charged to that budget, with `bu_cost` being that budget's charges. An event charging two budgets counts once in each group, so budget groups overlap — unlike the per-event dimensions, which partition. Events that resolved no charges appear in an empty `budget` group: the unmetered-traffic view |
 | `granularity` | string | Time bucketing: `total`, `hour`, `day`, `week`, `month`. Default: `total` |
 | `user` | string | Filter by user |
 | `group` | string | Filter by group |
 | `org` | string | Filter by organization |
 | `model` | string | Filter by model |
 | `provider` | string | Filter by provider |
+| `budget` | string | Filter by budget id: the result aggregates the events charged to that budget, with `bu_cost` being the budget's charges |
+| `order_by` | string | Sort groups by an aggregate metric (`bu_cost` or `requests`) instead of the group keys — with `limit`, the top-N leaderboard (top consumers, top models). Group keys remain the tiebreaker, so pages stay stable. With a time granularity the bucket leads: the series stays chronological (oldest to newest) and the metric ranks the groups within each bucket |
+| `direction` | string | Sort direction for `order_by`: `asc` or `desc` (default `desc`) |
 | `region` | string | Filter by region. Reserved for future. |
 | `cluster` | string | Filter by cluster. Reserved for future.|
 
@@ -701,6 +704,7 @@ The `group_by` dimensions correspond to the dynamic resource keys in the rate ta
   "range": { "from": "...", "to": "..." },
   "granularity": "total | hour | day | week | month",
   "group_by": ["..."],
+  "total": 0,
   "data": [
     {
       "bucket": "...",
@@ -720,6 +724,7 @@ The `group_by` dimensions correspond to the dynamic resource keys in the rate ta
 | `requests` | Number of requests in this bucket/group |
 | `usage` | Dynamic map of aggregated usage values. Keys match the cost keys defined in the rate tables (e.g., `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`). The keys present depend on what the rate tables define — new cost keys appear automatically |
 | `bu_cost` | Total BU cost for this bucket/group |
+| `total` | The number of groups the query produced, before the limit truncated the rows — `len(data) < total` means the response is a truncated view; page (offset) or raise `limit` to see the rest |
 
 The `data` array is always returned, even when it contains a single element.
 
