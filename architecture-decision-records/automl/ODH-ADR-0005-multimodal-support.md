@@ -139,6 +139,14 @@ Example image backbones from [AutoMM presets](https://auto.gluon.ai/stable/tutor
 
 The supported set is selected and validated against the pinned AutoGluon/TIMM versions.
 
+### Optional Ray-based training execution
+
+The follow-on design adds an opt-in Ray backend for `image_prediction` using the KubeRay Operator in Red Hat OpenShift AI. The backend runs independent backbone fits or Ray Tune trials in parallel on separate GPU workers. Distributing a single fit across multiple GPUs is a separate execution mode for workloads whose model size or training time warrants it. [RHAI-78711](https://redhat.atlassian.net/browse/RHAI-78711) · [OpenShift AI Ray integration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/working_with_distributed_workloads/running-ray-based-distributed-workloads_distributed-workloads)
+
+The pipeline owns the dataset splits, per-backbone evaluation, leaderboard, and model artifacts. Ray workers use the same fixed splits and evaluation rules as the single-GPU path. Each completed backbone produces a standalone predictor that can be loaded for inference without a Ray cluster.
+
+Public availability requires validation of worker access to staged data, Kueue admission, cancellation and cleanup, and predictor export on the pinned stack. Benchmarks compare end-to-end runtime (including queue time), GPU-hours, and model quality with the sequential single-GPU baseline. The results determine which workloads benefit from the Ray backend.
+
 ### Quality tiers, resources, and provenance
 
 `speed` and `balanced` are product labels with their own multimodal model policies. Resource and training-budget defaults are maintained in pipeline documentation and established through benchmarking.
@@ -206,25 +214,13 @@ Required gates:
 
 ## Alternatives
 
-### 1. Put image paths into the existing tabular pipeline
-
-**Rejected.** `TabularPredictor` can have image-related capabilities, but it does not establish the AutoMM GPU, artifact, or byte-serving lifecycle required here. It would overload tabular parameters and misrepresent deep-learning training as a tabular ensemble/refit workflow.
-
-### 2. Add a generic “multimodal” pipeline for every AutoMM task now
-
-**Rejected.** AutoMM spans classification, regression, detection, segmentation, similarity, NER, and more. Their datasets, annotations, metrics, dependencies, resource profiles, artifacts, and serving responses differ substantially. Image classification/regression is the narrowest path that validates the platform seams; other tasks require separate ADRs or explicit extensions.
-
-### 3. Support object detection first
-
-**Rejected for the first release.** Detection requires different annotations, evaluation, and serving contracts.
-
-### 4. Require users to train custom notebooks and deploy custom runtimes
-
-**Rejected as the supported AutoML path.** It leaves reproducibility, GPU configuration, model provenance, security controls, and Dashboard integration to every user. It remains a valid advanced-user escape hatch.
-
-### 5. Serve by S3 URI or presigned URL
-
-**Rejected.** It would expose storage topology/credentials, complicate tenant boundaries and request auditing, make prediction availability depend on object-store access, and create SSRF-like URL handling risks. Base64 bytes are more portable and keep the model-serving request self-contained.
+| Alternative | Decision | Trade-off |
+| --- | --- | --- |
+| Put image paths into the existing tabular pipeline | Rejected | Tabular image features use an ensemble and refit workflow. Supporting AutoMM in that pipeline would overload its parameters and require adding the GPU training, artifact, and image-byte serving lifecycle. |
+| Add one generic pipeline for every AutoMM task | Rejected | Tasks differ in datasets, annotations, metrics, dependencies, resource profiles, artifacts, and serving responses. Image classification and regression provide a focused starting point. Other tasks require separate ADRs or explicit extensions. |
+| Support object detection first | Excluded from the initial release | Detection requires its own annotations, evaluation, and serving contracts. |
+| Require custom notebooks and serving runtimes | Advanced-user option only | Users would manage reproducibility, GPU configuration, model provenance, security controls, and Dashboard integration themselves. |
+| Serve images by S3 URI or presigned URL | Rejected | URLs could expose storage details or credentials, complicate tenant isolation and auditing, introduce SSRF risks, and make prediction depend on object-store access. Base64 image bytes keep the request self-contained and portable. |
 
 ## Security and Privacy Considerations
 
