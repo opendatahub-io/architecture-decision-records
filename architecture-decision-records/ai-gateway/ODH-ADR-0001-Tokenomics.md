@@ -654,6 +654,19 @@ The Metering Service exposes a REST API for managing rates, budgets, and budget 
 | `PUT` | `/api/v1/budget_policies/{id}` | Update a policy |
 | `DELETE` | `/api/v1/budget_policies/{id}` | Delete a policy |
 
+#### Catalog Rates
+
+The catalog is the global pricing library — a table of resource rates (`resource_rates_catalog`) populated by an external process (a pricing-catalog import from a source such as the LiteLLM pricing file, run at service startup). It is read-only over REST: a catalog entry is a template a tenant's rate items are **copied** from, not a live reference. The copy keeps the entry's id as provenance (`catalog_rate_ref`) so it can be refreshed later, and it is a snapshot — later catalog changes never reprice existing rates.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/v1/catalog-rates` | List the catalog, paginated, with `provider` (exact) and `model` (prefix) filters |
+| `GET` | `/api/v1/catalog-rates/{id}` | Get one catalog entry |
+
+A rate item carrying only a `catalog_rate_ref` is filled from the catalog entry at rate creation and update: its `resource` and `costs` (integer BU) are copied verbatim, and an unresolvable ref is rejected. The catalog is public and global: any authenticated caller may read it, no authorization beyond authentication applies, and the `X-Tenant` header does not scope the rows.
+
+Catalog entries are shaped exactly like rate items: a `resource` map of any dimensions (model, provider, modality, ...) plus integer-BU `costs`. Two consequences follow. The same model can carry different rates for different modalities as distinct entries. And every dimension present in an entry's resource becomes a required match key in the copied item (subset matching), so an entry must only carry the dimensions the events actually carry — an entry pinning `modality: "realtime"` only matches events that also carry it.
+
 #### Usage Query
 
 ```
@@ -1517,6 +1530,7 @@ The AI Gateway Controller creates the appropriate RoleBindings when it provision
 |---|---|---|---|
 | `/events` | OTEL Collector | Collector ServiceAccount (TokenReview) | SAR: `create` on `usage-ingest` |
 | `/api/v1/rates[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR on `rates`, scoped by `X-Tenant` |
+| `/api/v1/catalog-rates[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | None — the catalog is public and global; any authenticated caller may read it |
 | `/api/v1/budgets[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR on `budgets`, scoped by `X-Tenant` |
 | `/api/v1/budget_policies[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR on `budget-policy`, scoped by `X-Tenant` |
 | `GET /api/v1/usage` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR: `get` on `usage`, scoped by `X-Tenant` |
