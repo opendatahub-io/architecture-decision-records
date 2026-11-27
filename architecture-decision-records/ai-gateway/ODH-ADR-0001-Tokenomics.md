@@ -919,7 +919,7 @@ GET /api/v1/usage/me
 
 A self-scoped view of the authenticated caller's own usage. Accepts the same `range`, `from`, `to`, `group_by`, and `granularity` parameters as the main usage query, but automatically filters to the caller's identity — no `user` or admin RBAC required. Identity fields (`user`, `group`, `org`) are not allowed in `group_by` — this endpoint returns only the caller's own data and does not expose other users' usage.
 
-This provides a clean separation: `GET /api/v1/usage` is the admin/reporting API (tenant-scoped, requires RBAC), while `GET /api/v1/usage/me` is the end-user API (self-scoped, available to any authenticated user).
+This provides a clean separation: `GET /api/v1/usage` is the admin/reporting API (tenant-scoped, requires RBAC), while `GET /api/v1/usage/me` is the end-user API (self-scoped, available to any authenticated user). Authentication happens in MaaS before the request reaches the Metering Service; `/usage` performs a SAR check on the `usage` resource, `/usage/me` performs no authorization at all (see [Authentication and Authorization](#authentication-and-authorization)).
 
 ```
 GET /api/v1/usage/me?range=mtd&group_by=model
@@ -1489,6 +1489,52 @@ Budget enforcement decisions (allow/deny) remain with the Metering Service. The 
 > **Note:** The specific integration details for each external platform (API mappings, authentication, retry policies) will be addressed in separate ADRs as those integrations are prioritized.
 
 
+### Authentication and Authorization
+
+End-user authentication happens in MaaS, before any request reaches the Metering Service. MaaS validates both OIDC and OpenShift tokens; the Metering Service never handles user credentials and carries no OIDC issuer configuration of its own. The Metering Service is responsible for three things:
+
+1. **Authenticating its direct, in-cluster callers.** Every caller authenticates with a Kubernetes ServiceAccount and a projected token (bound, with audience and expiry), validated through the TokenReview API.
+2. **Authorizing operations via Kubernetes RBAC.** SubjectAccessReview (SAR) against virtual resources in the `metering.aigateway.opendatahub.io` API group.
+3. **Trusting forwarded identity — but only from authenticated callers.** Praxis proxies the metering REST endpoints and forwards the authenticated user's identity with each request. That assertion is trusted because the caller has been authenticated — the same rule the CloudEvent tenant binding applies (see [CloudEvent Tenant Binding](#cloudevent-tenant-binding)).
+
+The Metering Service is never exposed outside the cluster. User requests reach it only through Praxis, which proxies every metering endpoint except the CloudEvent ingestion endpoint (`/events`), which the OTEL Collector calls directly. Network policy admits exactly two clients: the OTEL Collector and Praxis. There is no path to a metering endpoint that bypasses authentication.
+
+#### Virtual resources
+
+| Resource | Verbs | Grants |
+|---|---|---|
+| `rates` | `get`, `list`, `create`, `update`, `delete` | Manage rate tables |
+| `budgets` | `get`, `list`, `create`, `update`, `delete` | Manage budgets |
+| `budget-policy` | `get`, `list`, `create`, `update`, `delete` | Manage budget policies |
+| `usage` | `get` | Tenant-wide usage queries (`GET /api/v1/usage`) |
+| `usage-ingest` | `create` | Submit usage CloudEvents to the ingestion endpoint |
+
+The AI Gateway Controller creates the appropriate RoleBindings when it provisions a gateway. Tenant admins hold the management resources (`rates`, `budgets`, `budget-policy`) and `usage` by default.
+
+#### Authorization per endpoint
+
+| Endpoint | Direct caller | Authentication | Authorization |
+|---|---|---|---|
+| `/events` | OTEL Collector | Collector ServiceAccount (TokenReview) | SAR: `create` on `usage-ingest` |
+| `/api/v1/rates[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR on `rates`, scoped by `X-Tenant` |
+| `/api/v1/budgets[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR on `budgets`, scoped by `X-Tenant` |
+| `/api/v1/budget_policies[/{id}]` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR on `budget-policy`, scoped by `X-Tenant` |
+| `GET /api/v1/usage` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | SAR: `get` on `usage`, scoped by `X-Tenant` |
+| `GET /api/v1/usage/me` | Praxis (proxied user request) | Praxis ServiceAccount; user identity forwarded by Praxis | None — self-scoped, any authenticated user |
+
+#### CloudEvent ingestion
+
+CloudEvents are emitted only by the OTEL Collector, in-cluster. The collector runs with a ServiceAccount bound to the `usage-ingest` role (`create` verb), and the Metering Service authenticates it via TokenReview before accepting events. Because each gateway — and its collector — serves exactly one tenant, the collector's ServiceAccount maps to exactly one tenant; the Metering Service derives the event's tenant from that binding and rejects any event whose payload disagrees (see [CloudEvent Tenant Binding](#cloudevent-tenant-binding)).
+
+#### `/usage/me`: authentication only
+
+`GET /api/v1/usage/me` requires no authorization — it is self-scoped. The user identity comes from the assertion Praxis forwards (authenticated by MaaS upstream), and the query filters to that user automatically. Two rules keep that safe without a SAR:
+
+- **The tenant is not self-attested.** `X-Tenant` arrives set by Praxis, which serves exactly one tenant — the same per-gateway binding that governs CloudEvent ingestion. A user cannot direct the query at another tenant.
+- **Identity dimensions are rejected in `group_by`.** The endpoint returns only the caller's own data and cannot expose other users' usage (see [Personal Usage](#personal-usage)).
+
+`/usage/me` returns data only when user identity collection is enabled. When disabled, the usage table holds no per-user rows and per-user reporting falls back to Loki (see [PII in Identity Fields](#pii-in-identity-fields)).
+
 ### Observability
 
 The budget system produces observability data at multiple levels:
@@ -1590,7 +1636,7 @@ Praxis makes no localhost calls and has no budget component beside it; the only 
 
 Calls to the Metering Service authenticate with Kubernetes ServiceAccounts and projected ServiceAccount tokens (bound tokens with audience and expiry), validated by the receiving component through the Kubernetes TokenReview API. Redis uses its own ACL credentials instead of Kubernetes identity, described below.
 
-Authorization is enforced via RBAC. A dedicated virtual resource `s2s` in the `metering.aigateway.opendatahub.io` API group controls which ServiceAccounts may submit usage events and read budget state from the Metering Service. The same API group also defines three virtual resources (`rates`, `budgets`, `budget-policy`) for management operations. The AI Gateway Controller creates the appropriate RoleBindings when it provisions a gateway.
+Authorization is enforced via RBAC on the virtual resources defined in [Authentication and Authorization](#authentication-and-authorization): `usage-ingest` (CloudEvent submission, held by the OTEL Collector's ServiceAccount), `rates`, `budgets`, `budget-policy`, and `usage`. The AI Gateway Controller creates the appropriate RoleBindings when it provisions a gateway.
 
 Redis credentials are per tenant and per role: the gateway's ServiceAccount gets a read-only user scoped to `ai-metering:{tenant}:admit:*`, and only the Metering Service gets a user that can write balances and flags.
 
@@ -1601,6 +1647,8 @@ Ingestion must not trust `data.identity.tenant` from the payload. The Metering S
 ### Tenant Isolation
 
 All management API requests require the `X-Tenant` header. The Metering Service validates that the caller has RBAC permissions for the specified tenant's resources. A missing or unauthorized `X-Tenant` header results in a 403 response.
+
+`GET /api/v1/usage/me` is the exception: it performs no authorization, so `X-Tenant` is not SAR-validated there. It is trusted because it arrives through the Praxis proxy, which serves exactly one tenant (see [Authentication and Authorization](#authentication-and-authorization)).
 
 At the data plane level, tenant isolation is enforced by Redis ACLs rather than by key naming alone: each gateway's credential can only touch its own `ai-metering:{tenant}:admit:*` keys, and the pattern is fixed per credential rather than supplied by the request. A compromised Praxis pod therefore cannot read or alter another tenant's admission state.
 
